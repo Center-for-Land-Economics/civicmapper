@@ -1,0 +1,67 @@
+name: Frontend (dev) deploy
+on:
+  push:
+    branches: [ "develop" ]
+    paths: [ "viz/**", ".github/workflows/deploy-frontend-dev.yml" ]
+permissions: { id-token: write, contents: read }
+jobs:
+  deploy:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: viz/package-lock.json
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build SPA
+        working-directory: viz
+        env:
+          VITE_API_BASE: "https://api.dev.civicmapper.org"
+          VITE_TILE_API_URL: "https://tiles.dev.civicmapper.org"
+          VITE_ENV_LABEL: "Dev"
+          VITE_DEPLOY_ENV: "dev"
+          VITE_PARKING_ENABLED: "true"
+          # PDF report button: shipped hidden for now. Flip to "true" to turn it on.
+          VITE_REPORT_ENABLED: "false"
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+      - name: Upload all files (1h cache)
+        run: |
+          az storage blob upload-batch --account-name stcivicmapperdev \
+            --auth-mode login \
+            -d '$web' -s viz/dist \
+            --overwrite \
+            --content-cache-control "public, max-age=3600"
+      - name: Upload hashed assets (immutable cache)
+        run: |
+          az storage blob upload-batch --account-name stcivicmapperdev \
+            --auth-mode login \
+            -d '$web/assets' -s viz/dist/assets \
+            --overwrite \
+            --content-cache-control "public, max-age=31536000, immutable"
+      - name: Upload HTML files (no-cache)
+        run: |
+          az storage blob upload-batch --account-name stcivicmapperdev \
+            --auth-mode login \
+            -d '$web' -s viz/dist \
+            --pattern "*.html" \
+            --overwrite \
+            --content-cache-control "no-cache, no-store, must-revalidate"
+      - name: Purge Front Door cache
+        continue-on-error: true
+        run: |
+          az afd endpoint purge -g rg-civicmapper-dev --profile-name afd-civicmapper-dev \
+            --endpoint-name ep-civicmapper-dev \
+            --content-paths "/*"

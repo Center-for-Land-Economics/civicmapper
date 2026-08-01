@@ -1,0 +1,26 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "dallas-tx-parcels.pmtiles",
+    "pmtilesMetadataUrl": "dallas-tx-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Full Market Value",
+  "full_market_value_per_sqft": "Full market value/land ft²",
+  "current_full_land_value": "Land Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Assessed Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "link": "Parcel Link"
+}

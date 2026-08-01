@@ -1,0 +1,17 @@
+# ETL notebook dependencies
+# Install with: pip install -r requirements.txt
+
+geopandas
+pandas
+numpy
+shapely
+pyproj
+osmnx
+requests
+scipy
+ipykernel
+jupyter
+azure-storage-blob>=12.0.0
+duckdb>=1.0.0          # Overture building-footprint query (surface-vs-structure classifier)
+h3>=4.0.0              # H3 hexagon aggregation for PMTiles low-zoom layer
+pyarrow                # Parquet read/write backend for geopandas

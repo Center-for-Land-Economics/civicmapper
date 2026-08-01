@@ -1,0 +1,25 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "hasParkingData": true,
+    "pmtilesUrl": "pueblo-co-parcels.pmtiles",
+    "pmtilesMetadataUrl": "pueblo-co-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13
+  },
+  "parcel_id": "Parcel ID",
+  "zone_code": "Zone Code",
+  "property_land_use_category": "Original Category",
+  "property_land_use_refined": "Property Category",
+  "current_full_land_value": "Land Actual Value",
+  "improvement_value": "Improvements Actual Value",
+  "full_market_value": "Total Actual Value",
+  "area_sqft": "Parcel Area (Sq Ft)",
+  "owner": "Owner",
+  "neighborhood": "Neighborhood",
+  "subdivision": "Subdivision",
+  "assessor_url": "Assessor URL",
+  "zoning_url": "Zoning Reference"
+}

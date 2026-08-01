@@ -1,0 +1,16 @@
+{
+  "displayName": "Detroit",
+  "state": "mi",
+  "filename": "detroit-mi-parcels.parquet",
+  "pmtilesFilename": "detroit-mi-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "detroit-mi-parking-lots.parquet",
+  "parkingVersion": "2026-06-10",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -83.0458,
+    42.3314
+  ]
+}

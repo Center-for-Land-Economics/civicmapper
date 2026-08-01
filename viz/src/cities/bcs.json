@@ -1,0 +1,23 @@
+{
+  "displayName": "Bryan/College Station",
+  "state": "tx",
+  "filename": "bcs-tx-parcels.parquet",
+  "pmtilesFilename": "bcs-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "bcs-tx-parking-lots.parquet",
+  "parkingVersion": "2026-06-09",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "bryan",
+    "collegestation",
+    "college-station",
+    "bryan-college-station"
+  ],
+  "coords": [
+    -96.3344,
+    30.628
+  ]
+}

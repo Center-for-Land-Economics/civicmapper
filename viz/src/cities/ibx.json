@@ -1,0 +1,13 @@
+{
+  "displayName": "NYC (IBX)",
+  "state": "ny",
+  "filename": "nyc-ibx-parcels.parquet",
+  "parkingFilename": "ibx-ny-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-classifier",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "PROPERTY_CATEGORY",
+  "coords": [
+    -73.9,
+    40.68
+  ]
+}

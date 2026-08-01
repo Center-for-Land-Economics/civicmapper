@@ -1,0 +1,17 @@
+{
+  "displayName": "Dallas",
+  "state": "tx",
+  "filename": "dallas-tx-parcels.parquet",
+  "pmtilesFilename": "dallas-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "dallas-tx-parking-lots.parquet",
+  "parkingVersion": "2026-06-09",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -96.797,
+    32.7767
+  ]
+}

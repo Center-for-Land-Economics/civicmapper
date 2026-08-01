@@ -1,0 +1,13 @@
+{
+  "displayName": "Rockville",
+  "state": "md",
+  "filename": "rockville-md-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "rockville-md-parking-lots.parquet",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -77.1528,
+    39.084
+  ]
+}

@@ -1,0 +1,40 @@
+# Extra dependencies for the satellite parking pipeline (parking_lot_extraction.py).
+# These are NOT needed for the parcel ETL notebooks (see requirements.txt) and are
+# heavy (Torch + CUDA), so they live in a separate file. Install into the same venv:
+#
+#   data/.venv/Scripts/python -m pip install -r data/requirements-parking.txt
+#
+# IMPORTANT version notes (learned the hard way on Windows 2026-06):
+#
+# * Python 3.12 — Torch has no cp313/cp314 wheels yet. Build the venv with 3.12.
+#
+# * Torch + CUDA: install from the CUDA index, NOT plain PyPI (PyPI ships CPU-only):
+#       pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+#   (cu124 works with recent NVIDIA drivers; pick the index matching your CUDA.)
+#
+# * transformers MUST be pinned < 5. v5 refactored the SegFormer state-dict keys
+#   (encoder.block.* -> stages.*.blocks.*, attention.self.query -> q_proj), so the
+#   UTEL-UIUC/SegFormer-large-parking checkpoint fails to load on v5. 4.46.x works.
+#
+# * GDAL command-line tools (gdalwarp, gdalbuildvrt) are required — the NAIP fetch
+#   shells out to them. On Windows the cgohlke "osgeo" wheel bundles the exes; put
+#   <venv>/Lib/site-packages/osgeo on PATH (run via PowerShell; bash PATH munging
+#   corrupts on the drive-letter colon). On Linux/macOS use the system/conda GDAL.
+#
+# * Console: set PYTHONUTF8=1 — some progress prints use non-ASCII (→, ×) that
+#   crash the default Windows cp1252 console.
+#
+# * Known Windows issue: the cgohlke osgeo GDAL CLI uses a c-ares resolver that may
+#   fail to resolve the NAIP blob host ("Could not contact DNS servers") even though
+#   Python/rasterio resolve it fine. Workaround until the fetch is routed through
+#   rasterio: pre-build naip_imagery.tif with rasterio, drop it in the output dir,
+#   and run without --overwrite so the pipeline skips its own fetch.
+
+transformers==4.46.3
+huggingface_hub
+rasterio
+planetary_computer
+pystac_client
+pillow
+# torch + torchvision: install separately from the CUDA wheel index (see notes above)
+# gdal CLI: cgohlke osgeo wheel on Windows, or system/conda GDAL elsewhere (see notes)

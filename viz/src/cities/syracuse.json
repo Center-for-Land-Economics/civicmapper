@@ -1,0 +1,16 @@
+{
+  "displayName": "Syracuse",
+  "state": "ny",
+  "filename": "syracuse-ny-parcels.parquet",
+  "pmtilesFilename": "syracuse-ny-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "syracuse-ny-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-classifier",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -76.1474,
+    43.0481
+  ]
+}

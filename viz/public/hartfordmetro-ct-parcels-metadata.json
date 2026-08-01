@@ -1,0 +1,267 @@
+{
+  "statistics": {
+    "valuation_year": {
+      "min": 2021.0,
+      "max": 2024.0
+    },
+    "exemption_flag": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "full_market_value": {
+      "min": 0.0,
+      "max": 1049645400.0
+    },
+    "full_market_value_per_sqft": {
+      "min": 0.0,
+      "max": 1854.9641528097254
+    },
+    "current_full_land_value": {
+      "min": 0.0,
+      "max": 39305600.0
+    },
+    "land_value_per_sqft": {
+      "min": 0.0,
+      "max": 308.5939443334475
+    },
+    "improvement_value": {
+      "min": -1761500.0,
+      "max": 1040853400.0
+    },
+    "improvement_value_per_sqft": {
+      "min": -8.986726801711628,
+      "max": 1786.058849238227
+    },
+    "TLLDIMPROV": {
+      "min": 0.0,
+      "max": 1049645400.0
+    },
+    "IMPR_LAND_RATIO": {
+      "min": -1.0,
+      "max": 3712.0
+    },
+    "IMPR_LAND_PCT": {
+      "min": -100.0,
+      "max": 371200.0
+    },
+    "IMPR_PCT_TOTAL": {
+      "min": -11.573923419025926,
+      "max": 100.0
+    },
+    "land_area_acres": {
+      "min": 0.01147933853239504,
+      "max": 593.1813091579498
+    },
+    "likely_remnant": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "REALIMPROV": {
+      "min": -1761500.0,
+      "max": 1040853400.0
+    },
+    "REALLANDVA": {
+      "min": 0.0,
+      "max": 39305600.0
+    }
+  },
+  "categories": {
+    "refined": [],
+    "original": [
+      "Unclassified"
+    ]
+  },
+  "underutilizedTotals": {
+    "Vacant": 0.0,
+    "Parking Lot": 0.0,
+    "Underdeveloped": 0.0,
+    "totalNonExempt": 16249957334.0,
+    "Underdeveloped_lt10": 0.0,
+    "Underdeveloped_lt10_count": 0,
+    "Underdeveloped_10_25": 0.0,
+    "Underdeveloped_10_25_count": 0,
+    "Underdeveloped_25_50": 0.0,
+    "Underdeveloped_25_50_count": 0
+  },
+  "quantileBreaks": {
+    "IMPR_LAND_PCT": [
+      137.52380952380952,
+      192.18328840970352,
+      252.96477931341954,
+      355.8947629684786
+    ],
+    "land_value_per_sqft": [
+      2.4735983607059095,
+      4.206513668638781,
+      5.9837585451084845,
+      8.272797477451896
+    ],
+    "improvement_value_per_sqft": [
+      7.5922897431956535,
+      11.612717370386655,
+      15.870374371850886,
+      24.000942752830408
+    ],
+    "full_market_value_per_sqft": [
+      11.93977756121078,
+      17.361170512262532,
+      22.896629959359966,
+      32.37858290145325
+    ]
+  },
+  "percentiles": {
+    "IMPR_LAND_PCT": {
+      "p1": 0.0,
+      "p99": 1708.8695652173901,
+      "p999": 2514.922511441693
+    },
+    "land_value_per_sqft": {
+      "p1": 0.0,
+      "p99": 22.515413305208714,
+      "p999": 51.68070205199369
+    },
+    "improvement_value_per_sqft": {
+      "p1": 0.0,
+      "p99": 265.70863311564295,
+      "p999": 405.1715445491946
+    },
+    "full_market_value_per_sqft": {
+      "p1": 0.191554467428766,
+      "p99": 271.2526746965878,
+      "p999": 406.2069670821242
+    }
+  },
+  "bounds": [
+    -72.9085165409965,
+    41.6276399472974,
+    -72.4521452370232,
+    41.9284855000773
+  ],
+  "parcelMinZoom": 12,
+  "groups": {
+    "jurisdiction": {
+      "ids": [
+        "West Hartford",
+        "Hartford",
+        "Manchester",
+        "Glastonbury",
+        "East Hartford",
+        "Newington",
+        "Windsor",
+        "Wethersfield",
+        "Farmington",
+        "South Windsor",
+        "Bloomfield",
+        "Rocky Hill"
+      ],
+      "counts": {
+        "West Hartford": 19263,
+        "Hartford": 17387,
+        "Manchester": 15418,
+        "Glastonbury": 13289,
+        "East Hartford": 13240,
+        "Newington": 11751,
+        "Windsor": 11334,
+        "Wethersfield": 9324,
+        "Farmington": 9058,
+        "South Windsor": 7984,
+        "Bloomfield": 7927,
+        "Rocky Hill": 4656
+      },
+      "totals": {
+        "West Hartford": {
+          "acres": 7818.1,
+          "land": 2989024335,
+          "impr": 5264077317,
+          "total": 8253101652
+        },
+        "Hartford": {
+          "acres": 5182.2,
+          "land": 1090501800,
+          "impr": 5373261740,
+          "total": 6463763540
+        },
+        "Manchester": {
+          "acres": 10465.0,
+          "land": 1316798115,
+          "impr": 4180674494,
+          "total": 5497472609
+        },
+        "Glastonbury": {
+          "acres": 21175.7,
+          "land": 2292320200,
+          "impr": 4380370743,
+          "total": 6672690943
+        },
+        "East Hartford": {
+          "acres": 6496.9,
+          "land": 894265010,
+          "impr": 2716755976,
+          "total": 3611020986
+        },
+        "Newington": {
+          "acres": 5510.8,
+          "land": 993261048,
+          "impr": 2507775772,
+          "total": 3501036820
+        },
+        "Windsor": {
+          "acres": 14088.0,
+          "land": 1215113530,
+          "impr": 3883172400,
+          "total": 5098285930
+        },
+        "Wethersfield": {
+          "acres": 4790.9,
+          "land": 1046983565,
+          "impr": 1844171259,
+          "total": 2891154824
+        },
+        "Farmington": {
+          "acres": 11268.4,
+          "land": 1525033250,
+          "impr": 5048599500,
+          "total": 6573632750
+        },
+        "South Windsor": {
+          "acres": 13017.9,
+          "land": 1283186300,
+          "impr": 2313261440,
+          "total": 3596447740
+        },
+        "Bloomfield": {
+          "acres": 11975.4,
+          "land": 790479781,
+          "impr": 2907612800,
+          "total": 3698092581
+        },
+        "Rocky Hill": {
+          "acres": 6318.0,
+          "land": 812990400,
+          "impr": 2363924200,
+          "total": 3176914600
+        }
+      }
+    }
+  },
+  "jurisdictions": {
+    "West Hartford": 19263,
+    "Hartford": 17387,
+    "Manchester": 15418,
+    "Glastonbury": 13289,
+    "East Hartford": 13240,
+    "Newington": 11751,
+    "Windsor": 11334,
+    "Wethersfield": 9324,
+    "Farmington": 9058,
+    "South Windsor": 7984,
+    "Bloomfield": 7927,
+    "Rocky Hill": 4656
+  },
+  "cityTotals": {
+    "acres": 118107.3,
+    "land": 16249957334,
+    "impr": 42783657641,
+    "total": 59033614975
+  }
+}

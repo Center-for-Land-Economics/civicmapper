@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Surface Parking — Civic Mapper</title>
+  <script>
+    (function redirectToWorkspace() {
+      const url = new URL(window.location.href);
+      const city = url.searchParams.get('city');
+      const target = new URL('/app.html', window.location.origin);
+      if (city) target.searchParams.set('city', city);
+      target.searchParams.set('view', 'parking');
+      window.location.replace(target.toString());
+    })();
+  </script>
+</head>
+<body></body>
+</html>

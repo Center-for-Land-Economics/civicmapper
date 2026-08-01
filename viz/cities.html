@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Select Your City - Civic Mapper</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg">
+  <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="mask-icon" href="favicon.svg" color="#0f172a">
+  <script type="module" src="/src/analytics.ts"></script>
+  <link rel="stylesheet" href="/src/design-system.css">
+  <link rel="stylesheet" href="/src/components.css">
+  <style>
+    body {
+      margin: 0;
+      background: #eef3f8;
+      color: var(--text-primary);
+    }
+
+    .slim-banner {
+      background: linear-gradient(90deg, #fff7d6, #ffefb0);
+      border-bottom: 1px solid rgba(217, 119, 6, 0.16);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.92rem;
+      color: #7c2d12;
+    }
+
+    .slim-banner[hidden] {
+      display: none;
+    }
+
+    .slim-banner-close {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      opacity: 0.75;
+    }
+
+    .slim-banner-close:hover {
+      opacity: 1;
+    }
+
+    .slim-banner a {
+      color: inherit;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .header-left,
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-link img {
+      height: 30px;
+      display: block;
+    }
+
+    .page-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .page-title strong {
+      font-size: 1.25rem;
+      color: #0f172a;
+    }
+
+    .page-title span {
+      font-size: 0.9rem;
+      color: #64748b;
+    }
+
+    .page-shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 22px 20px 32px;
+      display: grid;
+      gap: 22px;
+    }
+
+    .grid-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding-top: 6px;
+    }
+
+    .grid-header h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      line-height: 1.05;
+      color: #0f172a;
+    }
+
+    .grid-header p {
+      margin: 0;
+      max-width: 680px;
+      color: #475569;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    /* ---- City picker: bordered card holding a search/list panel + a contained map ---- */
+    .picker {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: clamp(460px, 64vh, 680px);
+      border-radius: 24px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    .picker-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: #fff;
+      border-right: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .picker-search {
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    #citySearch {
+      width: 100%;
+      padding: 11px 13px 11px 38px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: #0f172a;
+      background-color: #fff;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: left 13px center;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 12px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    #citySearch::placeholder { color: #94a3b8; font-weight: 500; }
+
+    #citySearch:focus {
+      outline: none;
+      border-color: rgba(37, 99, 235, 0.55);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+    }
+
+    .picker-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .state-group { padding: 2px 0; }
+
+    .state-head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: rgba(248, 250, 252, 0.97);
+      backdrop-filter: blur(6px);
+      padding: 7px 16px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #64748b;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .city-row {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      width: 100%;
+      padding: 9px 16px;
+      border: none;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      font: inherit;
+      color: #0f172a;
+      transition: background-color 0.12s ease;
+    }
+
+    .city-row:hover { background: rgba(37, 99, 235, 0.08); }
+
+    /* display:flex above beats the UA [hidden] rule, so hide explicitly when filtered out */
+    .city-row[hidden],
+    .state-group[hidden] { display: none; }
+
+    .city-row .chip {
+      flex: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.66rem;
+      font-weight: 800;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb, #0f766e);
+    }
+
+    .city-row .label { font-weight: 600; font-size: 0.95rem; }
+
+    .no-results {
+      padding: 18px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #64748b;
+    }
+    .no-results[hidden] { display: none; }
+
+    .picker-foot {
+      padding: 11px 16px;
+      border-top: 1px solid rgba(148, 163, 184, 0.16);
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .picker-map { position: relative; }
+    #cityMap { position: absolute; inset: 0; }
+
+    /* ---- Map dots ----
+       MapLibre owns `transform` on the marker root (.mk), so the hop animation runs on
+       the inner .mk-fx wrapper, never the root. */
+    .mk { cursor: pointer; }
+    .mk-fx {
+      position: relative; /* anchors the name pill, which therefore rides the hop exactly */
+      width: 26px; height: 26px; display: block;
+      filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.4));
+    }
+    .mk-fx svg { width: 100%; height: 100%; display: block; }
+    .mk .shape { transition: fill 0.12s ease; }
+
+    /* Name pill: sits above the dot, inside .mk-fx so it hops with it. Hidden until hover/highlight. */
+    .mk-pill {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      margin-bottom: 8px; padding: 3px 10px;
+      background: #fff; color: #0f172a; font-size: 0.78rem; font-weight: 700;
+      line-height: 1.2; white-space: nowrap; border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
+      opacity: 0; visibility: hidden; transition: opacity 0.12s ease;
+      pointer-events: none;
+    }
+    .mk-pill::after { /* little caret pointing down at the dot */
+      content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 5px solid transparent; border-top-color: #fff;
+    }
+    .mk:hover .mk-pill, .mk.hl .mk-pill { opacity: 1; visibility: visible; }
+    .mk:hover { z-index: 9998 !important; } /* hovered dot + its pill ride above neighbours */
+
+    /* Highlight (driven by list-row hover): a single settle-hop, and the red stays for as
+       long as the row is highlighted; both revert on roll-off. */
+    .mk.hl { z-index: 9999 !important; } /* beats the painter-order ranks while highlighted */
+    .mk.hl .shape { fill: #ef4444 !important; }
+    .mk.hl .mk-fx { animation: mk-hop 0.45s ease; }
+    @keyframes mk-hop {
+      0%   { transform: translateY(0); }
+      40%  { transform: translateY(-12px); }
+      70%  { transform: translateY(0); }
+      85%  { transform: translateY(-3px); }
+      100% { transform: translateY(0); }
+    }
+
+    @media (max-width: 720px) {
+      .picker {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .picker-panel { border-right: none; border-bottom: 1px solid rgba(148, 163, 184, 0.18); }
+      .picker-list { max-height: 38vh; }
+      .picker-map { height: 52vh; }
+    }
+
+    .cta-card {
+      margin-top: 4px;
+      padding: 24px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+      border: 1px solid rgba(59, 130, 246, 0.16);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .cta-card h2 {
+      margin: 0 0 8px;
+      font-size: 1.4rem;
+      color: #0f172a;
+    }
+
+    .cta-card p {
+      margin: 0;
+      color: #475569;
+      line-height: 1.5;
+      max-width: 760px;
+    }
+
+    .footer {
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+      padding: 24px 20px 40px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    .footer-inner {
+      max-width: 1320px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    @media (max-width: 720px) {
+      .header {
+        padding: 0 14px;
+        height: auto;
+        min-height: 64px;
+        flex-wrap: wrap;
+      }
+
+      .page-shell {
+        padding: 18px 14px 28px;
+      }
+
+      .grid-header,
+      .cta-card,
+      .footer-inner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="slim-banner" id="supportBanner">
+    <span>Civic Mapper is free thanks to donors.</span>
+    <a href="https://givebutter.com/wK8u7p" target="_blank" rel="noopener">Support Us</a>
+    <button type="button" class="slim-banner-close" id="dismissSupportBanner" aria-label="Dismiss support banner">×</button>
+  </div>
+
+  <header class="header">
+    <div class="header-left">
+      <a href="/index.html" class="logo-link">
+        <img src="/logo.svg" alt="Civic Mapper">
+      </a>
+    </div>
+    <div class="header-right">
+      <a href="https://landeconomics.org" target="_blank" rel="noopener" aria-label="Center for Land Economics"
+         style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-tertiary); font-size: var(--text-sm);">
+        <span>by</span>
+        <img src="/cle-logo-2color.svg" alt="Center for Land Economics" style="height: 22px;">
+      </a>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="grid-header">
+      <div>
+        <h1>Choose a city and start exploring.</h1>
+        <p>Click a pin on the map, or search the list, to jump straight into that city&rsquo;s map.</p>
+      </div>
+    </section>
+
+    <section class="picker">
+      <aside class="picker-panel">
+        <div class="picker-search">
+          <input id="citySearch" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Search cities…" aria-label="Search cities" />
+        </div>
+        <div class="picker-list" id="cityList">
+          <div class="no-results" id="noResults" hidden>No cities match your search.</div>
+        </div>
+        <div class="picker-foot"><strong id="cityCount">0</strong> cities supported</div>
+      </aside>
+      <div class="picker-map">
+        <div id="cityMap"></div>
+      </div>
+    </section>
+
+    <section class="cta-card">
+      <div>
+        <h2>Want to add your city?</h2>
+        <p>Interested in visualizing land values for your city? Contact us to learn more. Or explore any city right now with <a href="https://putitonamap.com" target="_blank" rel="noopener">Put It On A Map</a> — our free tool that lets you upload your own data.</p>
+      </div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <a href="mailto:greg@landeconomics.org" class="btn btn-primary">Contact Us</a>
+        <a href="https://givebutter.com/wK8u7p" target="_blank" rel="noopener" class="btn btn-secondary">Donate</a>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initCleFooter } from '/src/cle-footer.ts';
+    initCleFooter();
+  </script>
+
+  <script type="module" src="/src/cities-page.ts"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const banner = document.getElementById('supportBanner');
+      const dismissKey = 'gvw_hide_support_banner';
+      try {
+        if (localStorage.getItem(dismissKey) === '1') banner.hidden = true;
+      } catch {}
+
+      const closeButton = document.getElementById('dismissSupportBanner');
+      closeButton?.addEventListener('click', () => {
+        if (banner) banner.hidden = true;
+        try { localStorage.setItem(dismissKey, '1'); } catch {}
+      });
+    });
+  </script>
+</body>
+</html>

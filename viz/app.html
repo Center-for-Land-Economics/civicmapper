@@ -1,0 +1,1951 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Civic Mapper</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg">
+  <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="mask-icon" href="favicon.svg" color="#0f172a">
+  <link rel="stylesheet" href="/src/design-system.css">
+  <link rel="stylesheet" href="/src/components.css">
+  <style>
+    :root {
+      --workspace-header-h: 56px;
+      --workspace-tabs-h: 46px;
+      --workspace-padding: 18px;
+      --sidebar-w: 360px;
+      /* Height of the .view-header strip (city title + tabs); kept in sync by a ResizeObserver in
+         main.ts. Sidebars pad their top by this so their content clears the non-scrolling strip. */
+      --view-header-h: 80px;
+    }
+
+    body {
+      margin: 0;
+      background: #eef3f8;
+      color: var(--text-primary);
+    }
+
+    #app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .workspace-header {
+      height: var(--workspace-header-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--workspace-padding);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .workspace-header-left,
+    .workspace-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    /* Logo + "Back to cities" stacked as a single link to the cities list. */
+    .workspace-logo-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      flex: none;
+      text-decoration: none;
+    }
+    .workspace-logo-block img {
+      height: 26px;
+      display: block;
+    }
+
+    .workspace-header-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: #334155;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .workspace-header-link:hover {
+      color: #0f172a;
+    }
+
+    .workspace-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.88rem;
+      color: #64748b;
+    }
+
+    .workspace-cle-lockup {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+    }
+    .workspace-cle-lockup img { height: 20px; display: block; }
+    .workspace-cle-lockup:hover { opacity: .8; }
+    @media (max-width: 720px) { .workspace-cle-lockup { display: none; } }
+
+    /* Quiet CLE funnel card at the bottom of each analysis sidebar. */
+    .cle-funnel-card {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      background: var(--color-primary-50);
+    }
+    .cle-funnel-headline {
+      margin: 0 0 6px;
+      font-weight: var(--font-bold);
+      color: var(--color-primary-800);
+      font-size: var(--text-base);
+    }
+    .cle-funnel-card .cle-funnel-subscribe { width: 100%; margin-top: 4px; }
+    .cle-funnel-small {
+      margin: 10px 0 0;
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+    }
+    .cle-funnel-small a { color: var(--text-secondary); }
+
+    /* Tabs now live inside the .view-header strip (top of the left menu column), not a full-width
+       bar. Compact, left-aligned. */
+    .workspace-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    /* When a city shows all three tabs, shrink them to fit the column on one row (.is-three is
+       toggled in main.ts after the per-city tab show/hide runs). */
+    .workspace-tabs.is-three {
+      flex-wrap: nowrap;
+      gap: 5px;
+    }
+    .workspace-tabs.is-three .workspace-tab {
+      font-size: 0.82rem;
+      padding: 7px 11px;
+      white-space: nowrap;
+    }
+
+    /* Non-scrolling strip pinned over the top-left of the content: city title + view tabs.
+       Opaque (page bg) so the panel scrolls cleanly BENEATH it — the tabs stay affixed and nothing
+       shows through. The matching --view-header-h padding on the sidebars starts their content
+       exactly at this strip's bottom edge. */
+    .view-header {
+      position: absolute;
+      top: var(--workspace-padding);
+      left: var(--workspace-padding);
+      width: 360px;          /* matches the left sidebar column */
+      max-width: calc(100% - var(--workspace-padding) * 2);
+      z-index: 6;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--bg-base);   /* exact page bg (design-system.css) → scrolled content
+                                       disappears behind it with no color seam */
+      padding-bottom: 10px;
+    }
+
+    .view-city-name {
+      font-size: 1.5rem;
+      line-height: 1.1;
+      font-weight: 800;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Thin divider separating the brand logo from the page identity (back-link + city name). */
+    .workspace-header-sep {
+      width: 1px;
+      align-self: stretch;
+      margin: 10px 2px;
+      background: rgba(15, 23, 42, 0.12);
+      flex: none;
+    }
+
+    /* "Back to cities" sub-line under the logo (the whole .workspace-logo-block is the link). */
+    .workspace-back-link {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #64748b;
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    .workspace-logo-block:hover .workspace-back-link {
+      color: #0f172a;
+    }
+
+    /* City name sits inline in the identity bar, taking the space freed by stacking the back-link. */
+    .workspace-context-name {
+      font-size: 1.4rem;
+      line-height: 1.1;
+      font-weight: 800;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .workspace-tab {
+      border: none;
+      background: transparent;
+      color: #475569;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 9px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .workspace-tab.is-active {
+      background: #0f172a;
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+    }
+
+    .workspace-tab:hover:not(.is-active) {
+      background: rgba(15, 23, 42, 0.06);
+      color: #0f172a;
+    }
+
+    .workspace-main {
+      flex: 1;
+      min-height: 0;
+      padding: var(--workspace-padding);
+      position: relative;   /* anchor for the absolutely-positioned .view-header */
+    }
+
+    .analysis-view {
+      display: none;
+      /* Tabs bar is gone; only the global header sits above the content now. The .view-header
+         lives inside the left column and the map uses full height, so it isn't subtracted here. */
+      height: calc(100vh - var(--workspace-header-h) - (var(--workspace-padding) * 2));
+      min-height: 620px;
+    }
+
+    .analysis-view.is-active {
+      display: block;
+    }
+
+    .analysis-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 0;
+      gap: 18px;
+      height: 100%;
+      transition: grid-template-columns 0.22s ease;
+      align-items: stretch;
+    }
+
+    .analysis-shell.sidebar-open {
+      grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
+    }
+
+    #analysisShell-main,
+    #analysisShell-under {
+      grid-template-columns: 360px minmax(0, 1fr);
+    }
+
+    #analysisShell-main .analysis-sidebar,
+    #analysisShell-under .analysis-sidebar {
+      order: 1;
+    }
+
+    #analysisShell-main .analysis-map-holder,
+    #analysisShell-under .analysis-map-holder {
+      order: 2;
+    }
+    .analysis-map-holder {
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .map-box {
+      position: relative;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: 28px;
+      background: #dbe4ee;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+
+    .map-view > div[id^="map"] {
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-overlay-top {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 8;
+      pointer-events: none;
+    }
+
+    .map-overlay-bottom {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 8;
+      pointer-events: none;
+    }
+
+    .map-overlay-card {
+      pointer-events: auto;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      padding: 12px 14px;
+    }
+
+    #underControls {
+      gap: 14px;
+      overflow: auto;
+      padding-top: var(--view-header-h);   /* clear the non-scrolling .view-header strip */
+    }
+
+    #underControls .control-panel-header {
+      display: none;
+    }
+
+    #underTotals {
+      pointer-events: auto;
+      max-width: none;
+    }
+
+    #underTotals .totals-card {
+      padding: 18px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
+
+    #underTotals .sidebar-section-copy {
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #64748b;
+      margin-bottom: 14px;
+    }
+
+    .under-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .under-stat {
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(248, 250, 252, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .under-stat-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 800;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .under-stat-value {
+      font-size: 1.08rem;
+      line-height: 1.2;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .under-stat-meta {
+      font-size: 0.8rem;
+      color: #475569;
+      margin-top: 3px;
+    }
+
+    .under-stat-note {
+      display: block;
+      color: #64748b;
+      margin-top: 3px;
+    }
+
+    /* Improvement-share breakdown rows inside the Underdeveloped stat tile. */
+    .under-bucket-list {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px dashed var(--border-default);
+      display: grid;
+      gap: 3px;
+    }
+    .under-bucket-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.76rem;
+      color: #475569;
+    }
+    .under-bucket-label { min-width: 0; }
+    .under-bucket-value { font-weight: 700; white-space: nowrap; color: #334155; }
+    .under-bucket-count { font-weight: 400; color: #94a3b8; }
+
+    .under-shell-copy {
+      margin: 0;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: #475569;
+    }
+
+    .land-sidebar-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .land-sidebar-hero {
+      gap: 10px;
+      padding: 20px;
+    }
+
+    .land-sidebar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .land-sidebar-note {
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .land-sidebar-tip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 2px 0 0;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .land-sidebar-tip kbd {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      padding: 0 6px;
+      font-size: 0.9em;
+      color: #fff;
+    }
+
+    /* Floating 3D-orbit help pill, bottom-right of the map just above the attribution.
+       The "?" circle on the right collapses it down to just the circle. */
+    .orbit-tip {
+      position: absolute;
+      right: 8px;
+      bottom: 38px;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 20px);
+      padding: 3px 4px 3px 12px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 999px;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+      font-size: 12px;
+      line-height: 1.4;
+      color: #334155;
+      white-space: nowrap;
+    }
+    .orbit-tip kbd {
+      background: rgba(15, 23, 42, 0.08);
+      border-radius: 5px;
+      padding: 0 5px;
+      font-size: 0.9em;
+      color: #1d3557;
+    }
+    .orbit-tip-toggle {
+      flex: none;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      border: none;
+      background: #1d3557;
+      color: #fff;
+      font-weight: 800;
+      font-size: 11px;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .orbit-tip-toggle:hover { background: #2a4a73; }
+    .orbit-tip[data-collapsed="true"] { padding: 3px; }
+    .orbit-tip[data-collapsed="true"] .orbit-tip-text { display: none; }
+
+    #analysisShell-main .map-help {
+      width: 100%;
+      justify-content: space-between;
+      border-radius: 18px;
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    #analysisShell-main .height-control {
+      width: 100%;
+      border-radius: 18px;
+      justify-content: space-between;
+      padding: 12px 14px;
+      box-sizing: border-box;
+    }
+
+    #analysisShell-main .height-control input[type="range"] {
+      width: min(100%, 180px);
+      flex: 1;
+    }
+    .under-map-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      pointer-events: auto;
+    }
+
+    .under-legend-swatches {
+      display: grid;
+      gap: 8px;
+    }
+
+    .under-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #334155;
+    }
+
+    .under-legend-chip {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, 0.16);
+      flex: 0 0 auto;
+    }
+
+    .map-overlay-stack {
+      display: grid;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .map-view-intro {
+      max-width: 300px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .map-view-intro-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding-top: 4px;
+    }
+
+    .map-view-intro-actions a {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #0f172a;
+      text-decoration: none;
+    }
+
+    .map-view-kicker {
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: #0f766e;
+    }
+
+    .map-view-title {
+      font-size: 1.35rem;
+      line-height: 1.15;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+    }
+
+    .map-view-copy {
+      margin: 0;
+      font-size: 0.93rem;
+      color: #475569;
+      line-height: 1.45;
+    }
+
+    .map-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .map-toolbar .btn {
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+    }
+
+    .height-control {
+      pointer-events: auto;
+      right: auto;
+      bottom: auto;
+      position: static;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+      padding: 10px 14px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .height-control input[type="range"] {
+      width: 180px;
+    }
+
+    .map-help {
+      position: static;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: auto;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.72);
+      color: white;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    }
+
+    .map-help kbd {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      padding: 0 6px;
+      font-size: 0.75em;
+    }
+
+    .map-help-close {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      opacity: 0.8;
+    }
+
+    .analysis-sidebar {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .control-panel {
+      position: static;
+      width: 100%;
+      height: 100%;
+      max-height: none !important;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 28px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+      padding: 18px;
+      overflow-y: auto;
+    }
+
+    /* Land value tab: let the inner cards float directly (matching the parking sidebar) rather
+       than nesting them in a second padded/bordered/shadowed panel. Keep the scroll + gap. */
+    #controls.control-panel {
+      background: none;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      padding: var(--view-header-h) 2px 0 0;   /* clear the non-scrolling .view-header strip */
+    }
+
+    .control-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .control-panel-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .sidebar-section-copy {
+      margin: 0;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: #475569;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .control-group-title {
+      margin: 0;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 800;
+      color: #64748b;
+    }
+
+    .checkbox-group,
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .checkbox-item,
+    .radio-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.92rem;
+      color: #334155;
+    }
+
+    .legend {
+      display: none;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 0.88rem;
+      color: #475569;
+      padding-top: 4px;
+    }
+
+    .legend.active {
+      display: flex;
+    }
+
+    .map-box-expanded {
+      position: fixed !important;
+      inset: 0 !important;
+      height: 100vh !important;
+      width: 100vw !important;
+      z-index: 1000 !important;
+      border-radius: 0 !important;
+      background: var(--bg-surface);
+    }
+
+    .parking-workspace {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .parking-top-grid {
+      flex: 0 0 auto;
+      min-height: 0;
+      min-height: clamp(480px, 62vh, 820px);
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);   /* match the land column + .view-header width */
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .parking-summary {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 0;
+      overflow-y: auto;
+      padding: var(--view-header-h) 2px 0 0;   /* clear the non-scrolling .view-header strip */
+    }
+
+    .headline-stat {
+      background: linear-gradient(145deg, #0f172a 0%, #1d3557 100%);
+      border-radius: 24px;
+      padding: 22px;
+      color: white;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+    }
+
+    .headline-stat-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 10px;
+    }
+    .parking-category-select {
+      font: inherit;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 800;
+      color: #f5a623;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 5px;
+      padding: 2px 22px 2px 7px;
+      cursor: pointer;
+      -webkit-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23f5a623'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+    .parking-category-select option { color: #1a1a2e; }
+
+    /* Title-sized metric picker in the Land Value hero — mirrors the parking dropdown
+       pattern but scaled up to read as the panel's headline. Obvious dropdown affordance:
+       border + large white caret + hover. */
+    .field-title-select {
+      font: inherit;
+      font-size: 1.3rem;
+      font-weight: 600;
+      line-height: 1.25;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 10px;
+      padding: 7px 38px 7px 12px;
+      margin: 6px 0 4px;
+      width: 100%;
+      box-sizing: border-box;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      -webkit-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M0 0l7 9 7-9z' fill='%23ffffff'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .field-title-select:hover { background-color: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.55); }
+    .field-title-select:focus-visible { outline: 2px solid #f5a623; outline-offset: 2px; }
+    .field-title-select option { color: #1a1a2e; }
+
+    /* Value blurb under the metric picker in the land hero (dark box → light text, gold figures). */
+    .land-value-blurb {
+      margin: 8px 0 2px;
+      font-size: 1.05rem;
+      line-height: 1.35;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .land-value-blurb .highlight { color: #fbbf24; }
+
+    /* The controls sit on the dark navy hero gradient, where the default brand purple
+       (--accent-primary = #342877) is nearly the same luminance as the background and reads
+       as muddy/low-contrast. Lift the accent to a lighter purple for the buttons + slider
+       thumbs in THIS card only (and lighten, not darken, on hover — appropriate on a dark
+       surface). The light-UI brand purple elsewhere is untouched. */
+    .land-sidebar-hero {
+      --accent-primary: #7568bd;        /* primary-400: clearly lighter, higher contrast on navy */
+      --accent-primary-hover: #a49ad7;  /* primary-300: brighten on hover */
+    }
+    /* Invert/Reset are ghost buttons on the dark card → their default dark text is unreadable.
+       White text while enabled (disabled stays dimmed via the button's own disabled styling). */
+    .land-sidebar-hero #invertColorsBtn:not(:disabled),
+    .land-sidebar-hero #resetScaleBtn:not(:disabled) { color: #fff; }
+
+    /* The four key controls now live inside the dark hero box. Light labels for contrast,
+       and a tight label→widget gap so each label clearly belongs to the widget below it
+       (the larger gap is reserved for BETWEEN the two rows). */
+    .land-sidebar-hero .hero-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .land-sidebar-hero .control-group { gap: 3px; }
+    .land-sidebar-hero .label { margin-bottom: 0; color: rgba(255, 255, 255, 0.82); }
+    .land-sidebar-hero #legend { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+    .land-sidebar-hero .legend-source { margin: 2px 0 0; font-size: 11px; color: rgba(255, 255, 255, 0.6); }
+
+    .headline-stat-text {
+      font-size: 1.45rem;
+      line-height: 1.3;
+      font-weight: 700;
+    }
+
+    .headline-stat-text .highlight {
+      color: #fbbf24;
+    }
+
+    /* The legend + color-by dropdown form the visual divider band between the blurb and the
+       value line-items (no explicit rule needed). Everything below lives in the dark hero box,
+       so text is lightened — the base .totals-grid / .checkbox-item colors are tuned for the
+       white card. */
+    .headline-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .headline-stat .legend-labels,
+    .headline-stat .legend-exempt-cap { color: rgba(255, 255, 255, 0.7); }
+    .headline-totals { margin-top: 16px; }
+    .headline-stat .totals-grid { row-gap: 6px; }
+    .headline-stat .totals-grid .label { color: rgba(255, 255, 255, 0.82); }
+    .headline-stat .totals-grid .value { color: #fff; }
+    .headline-stat .checkbox-item { color: rgba(255, 255, 255, 0.82); }
+    .headline-exempt-toggle { margin-top: 12px; }
+
+    .totals-card,
+    .parking-controls-card,
+    .parking-methodology-card,
+    .parking-map-stage,
+    .parking-empty-state {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 24px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+    }
+
+    .totals-card,
+    .parking-controls-card,
+    .parking-methodology-card {
+      padding: 18px;
+    }
+
+    .parking-methodology-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .totals-title,
+    .parking-section-title {
+      margin: 0 0 14px;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .parking-map-stage {
+      position: relative;
+      min-height: 100%;
+    }
+
+    .parking-map-loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(238, 243, 248, 0.78);
+      backdrop-filter: blur(6px);
+      z-index: 12;
+    }
+
+    .parking-map-loading-overlay.show {
+      display: flex;
+    }
+
+    .parking-map-loading-card {
+      width: min(100%, 320px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 20px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+      text-align: center;
+    }
+
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px 12px;
+      align-items: baseline;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Keep every label/value on a single line. The grid's `auto` value column is sized by its
+       widest cell, so labels and values both stay nowrap and the column splits cleanly. */
+    .totals-grid .label {
+      color: #475569;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .totals-grid .value {
+      text-align: right;
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #0f172a;
+      white-space: nowrap;
+    }
+
+    .totals-grid .sum-row {
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .totals-grid .indent-row {
+      padding-left: 10px;
+    }
+
+    .totals-grid .dim-row {
+      color: #64748b;
+    }
+
+    .parking-controls-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .legend {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+
+    /* A grey "exempt" block (sized to its caption) sits left of the color ramp, with a
+       horizontal gap between them. Each side stacks its swatch/bar over its caption/labels. */
+    .legend-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .legend-exempt {
+      flex: 0 0 auto;       /* width follows the "exempt" text, not a fixed value */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-ramp {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .legend-exempt-swatch {
+      width: 100%;          /* match the caption width */
+      height: 12px;
+      border-radius: 999px;
+      background: #aaaaaa;
+      border: 1px solid #888;
+    }
+
+    .legend-exempt-cap {
+      font-size: 0.72rem;
+      color: #64748b;
+      line-height: 1;
+    }
+
+    .legend-bar {
+      display: flex;
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .legend-bar-segment {
+      flex: 1;
+    }
+
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.76rem;
+      color: #64748b;
+    }
+
+    /* Color-by picker — lives in the dark hero box, so dark-transparent like the metric/category
+       selects (white text + white caret). */
+    .parking-control-select {
+      font: inherit;
+      font-size: 0.92rem;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      padding: 7px 30px 7px 10px;
+      width: 100%;
+      box-sizing: border-box;
+      cursor: pointer;
+      -webkit-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23ffffff'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .parking-control-select:hover { background-color: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.55); }
+    .parking-control-select option { color: #1a1a2e; }
+
+    .parking-map-area {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      gap: 14px;
+    }
+
+    .parking-map-stage {
+      padding: 14px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .parking-map-container {
+      height: 100%;
+      min-height: 460px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #dbe4ee;
+    }
+
+    #parking-map {
+      width: 100%;
+      height: 100%;
+    }
+
+
+    .parking-empty-state {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      padding: 28px;
+    }
+
+    .parking-empty-card {
+      max-width: 620px;
+      text-align: center;
+      display: grid;
+      gap: 14px;
+    }
+
+    .parking-empty-card h2 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.1;
+      color: #0f172a;
+    }
+
+    .parking-empty-card p {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #475569;
+    }
+
+    .parking-empty-actions {
+      display: inline-flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: var(--bg-overlay);
+      backdrop-filter: blur(4px);
+      z-index: var(--z-modal-backdrop);
+      padding: 16px;
+    }
+
+    .modal-overlay.show {
+      display: grid;
+    }
+
+    .modal-content {
+      width: min(96vw, 680px);
+      max-height: 88vh;
+      overflow: hidden;
+      background: var(--bg-surface);
+      border-radius: 24px;
+      box-shadow: var(--shadow-2xl);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 24px;
+    }
+
+    .modal-header h3 {
+      margin: 0 0 8px;
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+    }
+
+    .modal-body {
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-default);
+    }
+
+    .field-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--color-gray-200);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent-primary);
+      transition: width 0.2s linear;
+    }
+
+    .progress-bar.indeterminate .progress-bar-fill {
+      width: 30%;
+      animation: progressIndeterminate 1.2s infinite linear;
+    }
+
+    @keyframes progressIndeterminate {
+      0% { margin-left: -30%; }
+      100% { margin-left: 100%; }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1100px) {
+      :root {
+        --sidebar-w: 320px;
+      }
+
+      #analysisShell-main,
+      #analysisShell-under {
+        grid-template-columns: 320px minmax(0, 1fr);
+      }
+
+      .parking-top-grid {
+        grid-template-columns: 300px minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .workspace-main {
+        padding: 12px;
+      }
+
+      .analysis-view {
+        height: calc(100vh - var(--workspace-header-h) - var(--workspace-tabs-h) - 24px);
+        min-height: 0;
+      }
+
+      .analysis-shell,
+      .analysis-shell.sidebar-open {
+        grid-template-columns: 1fr;
+      }
+
+      #analysisShell-main,
+      #analysisShell-under {
+        grid-template-columns: 1fr;
+      }
+
+      .analysis-sidebar {
+        position: fixed;
+        top: calc(var(--workspace-header-h) + var(--workspace-tabs-h) + 10px);
+        right: 12px;
+        bottom: 12px;
+        width: min(92vw, 380px);
+        z-index: 30;
+        transform: translateX(calc(100% + 20px));
+        transition: transform 0.22s ease;
+      }
+
+      .analysis-shell.sidebar-open .analysis-sidebar {
+        transform: translateX(0);
+      }
+
+      #analysisShell-main .analysis-sidebar,
+      #analysisShell-under .analysis-sidebar {
+        position: static;
+        top: auto;
+        right: auto;
+        bottom: auto;
+        width: auto;
+        z-index: auto;
+        transform: none;
+        order: 2;
+      }
+
+      #analysisShell-main .analysis-map-holder,
+      #analysisShell-under .analysis-map-holder {
+        order: 1;
+        min-height: 420px;
+      }
+
+      .parking-top-grid {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .parking-summary {
+        order: 2;
+        overflow: visible;
+      }
+
+      .parking-map-area {
+        order: 1;
+        min-height: 420px;
+      }
+
+    }
+
+    @media (max-width: 720px) {
+      .workspace-header {
+        padding: 0 12px;
+      }
+
+      .workspace-header-right {
+        gap: 8px;
+      }
+
+      .workspace-header-actions {
+        display: none;
+      }
+
+      /* On mobile the .view-header is a normal full-width block above the stacked content (no
+         absolute overlay), so sidebars need no top padding and the tabs scroll horizontally. */
+      .workspace-main {
+        --view-header-h: 0px;
+      }
+      .view-header {
+        position: static;
+        width: auto;
+        max-width: none;
+        margin-bottom: 12px;
+      }
+      .workspace-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+      }
+      .view-city-name {
+        font-size: 1.2rem;
+      }
+
+      .map-overlay-top,
+      .map-overlay-bottom {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .map-view-intro {
+        max-width: none;
+      }
+
+      #underTotals {
+        max-width: none;
+      }
+
+      .under-stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .map-toolbar {
+        justify-content: flex-end;
+      }
+
+      .height-control input[type="range"] {
+        width: 140px;
+      }
+
+      .parking-map-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="workspace-header">
+      <div class="workspace-header-left">
+        <a href="/cities.html" class="workspace-logo-block" aria-label="Back to cities">
+          <img src="/logo.svg" alt="Civic Mapper">
+          <span class="workspace-back-link">← Back to cities</span>
+        </a>
+      </div>
+      <div class="workspace-header-right">
+        <div class="workspace-header-actions">
+          <button id="btnShare" class="btn btn-primary btn-sm" type="button" title="Copy a link to this view">Share</button>
+          <button id="btnPdfReport" class="btn btn-secondary btn-sm" type="button" title="Download a city report PDF">Report&nbsp;PDF</button>
+          <a href="https://givebutter.com/wK8u7p" target="_blank" rel="noopener" class="workspace-header-link">Donate</a>
+          <a href="https://landeconomics.org" target="_blank" rel="noopener" class="workspace-cle-lockup" aria-label="Center for Land Economics">
+            <img src="/cle-logo-2color.svg" alt="Center for Land Economics">
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace-main">
+      <!-- Non-scrolling strip over the top of the left menu column: city title + the view tabs.
+           Persists across tab switches (sibling of the sections); the map fills the right column
+           up to the same top line. --view-header-h (set by a ResizeObserver in main.ts) pads the
+           sidebars below it. -->
+      <div class="view-header">
+        <div class="view-city-name" id="cityName">Loading...</div>
+        <nav class="workspace-tabs" aria-label="Analysis views">
+          <button id="tab-land" class="workspace-tab is-active" type="button" data-view="land">Value</button>
+          <button id="tab-underutilized" class="workspace-tab" type="button" data-view="underutilized">Underused</button>
+          <button id="tab-parking" class="workspace-tab" type="button" data-view="parking">Parking</button>
+        </nav>
+      </div>
+      <section id="mainSection" class="analysis-view is-active" data-tab="main">
+        <div id="analysisShell-main" class="analysis-shell">
+          <aside class="analysis-sidebar">
+            <div id="controls" class="control-panel">
+              <div class="land-sidebar-stack">
+                <div class="headline-stat land-sidebar-hero">
+                  <!-- Metric picker (was the static "Land Value per Square Foot" title). Click to
+                       choose the visualized field — mirrors the parking-tab dropdown pattern. -->
+                  <select id="field" class="field-title-select" aria-label="Metric to visualize"></select>
+                  <!-- Value blurb: totals for the selected metric over the visible region(s). -->
+                  <div class="land-value-blurb" id="land-value-blurb" style="display:none;"></div>
+                  <div class="hero-controls">
+                    <!-- 3D/2D toggle + render-quality toggle, paired to match the rows below. -->
+                    <div class="control-row">
+                      <div class="control-group">
+                        <button id="toggle3D" class="btn btn-primary" type="button" style="width:100%;">Disable 3D</button>
+                      </div>
+                      <div class="control-group">
+                        <button id="btn-quality" class="btn btn-primary" type="button" style="width:100%;">Quality: Fast</button>
+                      </div>
+                    </div>
+                    <!-- Height + Opacity on one line, labels above each widget. -->
+                    <div class="control-row">
+                      <div class="control-group">
+                        <label class="label" for="heightScale">Height</label>
+                        <!-- max 200 so the slider can reach 2x; default 100 = halfway = the
+                             prior full-scale height (heightFactorMain = value / 100). -->
+                        <input id="heightScale" class="range-slider" type="range" min="0" max="200" step="1" value="100" style="width:100%;" />
+                      </div>
+                      <div class="control-group">
+                        <label class="label" for="opacity">Opacity</label>
+                        <input id="opacity" class="range-slider" type="range" min="0" max="100" step="1" value="100" style="width:100%;" />
+                      </div>
+                    </div>
+                    <!-- Color ramp + Scaling on one line, labels above each widget. -->
+                    <div class="control-row">
+                      <div class="control-group">
+                        <label class="label" for="ramp">Color ramp</label>
+                        <select id="ramp" class="input select"></select>
+                      </div>
+                      <div class="control-group">
+                        <label class="label" for="colorScale">Scaling</label>
+                        <select id="colorScale" class="input select">
+                          <option value="quantiles">Quantiles</option>
+                          <option value="linear">Linear</option>
+                          <option value="log">Logarithmic</option>
+                        </select>
+                      </div>
+                    </div>
+                    <!-- Legend: color strip + low→high range. In Manual scaling the strip shows
+                         draggable boundary handles that place each colour transition. -->
+                    <fieldset id="legend" class="legend"></fieldset>
+                    <!-- Invert + Reset as a balanced two-button row under the legend. Invert flips
+                         the ramp direction; Reset re-spaces the level handles evenly (= the current
+                         scaling method's natural spacing). -->
+                    <div class="control-row" style="gap:8px;">
+                      <button id="invertColorsBtn" class="btn btn-ghost btn-sm" type="button" style="flex:1;">Invert</button>
+                      <button id="resetScaleBtn" class="btn btn-ghost btn-sm" type="button" style="flex:1;" title="Reset colour levels to even spacing">Reset</button>
+                    </div>
+                  </div>
+                  <div class="land-sidebar-actions">
+                    <button id="smoothToggle" class="btn btn-ghost btn-sm" style="display: none;">Smooth land</button>
+                    <button id="settingsBtn" class="btn btn-primary btn-sm" type="button" style="display:none;">Controls</button>
+                  </div>
+                </div>
+
+                <div class="parking-controls-card">
+                  <div class="parking-controls-stack">
+                    <!-- Shown only when zoomed out: every control below is parcel-zoom-only. -->
+                    <p id="filterZoomWarning" class="muted" style="display:none; font-size:var(--text-xs); margin:0;">Filters disabled when zoomed out, zoom in to enable</p>
+                    <div id="filterControls" class="parking-controls-stack">
+                    <div class="control-group" style="display:none;">
+                      <div id="normGroup" style="display:none;">
+                        <div class="radio-group">
+                          <label class="radio-item">
+                            <input type="radio" name="normMode" id="norm-asis" value="asis" class="radio" checked />
+                            <span>As-is</span>
+                          </label>
+                          <label class="radio-item">
+                            <input type="radio" name="normMode" id="norm-land" value="perLand" class="radio" disabled />
+                            <span>Per land size <em id="normLandUnit">(unit)</em></span>
+                          </label>
+                          <label class="radio-item">
+                            <input type="radio" name="normMode" id="norm-bldg" value="perBuilding" class="radio" disabled />
+                            <span>Per building size <em id="normBldgUnit">(unit)</em></span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="control-group">
+                      <label class="label" for="origCategorySelect">Show category:</label>
+                      <select id="origCategorySelect" class="input select"></select>
+                    </div>
+
+                    <div class="control-group">
+                      <label class="checkbox-item">
+                        <input type="checkbox" id="smoothHeights" class="checkbox" />
+                        <span>Smooth extreme heights</span>
+                      </label>
+                      <div id="smoothHeightsScaleGroup" style="display:none; align-items:center; gap:8px;">
+                        <span class="muted" style="font-size:var(--text-xs);">Gentler</span>
+                        <input id="smoothHeightsStrictness" class="range-slider" type="range" min="2" max="15" step="1" value="6" style="flex:1;" />
+                        <span class="muted" style="font-size:var(--text-xs);">Stricter</span>
+                      </div>
+                    </div>
+
+                    <!-- Rail transit overlay toggle (transit.ts reveals this only for cities with a transitOverlay). -->
+                    <div class="control-group" id="transitControlGroup" style="display:none;">
+                      <label class="checkbox-item">
+                        <input type="checkbox" id="showTransit" class="checkbox" checked />
+                        <span id="transitControlLabel">Show transit stations &amp; lines</span>
+                      </label>
+                    </div>
+                    </div><!-- /#filterControls -->
+                  </div>
+                </div>
+
+                <!-- 3D-print export (localhost-only; print3d.ts hides this unless on localhost + a PMTiles/hex city) -->
+                <div class="parking-controls-card" id="print3dCard" style="display:none;">
+                  <div class="parking-section-title">3D Print <span class="muted" style="font-weight:400;">(dev)</span></div>
+                  <div class="parking-controls-stack">
+                    <p id="print3dInfo" class="muted" style="font-size:var(--text-xs); margin:0;"></p>
+                    <div class="control-row">
+                      <div class="control-group">
+                        <label class="label" for="print3dFootprint">Footprint (mm)</label>
+                        <input id="print3dFootprint" class="input" type="number" min="20" max="300" step="5" value="180" />
+                      </div>
+                      <div class="control-group">
+                        <label class="label" for="print3dMaxHeight">Max height (mm)</label>
+                        <input id="print3dMaxHeight" class="input" type="number" min="1" max="150" step="1" value="30" />
+                      </div>
+                    </div>
+                    <div class="control-row">
+                      <div class="control-group">
+                        <label class="label" for="print3dBase">Base (mm)</label>
+                        <input id="print3dBase" class="input" type="number" min="0" max="20" step="0.5" value="2" />
+                      </div>
+                      <div class="control-group" id="print3dRegionsGroup">
+                        <label class="label" for="print3dRegions">Regions</label>
+                        <select id="print3dRegions" class="input select">
+                          <option value="all">All regions</option>
+                          <option value="selected">Selected only</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button id="btn3DPrint" class="btn btn-primary btn-sm" type="button">Export STL</button>
+                    <p id="print3DStatus" class="muted" style="font-size:var(--text-xs); margin:0;"></p>
+                  </div>
+                </div>
+
+                <div class="parking-methodology-card">
+                  <p class="control-group-title">Methodology</p>
+                  <p class="sidebar-section-copy">Parcel boundaries and assessed land and improvement values come from local assessor records. Per-square-foot metrics divide a parcel's assessed value by its lot area.</p>
+                </div>
+
+                <div class="cle-funnel-card">
+                  <p class="cle-funnel-headline">Land is a big deal.</p>
+                  <p class="sidebar-section-copy">To understand what these maps mean for your city, subscribe to <strong>Progress and Poverty</strong> from the Center for Land Economics.</p>
+                  <button type="button" class="btn btn-primary btn-sm cle-funnel-subscribe">Subscribe</button>
+                  <p class="cle-funnel-small">Working on land value tax policy? <a href="mailto:greg@landeconomics.org?subject=Land%20value%20tax%20advocacy">Reach out</a>.</p>
+                </div>
+              </div>
+
+              <button id="closeControls" class="btn btn-ghost btn-icon" aria-label="Close settings" style="display:none;">×</button>
+            </div>
+          </aside>
+
+          <div id="mapHolder-main" class="analysis-map-holder">
+            <div id="mapBox" class="map-box map-view">
+              <div id="map"></div>
+              <div class="map-overlay-top">
+                <div class="under-map-toolbar">
+                  <button id="expandBtn" class="btn btn-ghost btn-icon" aria-label="Enter full screen">⤢</button>
+                </div>
+              </div>
+              <!-- Floating help pill above the bottom-right attribution; the "?" collapses it. -->
+              <div id="orbitTip" class="orbit-tip" data-collapsed="false">
+                <span class="orbit-tip-text">3D orbit: <kbd>Ctrl</kbd> + drag</span>
+                <button id="orbitTipToggle" class="orbit-tip-toggle" type="button" aria-label="Toggle 3D orbit help" title="3D orbit help">?</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="underSection" class="analysis-view" data-tab="under">
+        <div id="analysisShell-under" class="analysis-shell">
+          <aside class="analysis-sidebar">
+            <div id="underControls" class="control-panel">
+              <div class="control-panel-header">
+                <div>
+                  <h3 class="control-panel-title">Opportunity View</h3>
+                  <p class="sidebar-section-copy">Review vacant, parking-lot, and underdeveloped parcels alongside land value intensity.</p>
+                </div>
+                <button id="underCloseControls" class="btn btn-ghost btn-icon" aria-label="Close settings">×</button>
+              </div>
+
+              <div id="underTotals"></div>
+
+              <div class="parking-controls-card">
+                <div class="parking-section-title">Map Controls</div>
+                <div class="parking-controls-stack">
+                  <div class="control-group">
+                    <p class="control-group-title">Included Types</p>
+                    <div id="underCategoryFilter" class="checkbox-group">
+                      <label class="checkbox-item">
+                        <input type="checkbox" value="Vacant" class="checkbox" checked />
+                        <span>Vacant</span>
+                      </label>
+                      <label class="checkbox-item">
+                        <input type="checkbox" value="Parking Lot" class="checkbox" checked />
+                        <span>Parking Lot</span>
+                      </label>
+                      <label class="checkbox-item">
+                        <input type="checkbox" value="Underdeveloped" class="checkbox" checked />
+                        <span>Underdeveloped</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="control-group">
+                    <label class="label" for="under-opacity">Fill opacity</label>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                      <input id="under-opacity" class="range-slider" type="range" min="0" max="100" step="1" value="92" style="flex:1;" />
+                      <output id="underOpacityVal" style="min-width:3ch; text-align:right; font-size:var(--text-xs);">92%</output>
+                    </div>
+                  </div>
+
+                  <div class="control-group">
+                    <label class="label" for="underOrigCategorySelect">Original category filter</label>
+                    <select id="underOrigCategorySelect" class="input select"></select>
+                  </div>
+
+                  <div class="control-group">
+                    <p class="control-group-title">Legend</p>
+                    <fieldset id="underLegend" class="legend"></fieldset>
+                  </div>
+
+                  <div class="control-group">
+                    <p class="control-group-title">Methodology</p>
+                    <p class="under-shell-copy">This view isolates parcels tagged as vacant, parking lot, or underdeveloped and shades each type by land value per square foot intensity within that type.</p>
+                  </div>
+
+                  <div class="cle-funnel-card">
+                    <p class="cle-funnel-headline">Land is a big deal.</p>
+                    <p class="sidebar-section-copy">To understand what these maps mean for your city, subscribe to <strong>Progress and Poverty</strong> from the Center for Land Economics.</p>
+                    <button type="button" class="btn btn-primary btn-sm cle-funnel-subscribe">Subscribe</button>
+                    <p class="cle-funnel-small">Working on land value tax policy? <a href="mailto:greg@landeconomics.org?subject=Land%20value%20tax%20advocacy">Reach out</a>.</p>
+                  </div>
+                </div>
+              </div>
+
+              <button id="underSettingsBtn" class="btn btn-primary" type="button" style="display:none;">Settings</button>
+            </div>
+          </aside>
+
+          <div id="mapHolder-under" class="analysis-map-holder">
+            <div class="map-box map-view">
+              <div id="map-under"></div>
+              <div class="map-overlay-top">
+                <div class="under-map-toolbar">
+                  <button id="underExpandBtn" class="btn btn-ghost btn-icon" aria-label="Enter full screen">⤢</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="parkingSection" class="analysis-view" data-tab="parking">
+        <div id="no-data-state" class="parking-empty-state" style="display:none;">
+          <div class="parking-empty-card">
+            <div class="map-view-kicker">Parking Analysis</div>
+            <h2>Surface Parking Data Is Not Available Yet</h2>
+            <p>Stay in the same workspace and switch cities when you need a place with parking coverage. If this city matters to your work, you can ask to prioritize it.</p>
+            <div class="parking-empty-actions">
+              <a href="/cities.html" class="btn btn-primary">Change City</a>
+              <a href="mailto:greg@landeconomics.org?subject=Prioritize%20parking%20analysis%20for%20this%20city" class="btn btn-ghost">Request Priority</a>
+            </div>
+          </div>
+        </div>
+
+        <div id="parking-content" class="parking-workspace" style="display:none;">
+          <div class="parking-top-grid">
+            <aside class="parking-summary">
+              <div class="headline-stat">
+                <div class="headline-stat-label">
+                  <select id="parking-category-select" class="parking-category-select" aria-label="Parking category">
+                    <option value="surface">Surface parking</option>
+                    <option value="all">All parking</option>
+                    <option value="structure">Parking structures</option>
+                  </select>
+                </div>
+                <div class="headline-stat-text" id="headline-stat-text">Loading…</div>
+
+                <!-- Legend + color-by dropdown form the divider band between the blurb and the
+                     value line-items. The grey block left of the ramp marks exempt land. -->
+                <div class="headline-legend">
+                  <div class="legend" style="display:flex;">
+                    <div class="legend-row">
+                      <div class="legend-exempt">
+                        <div class="legend-exempt-swatch"></div>
+                        <span class="legend-exempt-cap">exempt</span>
+                      </div>
+                      <div class="legend-ramp">
+                        <div class="legend-bar" id="legend-bar"></div>
+                        <div class="legend-labels">
+                          <span id="legend-min">–</span>
+                          <span id="legend-max">–</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <select id="parking-color-by" class="parking-control-select" aria-label="Color parking lots by">
+                    <option value="land_value_per_sqft">Land value / sqft</option>
+                    <option value="parking_area_sqft">Parking area</option>
+                    <option value="estimated_parking_land_value">Estimated land value</option>
+                  </select>
+                </div>
+
+                <!-- Value line-items, then the exempt toggle at the very bottom. The "$X locked
+                     in parking" total is already in the blurb above, so it's not repeated. -->
+                <div class="headline-totals">
+                  <div class="totals-grid">
+                    <div class="label">Avg. land value / land ft²</div>
+                    <div class="value" id="pt-ppsf">–</div>
+
+                    <div class="label">Exempt land value</div>
+                    <div class="value" id="pt-value-exempt">–</div>
+
+                    <div class="label sum-row" id="pt-parking-share-label" style="display:none;">Parking share of taxable land value</div>
+                    <div class="value sum-row" id="pt-parking-share" style="display:none;">–</div>
+                  </div>
+                  <label class="checkbox-item headline-exempt-toggle">
+                    <input type="checkbox" id="toggle-exempt" checked>
+                    <span>Show exempt lots</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="parking-methodology-card">
+                <p class="control-group-title">Methodology</p>
+                <p class="sidebar-section-copy">Surface parking lots are sourced from OpenStreetMap and joined with local assessor records to estimate land values.</p>
+              </div>
+
+              <div class="cle-funnel-card">
+                <p class="cle-funnel-headline">Land is a big deal.</p>
+                <p class="sidebar-section-copy">To understand what these maps mean for your city, subscribe to <strong>Progress and Poverty</strong> from the Center for Land Economics.</p>
+                <button type="button" class="btn btn-primary btn-sm cle-funnel-subscribe">Subscribe</button>
+                <p class="cle-funnel-small">Working on land value tax policy? <a href="mailto:greg@landeconomics.org?subject=Land%20value%20tax%20advocacy">Reach out</a>.</p>
+              </div>
+            </aside>
+
+            <div class="parking-map-area">
+              <div class="parking-map-stage">
+                <div class="parking-map-container">
+                  <div id="parking-map"></div>
+                </div>
+                <div id="parking-map-loading-overlay" class="parking-map-loading-overlay" aria-live="polite" aria-busy="true">
+                  <div class="parking-map-loading-card">
+                    <div class="loading-spinner" style="width:40px; height:40px; border:3px solid var(--border-default); border-top-color: var(--accent-primary); border-radius:50%; animation: spin 0.8s linear infinite;"></div>
+                    <div id="parking-map-loading-message" style="font-size: var(--text-sm); color: var(--text-secondary);">Loading parking data…</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Select numeric fields to load</h3>
+        <p style="margin: 0; font-size: var(--text-sm); color: var(--text-secondary);">
+          Rows: <span id="rowCount">–</span>. Geometry column: <code id="geomCol">–</code>
+        </p>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="btnAll" class="btn btn-ghost btn-sm">Select all</button>
+        <button id="btnNone" class="btn btn-ghost btn-sm">Select none</button>
+      </div>
+      <div id="fieldList" class="modal-body field-list"></div>
+      <div class="modal-footer">
+        <button id="btnCancelModal" class="btn btn-ghost">Cancel</button>
+        <button id="btnConfirmModal" class="btn btn-primary">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF report: inform the user, then BLOCK interaction with a progress modal. The report
+       snapshots each map's WebGL canvas (map.getCanvas().toDataURL) and scrapes DOM text — a
+       modal overlay affects neither — but it cycles Value→Underused→Parking over ~10-30s, and a
+       user clicking/panning/switching tabs mid-capture corrupts it. This overlay prevents that. -->
+  <div id="reportModal" class="modal-overlay">
+    <div class="modal-content" style="width: min(96vw, 520px);">
+      <div class="modal-header">
+        <h3 id="reportModalTitle">Generate PDF report</h3>
+        <p id="reportModalDesc" style="margin:0; font-size: var(--text-sm); color: var(--text-secondary); line-height:1.5;">
+          This builds a branded PDF by briefly cycling through the Value, Underused, and Parking map
+          views to snapshot each one — it takes about 10–30 seconds. Please don’t click around or
+          switch tabs while it runs; the screen is locked until it finishes.
+        </p>
+      </div>
+      <div id="reportModalProgress" style="display:none; align-items:center; gap:12px;">
+        <div id="reportModalSpinner" class="spinner" style="flex:0 0 auto;"></div>
+        <span id="reportModalStatus" aria-live="polite" style="font-size: var(--text-sm); color: var(--text-primary);">Starting…</span>
+      </div>
+      <div class="modal-footer">
+        <button id="reportCancelBtn" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="reportGoBtn" class="btn btn-primary" type="button">Generate report</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="sizeOverlay" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Identify land &amp; building size fields</h3>
+        <p style="margin: 0; font-size: var(--text-sm); color: var(--text-secondary);">
+          Please identify which of your loaded fields represent: (a) total finished floor area for all buildings, and (b) total land area.
+        </p>
+      </div>
+      <div style="display: grid; gap: 12px;">
+        <label class="label">Building size field</label>
+        <select id="bldgField" class="input select"></select>
+        <label class="label">Building size unit</label>
+        <select id="bldgUnit" class="input select"></select>
+        <div style="height: 1px; background: var(--border-default);"></div>
+        <label class="label">Land size field</label>
+        <select id="landField" class="input select"></select>
+        <label class="label">Land size unit</label>
+        <select id="landUnit" class="input select"></select>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSizeBack" class="btn btn-ghost">Back</button>
+        <button id="btnSizeSkip" class="btn btn-ghost">Skip</button>
+        <button id="btnSizeOk" class="btn btn-primary">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="font-weight: var(--font-semibold);">Loading…</div>
+        <button id="btnCancelLoading" class="btn btn-ghost btn-sm">Cancel</button>
+      </div>
+      <div id="progress" class="progress-bar indeterminate">
+        <div id="progressBar" class="progress-bar-fill"></div>
+      </div>
+      <div id="progressMsg" style="font-size: var(--text-sm); color: var(--text-secondary);">
+        Parsing GeoParquet…
+      </div>
+    </div>
+  </div>
+
+  <fieldset id="categoryFieldset" style="display: none;"></fieldset>
+  <div id="categoryFilter" style="display: none;"></div>
+  <input id="scaleFiltered" type="checkbox" style="display: none;" />
+  <input id="mult" type="number" value="1" style="display: none;" />
+  <select id="units" style="display: none;">
+    <option value="centimeters" selected>centimeters</option>
+    <option value="meters">meters</option>
+    <option value="inches">inches</option>
+    <option value="feet">feet</option>
+    <option value="kilometers">kilometers</option>
+    <option value="miles">miles</option>
+    <option value="stories">stories (~3.3m)</option>
+  </select>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

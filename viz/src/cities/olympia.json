@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "~16.7k Olympia parcels. Source: Thurston County GeoData parcel layer, clipped to the City of Olympia municipal boundary (see run_olympia.py). Baked to PMTiles + H3 hexes (2026-07-01) so the zoomed-out view has a low-zoom aggregate — as a raw GeoParquet layer the small residential parcels dropped out below ~z13 and the city looked empty. Neighborhood region show/hide toggles (Land Value 3D tab + Parking tab). Olympia is a GeoParquet city (no bake) — the widgets compute region counts from the loaded features, so tagging the parquet (augment_olympia_regions.py) + this config is all that's needed."
+  ],
+  "displayName": "Olympia",
+  "state": "wa",
+  "filename": "olympia-wa-parcels.parquet",
+  "pmtilesFilename": "olympia-wa-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "olympia-wa-parking-lots.parquet",
+  "parkingVersion": "2026-06-30-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "olympia-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -122.9007,
+    47.0379
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "displayName": "Albuquerque",
+  "state": "nm",
+  "filename": "albuquerque-nm-parcels.parquet",
+  "pmtilesFilename": "albuquerque-nm-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "parkingFilename": "albuquerque-nm-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "abq"
+  ],
+  "coords": [
+    -106.6504,
+    35.0844
+  ]
+}

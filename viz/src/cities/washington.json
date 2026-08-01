@@ -1,0 +1,19 @@
+{
+  "notes": [
+    "~130k assessed lots -> PMTiles + H3 hexes. Source: Open Data DC (CC0) \"Common Ownership Lots\" one-stop layer (geometry + NEWLAND/NEWIMPR assessed values + PROPTYPE, conflated weekly from the tax roll by SSL). Condo footprints carry no values in the source; run_dc.py sums the per-unit ITSPE values onto each footprint via the CONDORELATE unit->regime->record-lot mapping (deterministic, no spatial heuristics). No clipping needed: the dataset IS the jurisdiction. Federal reservations/ROW carry no assessment and are excluded with the exempt filter."
+  ],
+  "displayName": "Washington",
+  "state": "dc",
+  "filename": "washington-dc-parcels.parquet",
+  "pmtilesFilename": "washington-dc-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-14-initial",
+  "hideRemnants": true,
+  "parkingFilename": "washington-dc-parking-lots.parquet",
+  "parkingVersion": "2026-07-14",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -77.0369,
+    38.9072
+  ]
+}

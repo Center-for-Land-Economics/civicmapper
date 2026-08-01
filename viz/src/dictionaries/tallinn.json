@@ -1,0 +1,23 @@
+{
+  "_config": {
+    "hasParkingData": true,
+    "usePmtiles": false
+  },
+  "parcel_id": "Cadastral code (tunnus)",
+  "address": "Address",
+  "district": "District (linnaosa)",
+  "property_land_use_category": "Land use (original)",
+  "property_land_use_refined": "Land use (refined)",
+  "siht1": "Purpose 1 (sihtotstarve)",
+  "siht2": "Purpose 2",
+  "siht3": "Purpose 3",
+  "so_prts1": "Primary purpose %",
+  "mixed_use": "Mixed use",
+  "ownership_form": "Ownership (omvorm)",
+  "public_owned": "Public-owned",
+  "exemption_flag": "Exemption Flag",
+  "current_full_land_value": "Assessed land value (€)",
+  "land_value_per_sqm": "Land value / m²",
+  "land_area_sqm": "Land area (m²)",
+  "link": "Parcel Link"
+}

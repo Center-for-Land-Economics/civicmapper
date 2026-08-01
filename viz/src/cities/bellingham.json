@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "Neighborhood region show/hide toggles (Land Value 3D + Parking). 25 City of Bellingham neighborhoods (augment_bellingham_regions.py); the bake emits metadata.groups.neighborhood (neighborhood is in H3_CATEGORICAL_FIELDS)."
+  ],
+  "displayName": "Bellingham",
+  "state": "wa",
+  "filename": "bellingham-wa-parcels.parquet",
+  "pmtilesFilename": "bellingham-wa-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "bellingham-wa-parking-lots.parquet",
+  "parkingVersion": "2026-07-02-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "bellingham-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -122.4787,
+    48.7519
+  ]
+}

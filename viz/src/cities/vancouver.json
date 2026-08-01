@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "~57.5k Vancouver parcels -> PMTiles + H3 hexes. Source: Clark County GIS one-stop \"Taxlots\" layer (geometry + MktLandVal/MktBldgVal + PropertyUseClass + TaxStat), clipped to the City of Vancouver by the assessor jurisdiction tag JurisDesc='Vancouver' (see run_vancouver.py). Condos are mapped at the complex level by the county (smoke alarms clean, land $/sqft max ~343), so no per-unit stub merge is needed. Neighborhood region show/hide toggles (Land Value 3D + Parking). 63 City of Vancouver Neighborhood Associations (augment_vancouver_regions.py); the bake emits metadata.groups.neighborhood (neighborhood is in H3_CATEGORICAL_FIELDS)."
+  ],
+  "displayName": "Vancouver",
+  "state": "wa",
+  "filename": "vancouver-wa-parcels.parquet",
+  "pmtilesFilename": "vancouver-wa-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "vancouver-wa-parking-lots.parquet",
+  "parkingVersion": "2026-07-02-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "vancouver-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -122.6615,
+    45.6387
+  ]
+}

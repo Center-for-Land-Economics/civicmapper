@@ -1,0 +1,16 @@
+{
+  "displayName": "Cincinnati",
+  "state": "oh",
+  "filename": "cincinnati-oh-parcels.parquet",
+  "pmtilesFilename": "cincinnati-oh-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "cincinnati-oh-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -84.512,
+    39.1031
+  ]
+}

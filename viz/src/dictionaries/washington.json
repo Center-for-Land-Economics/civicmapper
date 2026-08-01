@@ -1,0 +1,27 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "washington-dc-parcels.pmtiles",
+    "pmtilesMetadataUrl": "washington-dc-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Assessed Total Value",
+  "full_market_value_per_sqft": "Total value/land ft²",
+  "current_full_land_value": "Assessed Land Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Assessed Improvements (Building) Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "condo_units": "Condo Units on Lot",
+  "link": "Parcel Link"
+}

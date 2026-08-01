@@ -1,0 +1,26 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "columbus-oh-parcels.pmtiles",
+    "pmtilesMetadataUrl": "columbus-oh-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Appraised Market Value (Total)",
+  "full_market_value_per_sqft": "Market value/land ft²",
+  "current_full_land_value": "Land Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements (Building) Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "link": "County Auditor Record"
+}

@@ -1,0 +1,47 @@
+{
+  "notes": [
+    "Harris County bake tagged by municipal jurisdiction (was the houstonproto prototype), with Unincorporated Harris County dropped (2026-06-16) to roughly halve the parcel count / tile size for performance, then augmented with extra region-grouping columns (council district / super neighborhood / civic club) via augment_houston_regions.py. Full-Harris build is backed up locally under data/jurisidictions/data/houston/backup_full_harris_2026-06-16/ if we want to revert. Upload houston-tx-parcels.pmtiles + metadata to the blob to deploy."
+  ],
+  "displayName": "Houston",
+  "state": "tx",
+  "filename": "houston-tx-parcels.parquet",
+  "pmtilesFilename": "houston-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-06-24-finehex",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "houston-tx-parking-lots.parquet",
+  "parkingVersion": "2026-06-17-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Municipal Jurisdiction",
+      "primary": "Houston",
+      "defaultMode": "primaryOnly",
+      "overlayUrl": "houston-jurisdiction-overlay.geojson"
+    },
+    {
+      "field": "council_district",
+      "label": "City Council District",
+      "defaultMode": "all",
+      "overlayUrl": "houston-council_district-overlay.geojson"
+    },
+    {
+      "field": "super_neighborhood",
+      "label": "Super Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "houston-super_neighborhood-overlay.geojson"
+    },
+    {
+      "field": "civic_club",
+      "label": "Civic Club",
+      "defaultMode": "all",
+      "overlayUrl": "houston-civic_club-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -95.3698,
+    29.7604
+  ]
+}

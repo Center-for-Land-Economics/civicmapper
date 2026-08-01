@@ -1,0 +1,28 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "chicago-il-parcels.pmtiles",
+    "pmtilesMetadataUrl": "chicago-il-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13,
+    "hasParkingData": true
+  },
+  "pin": "Parcel PIN",
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Full Market Value (Est.)",
+  "full_market_value_per_sqft": "Full market value/land ft²",
+  "current_full_land_value": "Land Value (Est. Market)",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvement Value (Est. Market)",
+  "improvement_value_per_sqft": "Improvement value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "land_area_acres": "Land Area (Acres)",
+  "link": "Parcel Link"
+}

@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "Hartford CT urban core, 12 contiguous towns (~142k parcels) from ONE source (CT CAMA & Parcel Layer 2024), so the land-value surface is seamless across town lines. See run_hartfordmetro.py.",
+    "VALUE-ONLY: the statewide layer has no shared land-use classification (each town uses its own CAMA/zoning codes with no description), so category filters and the Underused tab are disabled (hideUnderutilized).",
+    "Houston-style jurisdiction treatment: parcels tagged by `jurisdiction` (town); dropdown lights/dims towns. Staggered CT revaluations mean mixed base years (2021-2024) — valuation_year ships per parcel and is shown in the popup.",
+    "Condos have no per-unit land value in CT (land=0), so ~9.5k parcels flag as erroneous in land modes."
+  ],
+  "displayName": "Hartford Metro",
+  "state": "ct",
+  "filename": "hartfordmetro-ct-parcels.parquet",
+  "pmtilesFilename": "hartfordmetro-ct-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-21-c",
+  "hideRemnants": true,
+  "hideUnderutilized": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Town",
+      "primary": "Hartford",
+      "defaultMode": "all",
+      "overlayUrl": "hartfordmetro-jurisdiction-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -72.69,
+    41.765
+  ]
+}

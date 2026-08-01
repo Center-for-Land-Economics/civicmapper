@@ -1,0 +1,24 @@
+{
+  "notes": [
+    "Spokane renders parcels directly from GeoParquet in the browser (usePmtiles:false in spokane.json) — 81k parcels load fine client-side, so no PMTiles/H3 hex layer is used. Neighborhood region show/hide toggles (Land Value 3D + Parking). Spokane is a GeoParquet city (no bake) — the widgets compute region counts from the loaded features, so tagging the parquet (augment_spokane_regions.py) + this config is all that's needed (no metadata.groups). 29 City of Spokane neighborhoods."
+  ],
+  "displayName": "Spokane",
+  "state": "wa",
+  "filename": "spokane-wa-parcels.parquet",
+  "parkingFilename": "spokane-wa-parking-lots.parquet",
+  "parkingVersion": "2026-07-02-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "spokane-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -117.426,
+    47.6588
+  ]
+}

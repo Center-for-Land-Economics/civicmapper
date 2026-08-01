@@ -1,0 +1,21 @@
+{
+  "_config": {
+    "hasParkingData": true,
+    "usePmtiles": false
+  },
+  "parcel_id": "BFE number",
+  "matrikelnr": "Matrikel no.",
+  "ejerlav": "Ejerlav (cadastral district)",
+  "district": "Parish (sogn)",
+  "property_land_use_category": "Land use (original)",
+  "property_land_use_refined": "Land use (refined)",
+  "benyttelse_kode": "Use code (benyttelseskode)",
+  "aar": "Assessment year",
+  "exemption_flag": "Exemption Flag",
+  "current_full_land_value": "Assessed land value (kr.)",
+  "full_market_value": "Property value (kr.)",
+  "improvement_value": "Building value (kr.)",
+  "land_value_per_sqm": "Land value / m²",
+  "land_area_sqm": "Land area (m²)",
+  "link": "Parcel Link"
+}

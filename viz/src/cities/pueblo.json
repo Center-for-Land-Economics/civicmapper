@@ -1,0 +1,15 @@
+{
+  "displayName": "Pueblo",
+  "state": "co",
+  "filename": "pueblo-co-parcels.parquet",
+  "pmtilesFilename": "pueblo-co-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "parkingFilename": "pueblo-co-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -104.6091,
+    38.2544
+  ]
+}

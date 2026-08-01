@@ -1,0 +1,89 @@
+{
+  "routes": [
+    {
+      "route": "/",
+      "redirect": "/cities.html",
+      "statusCode": 302
+    },
+    {
+      "route": "/login",
+      "redirect": "/cities.html",
+      "statusCode": 301
+    },
+    {
+      "route": "/login.html",
+      "redirect": "/cities.html",
+      "statusCode": 301
+    },
+    {
+      "route": "/favicon.svg",
+      "serve": "/favicon.svg"
+    },
+    {
+      "route": "/logo.svg",
+      "serve": "/logo.svg"
+    },
+    {
+      "route": "/CLE-Logo.svg",
+      "serve": "/CLE-Logo.svg"
+    },
+    {
+      "route": "/CLE-logo.svg",
+      "serve": "/CLE-Logo.svg"
+    },
+    {
+      "route": "/cle-logo.svg",
+      "serve": "/CLE-Logo.svg"
+    },
+    {
+      "route": "/cities",
+      "serve": "/cities.html"
+    },
+    {
+      "route": "/cities.html",
+      "serve": "/cities.html"
+    },
+    {
+      "route": "/app",
+      "serve": "/app.html"
+    },
+    {
+      "route": "/app.html",
+      "serve": "/app.html"
+    },
+    {
+      "route": "/parking",
+      "serve": "/parking.html"
+    },
+    {
+      "route": "/parking.html",
+      "serve": "/parking.html"
+    }
+  ],
+  "globalHeaders": {
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://widgets.givebutter.com; connect-src 'self' https://api.civicmapper.org https://api.dev.civicmapper.org https://tiles.civicmapper.org https://tiles.dev.civicmapper.org; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-src https://progressandpoverty.substack.com; font-src 'self' data:;"
+  },
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/assets/*",
+      "/*.css",
+      "/*.js",
+      "/*.svg",
+      "/*.png",
+      "/*.jpg",
+      "/*.ico",
+      "/*.json",
+      "/cities",
+      "/cities.html",
+      "/app",
+      "/app.html",
+      "/parking",
+      "/parking.html"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/*
+*.md
+!README.md
+data/jurisidictions/cache/
+data/jurisidictions/data
+*.log
+*.local
+*.env.local
+.idea/
+.vscode/
+.DS_Store
+.env
+
+# local dev datasets (served by resolveLocalFirst; never deploy)
+public/*.parquet
+public/parking/

@@ -1,0 +1,27 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "dmv-dc-parcels.pmtiles",
+    "pmtilesMetadataUrl": "dmv-dc-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13,
+    "hasParkingData": false
+  },
+  "jurisdiction": "Jurisdiction",
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Total Assessed Value",
+  "full_market_value_per_sqft": "Assessed value/land ft²",
+  "current_full_land_value": "Land Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Assessed Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "link": "Parcel Link"
+}

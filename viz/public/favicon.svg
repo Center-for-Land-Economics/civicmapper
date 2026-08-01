@@ -1,0 +1,8 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Map Pin — single smooth teardrop, CLE purple -->
+  <path d="M16 30C9 24 4 17 4 12C4 6.477 9.477 2 16 2C22.523 2 28 6.477 28 12C28 17 23 24 16 30Z" fill="#342877"/>
+  <!-- White ring -->
+  <circle cx="16" cy="11" r="5.5" fill="white"/>
+  <!-- Mint center dot -->
+  <circle cx="16" cy="11" r="2.5" fill="#B7E3E0"/>
+</svg>

@@ -1,0 +1,32 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Site (landing page)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "site", "--listen", "4040"],
+      "port": 4040
+    },
+    {
+      "name": "API (Express)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "cwd": "api",
+      "port": 8080
+    },
+    {
+      "name": "Viz (Vite dev)",
+      "runtimeExecutable": "/opt/homebrew/bin/node",
+      "runtimeArgs": ["node_modules/.bin/vite", "--port", "5173"],
+      "cwd": "viz",
+      "port": 5173
+    },
+    {
+      "name": "Viz (preview build)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "cwd": "viz",
+      "port": 4173
+    }
+  ]
+}
