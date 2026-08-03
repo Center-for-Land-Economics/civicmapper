@@ -46,9 +46,10 @@ async def check_city(browser, city, *, timeout_s=30, always_screenshot=False):
         return {"city":city, "ok":False, "elapsed":time.time()-t0,
                 "reason":f"nav: {e!s}", "failed":failed, "console":console_errs}
 
-    # Strong signal: the Land Value tab's legend gets a "Quantiles (p1–p99): ..."
-    # text element ONLY after the dataset has loaded + stats have been computed.
-    # See viz/src/main.ts updateLegend() for where this is written.
+    # Strong signal: renderColorLegend (viz/src/main.ts) populates #legend with the
+    # formatted low→high range labels ONLY after the dataset has loaded and stats are
+    # computed — so "legend text contains a digit" == data rendered. (The legend was
+    # redesigned; the old "Quantiles (p1–p99): ..." muted string no longer exists.)
     headline_loaded = False
     poll_until = t0 + timeout_s
     while time.time() < poll_until:
@@ -56,21 +57,20 @@ async def check_city(browser, city, *, timeout_s=30, always_screenshot=False):
             done = await page.evaluate("""
                 () => {
                     const legend = document.getElementById('legend');
-                    const muted = legend && legend.querySelector('.muted');
-                    const quantileText = muted ? muted.textContent : '';
-                    const hasQuantiles = /Quantiles/i.test(quantileText);
+                    const legendText = legend ? (legend.innerText || '') : '';
+                    const hasRange = /\\d/.test(legendText);
                     const lo = document.getElementById('loadingOverlay');
                     const loadingHidden = !lo || !lo.classList.contains('show');
                     return {
-                        hasQuantiles,
-                        quantiles: hasQuantiles ? quantileText.slice(0, 200) : null,
+                        hasRange,
+                        legendText: hasRange ? legendText.replace(/\\s+/g, ' ').slice(0, 120) : null,
                         loadingHidden,
                     };
                 }
             """)
         except Exception:
             done = {}
-        if done.get("hasQuantiles") and done.get("loadingHidden"):
+        if done.get("hasRange") and done.get("loadingHidden"):
             headline_loaded = True
             break
         await asyncio.sleep(0.5)
@@ -90,7 +90,7 @@ async def check_city(browser, city, *, timeout_s=30, always_screenshot=False):
     ok = headline_loaded and not real_failed and not real_errs
     result = {
         "city": city, "ok": ok, "elapsed": elapsed,
-        "quantiles": done.get("quantiles") if done else None,
+        "legend": done.get("legendText") if done else None,
         "loadingHidden": done.get("loadingHidden") if done else None,
         "failed": real_failed[:5], "console": real_errs[:5],
     }
@@ -123,8 +123,8 @@ async def main():
             extra = ""
             if not r["ok"]:
                 extra = f"  loadingHidden={r['loadingHidden']} fails={len(r['failed'])} errs={len(r['console'])}"
-            q = (r.get("quantiles") or "").split("|")[0].strip()
-            print(f"{flag} {r['city']:<16} {r['elapsed']:>4.1f}s  quantiles={q[:50]!r}{extra}")
+            q = (r.get("legend") or "").strip()
+            print(f"{flag} {r['city']:<16} {r['elapsed']:>4.1f}s  legend={q[:50]!r}{extra}")
             results.append(r)
         await b.close()
 
@@ -136,7 +136,7 @@ async def main():
         for r in bad:
             print(f"\n--- {r['city']} ---")
             print(f"  loadingHidden: {r['loadingHidden']}")
-            print(f"  quantiles: {r['quantiles']!r}")
+            print(f"  legend: {r['legend']!r}")
             for f in r["failed"]:
                 print(f"  fail: {f}")
             for e in r["console"]:
