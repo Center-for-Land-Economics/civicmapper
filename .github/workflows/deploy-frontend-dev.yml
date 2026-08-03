@@ -3,6 +3,7 @@ on:
   push:
     branches: [ "develop" ]
     paths: [ "viz/**", ".github/workflows/deploy-frontend-dev.yml" ]
+  workflow_dispatch: {}
 permissions: { id-token: write, contents: read }
 jobs:
   deploy:
