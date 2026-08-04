@@ -7,7 +7,7 @@
  * downloads the file and pastes it into a blank issue.
  */
 
-const MAIN_REPO = 'Center-for-Land-Economics/civicmapper-public';
+const MAIN_REPO = 'Center-for-Land-Economics/civicmapper';
 const ISSUE_LABEL = 'city-proposal';
 
 export interface GitHubSubmitOptions {
