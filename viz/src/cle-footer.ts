@@ -40,7 +40,8 @@ const STYLES = `
   max-width: 34ch;
 }
 .cle-footer__brand a.cle-footer__site {
-  display: inline-block;
+  display: block;
+  width: fit-content;
   margin-top: 12px;
   color: #b7e3e0;
   font-size: .9rem;
@@ -262,6 +263,7 @@ export function initCleFooter(): void {
         </a>
         <p>The Center for Land Economics conducts research and provides education to promote equitable assessments and foster sustainable development.</p>
         <a class="cle-footer__site" href="https://landeconomics.org" target="_blank" rel="noopener">landeconomics.org &rarr;</a>
+        <a class="cle-footer__site" href="https://github.com/Center-for-Land-Economics/civicmapper" target="_blank" rel="noopener">Civic Mapper is open source &mdash; GitHub &rarr;</a>
       </div>
       <div class="cle-footer__cta">
         <h3>Land is a big deal.</h3>
