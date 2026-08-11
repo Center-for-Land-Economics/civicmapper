@@ -1,0 +1,32 @@
+{
+  "notes": [
+    "Danish cadastre (DAWA jordstykker) + Vurderingsstyrelsen VUR assessed values — grundværdi (land value) + ejendomsværdi (property value), joined by BFE. Newest assessment per property. ~38k parcels → raw GeoParquet path, no PMTiles. Region grouping by parish (sogn). `district` (= sognenavn) is a parcel property, so the region list derives from the loaded parcels; no boundary-overlay geojson yet."
+  ],
+  "displayName": "Copenhagen",
+  "state": "dk",
+  "displayRegion": "Denmark",
+  "currencySymbol": "kr.",
+  "unitSystem": "metric",
+  "filename": "copenhagen-hovedstaden-dk-parcels.parquet",
+  "parkingFilename": "copenhagen-hovedstaden-dk-parking-lots.parquet",
+  "parkingVersion": "2026-07-08",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "københavn",
+    "kobenhavn",
+    "cph",
+    "denmark"
+  ],
+  "jurisdictionGroups": [
+    {
+      "field": "district",
+      "label": "Parish (sogn)",
+      "defaultMode": "all"
+    }
+  ],
+  "coords": [
+    12.5683,
+    55.6761
+  ]
+}

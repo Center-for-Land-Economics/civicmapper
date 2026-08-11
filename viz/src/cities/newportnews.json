@@ -1,0 +1,21 @@
+{
+  "notes": [
+    "~54k parcels -> browser GeoParquet path (no PMTiles/H3 hexes), like South Bend."
+  ],
+  "displayName": "Newport News",
+  "state": "va",
+  "filename": "newportnews-va-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "newportnews-va-parking-lots.parquet",
+  "parkingVersion": "2026-06-27-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "newport-news",
+    "newport_news"
+  ],
+  "coords": [
+    -76.473,
+    37.0871
+  ]
+}

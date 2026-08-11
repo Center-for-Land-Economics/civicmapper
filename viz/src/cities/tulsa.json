@@ -1,0 +1,16 @@
+{
+  "displayName": "Tulsa",
+  "state": "ok",
+  "filename": "tulsa-ok-parcels.parquet",
+  "pmtilesFilename": "tulsa-ok-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "tulsa-ok-parking-lots.parquet",
+  "parkingVersion": "2026-06-27-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -95.9928,
+    36.154
+  ]
+}

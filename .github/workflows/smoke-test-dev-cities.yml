@@ -1,0 +1,58 @@
+name: Dev cities smoke test
+
+# Validates that every city on the dev deployment loads its data correctly.
+# Manual-only trigger: run from the Actions tab → "Dev cities smoke test" →
+# "Run workflow", or via `gh workflow run smoke-test-dev-cities.yml`.
+# Spins up headless Chromium, navigates to each city, and waits for the
+# Land Value legend to populate ("Quantiles (...)").
+# Surfaces broken cities + screenshots of any failures as workflow artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cities:
+        description: "Comma-separated city keys (blank = all)"
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright + Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet playwright
+          playwright install --with-deps chromium
+
+      - name: Run smoke test
+        run: |
+          set -e
+          ARGS=""
+          if [ -n "${{ github.event.inputs.cities }}" ]; then
+            for c in $(echo "${{ github.event.inputs.cities }}" | tr ',' ' '); do
+              ARGS="$ARGS --city $c"
+            done
+          fi
+          PYTHONUNBUFFERED=1 python scripts/smoke_dev_cities.py $ARGS --screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: /tmp/smoke_screenshots
+          if-no-files-found: ignore
+          retention-days: 14

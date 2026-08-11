@@ -1,0 +1,16 @@
+{
+  "displayName": "Baltimore",
+  "state": "md",
+  "filename": "baltimore-md-parcels.parquet",
+  "pmtilesFilename": "baltimore-md-parcels.pmtiles",
+  "pmtilesVersion": "2026-06-24-finehex",
+  "hideRemnants": true,
+  "parkingFilename": "baltimore-md-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -76.6122,
+    39.2904
+  ]
+}

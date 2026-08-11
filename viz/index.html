@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Landing splash removed: send visitors straight to the city picker. This runs before any
+       assets or the hero markup load, so the splash never renders (works in local dev and any
+       deployment). <noscript> covers JS-disabled clients; the deployed site also redirects
+       "/" → "/cities.html" server-side (see viz/public/staticwebapp.config.json). -->
+  <script>location.replace('/cities.html');</script>
+  <noscript><meta http-equiv="refresh" content="0; url=/cities.html" /></noscript>
+  <title>Civic Mapper</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg">
+  <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="mask-icon" href="favicon.svg" color="#0f172a">
+  <script type="module" src="/src/analytics.ts"></script>
+  <link rel="stylesheet" href="/src/design-system.css">
+  <link rel="stylesheet" href="/src/components.css">
+  <style>
+    body { margin: 0; overflow-x: hidden; }
+    .header {
+      position: sticky; top: 0; z-index: var(--z-sticky);
+      background: rgba(255,255,255,.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-default); box-shadow: var(--shadow-sm);
+    }
+    .header-content {
+      max-width: 1280px; margin: 0 auto; padding: var(--space-4) var(--space-6);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo-link {
+      display: flex; align-items: center; gap: var(--space-3); text-decoration: none;
+      color: var(--text-primary); font-weight: var(--font-semibold); font-size: var(--text-lg);
+    }
+    .logo-link img { height: 32px; }
+
+    .header-cle-lockup {
+      display: inline-flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text-tertiary);
+      font-size: var(--text-sm);
+    }
+    .header-cle-lockup img { height: 22px; }
+    .header-cle-lockup:hover { opacity: .8; }
+    @media (max-width: 560px) { .header-cle-lockup span { display: none; } }
+
+    .created-by {
+      margin: calc(-1 * var(--space-2)) auto 0;
+      font-size: var(--text-base);
+      color: var(--text-secondary);
+      font-weight: var(--font-medium);
+    }
+
+    .created-by a {
+      color: var(--accent-primary);
+      text-underline-offset: 2px;
+    }
+
+    .hero {
+      position: relative;
+      min-height: calc(100vh - 72px);
+      display: flex;
+      align-items: center;
+      padding: var(--space-12) var(--space-6);
+      background:
+        radial-gradient(circle at 20% 20%, rgba(183, 227, 224, 0.35), transparent 45%),
+        radial-gradient(circle at 80% 10%, rgba(52, 40, 119, 0.10), transparent 40%),
+        linear-gradient(135deg, #fbfbfd 0%, #eae7e8 100%);
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(120deg, rgba(52, 40, 119, 0.06), rgba(52, 40, 119, 0.06) 1px, transparent 1px, transparent 140px),
+        repeating-linear-gradient(300deg, rgba(37, 28, 87, 0.05), rgba(37, 28, 87, 0.05) 1px, transparent 1px, transparent 160px);
+      background-size: 240px 200px, 220px 180px;
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero > * { position: relative; z-index: 1; }
+
+    .hero-content {
+      max-width: 980px;
+      margin: 0 auto;
+      text-align: center;
+      display: grid;
+      gap: var(--space-8);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(2.2rem, 6vw, 4rem);
+      line-height: var(--line-tight);
+      font-weight: var(--font-bold);
+      background: linear-gradient(135deg, #251c57 0%, #4b3d9c 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      margin: 0 auto;
+      max-width: 760px;
+      font-size: var(--text-xl);
+      color: var(--text-secondary);
+      line-height: var(--line-relaxed);
+    }
+
+    .hero-cta {
+      display: inline-flex;
+      justify-content: center;
+      margin: 0 auto;
+      min-width: 220px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+    }
+
+    .feature-card {
+      text-align: left;
+      background: rgba(255,255,255,.75);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-md);
+    }
+
+    .feature-card h3 { margin: 0 0 var(--space-2); font-size: var(--text-lg); }
+    .feature-card p { margin: 0; font-size: var(--text-sm); }
+
+    .pinam-callout {
+      margin: var(--space-2) auto 0;
+      max-width: 520px;
+      font-size: var(--text-sm);
+      color: var(--text-tertiary);
+    }
+    .pinam-callout a {
+      color: var(--text-secondary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-color: var(--border-default);
+    }
+    .pinam-callout a:hover { color: var(--text-primary); }
+
+    /* ── city animation box ── */
+    .city-animation-wrap {
+      width: 100%;
+      max-width: 780px;
+      margin: 0 auto;
+      line-height: 0;
+    }
+    #city-animation {
+      display: block;
+      width: 100%;
+      aspect-ratio: 780 / 360;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <a class="logo-link" href="/">
+        <img src="/logo.svg" alt="Civic Mapper">
+      </a>
+      <a class="header-cle-lockup" href="https://landeconomics.org" target="_blank" rel="noopener" aria-label="Center for Land Economics">
+        <span>by</span>
+        <img src="/cle-logo-2color.svg" alt="Center for Land Economics">
+      </a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-content">
+      <div class="city-animation-wrap" aria-hidden="true">
+        <canvas id="city-animation"></canvas>
+      </div>
+
+      <h1>Land value insights, city by city.</h1>
+      <p>Civic Mapper helps planners, advocates, and residents explore 3D parcel data in seconds. Choose a city and dive into its land values.</p>
+      <p class="created-by">Created by <a href="https://landeconomics.org" target="_blank" rel="noopener">Center for Land Economics</a>.</p>
+
+      <a href="/cities.html" class="btn btn-primary btn-lg hero-cta" id="start-exploring">Start Exploring</a>
+
+      <div class="feature-grid" aria-label="Platform highlights">
+        <article class="feature-card">
+          <h3>3D Parcel Visualization</h3>
+          <p>Quickly scan value patterns and urban form with interactive extrusions.</p>
+        </article>
+        <article class="feature-card">
+          <h3>City-Level Selection</h3>
+          <p>Choose from dozens of available cities and jump directly into analysis.</p>
+        </article>
+        <article class="feature-card">
+          <h3>Built for Civic Teams</h3>
+          <p>Designed for clear storytelling and practical policy conversations.</p>
+        </article>
+      </div>
+
+      <p class="pinam-callout">
+        Your city not listed? <a href="https://putitonamap.com" target="_blank" rel="noopener">Put It On A Map</a> is a free tool from the Center for Land Economics for visualizing parcel data from any location.
+      </p>
+    </div>
+  </section>
+  <script type="module">
+    import { initCleFooter } from '/src/cle-footer.ts';
+    initCleFooter();
+  </script>
+  <script>
+  /* ── Isometric city animation ── */
+  (function () {
+    var canvas = document.getElementById('city-animation');
+    var ctx    = canvas.getContext('2d');
+
+    var COLS  = 24, ROWS = 18;
+    var TW    = 32, TH   = 16;
+    var MAX_H = 125;
+    var BOX_H = 360;
+    var OY    = 20;
+
+    var HOVER_R     = 48;   // hover influence radius in canvas-px
+    var HOVER_BOOST = 28;   // max extra height (px) added on hover
+
+    var W, ox;
+    var hoverX = -1, hoverY = -1;
+    var looping = false;
+
+    /* ── seeded noise ── */
+    function sr(c, r) {
+      var x = Math.sin(c * 127.1 + r * 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    }
+
+    /* ── Gaussian bump ── */
+    function gb(c, r, cx, cy, sx, sy, a) {
+      var dx = (c - cx) / sx, dy = (r - cy) / sy;
+      return a * Math.exp(-(dx * dx + dy * dy) * 0.5);
+    }
+
+    /* ── height map ── */
+    var base = [];
+    for (var ri = 0; ri < ROWS; ri++) {
+      base[ri] = [];
+      for (var ci = 0; ci < COLS; ci++) {
+        var h = gb(ci, ri, 17, 11, 2.0, 2.0, MAX_H)
+              + gb(ci, ri, 17, 11, 0.65, 0.65, MAX_H * 0.32)
+              + gb(ci, ri, 13,  8,   2,   2, MAX_H * 0.72)
+              + gb(ci, ri, 20, 14,   3, 2.5, MAX_H * 0.60)
+              + gb(ci, ri, 12, 13,   9,   7, MAX_H * 0.35)
+              + gb(ci, ri,  5, 16,   5,   4, MAX_H * 0.18);
+        h *= (0.48 + sr(ci, ri) * 1.02);
+        base[ri][ci] = Math.max(0, Math.min(MAX_H, h));
+      }
+    }
+
+    /* ── per-tile state ── */
+    var riseT = [], bonus = [];
+    for (var ri = 0; ri < ROWS; ri++) {
+      riseT[ri] = []; bonus[ri] = [];
+      for (var ci = 0; ci < COLS; ci++) { riseT[ri][ci] = 0; bonus[ri][ci] = 0; }
+    }
+
+    /* ── rise timing ── */
+    var t0  = performance.now();
+    var RISE = 2800, LAG = 1400;
+    var lag = [];
+    for (var ri = 0; ri < ROWS; ri++) {
+      lag[ri] = [];
+      for (var ci = 0; ci < COLS; ci++)
+        lag[ri][ci] = ((ci + ri) / (COLS + ROWS - 2)) * LAG;
+    }
+
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+    /* ── colour ramp ── */
+    var RAMP = [
+      { t: 0.00, c: [ 32,  82,  32] },
+      { t: 0.18, c: [ 52, 145,  46] },
+      { t: 0.36, c: [145, 192,  50] },
+      { t: 0.52, c: [220, 198,  44] },
+      { t: 0.68, c: [226, 116,  34] },
+      { t: 0.88, c: [198,  42,  36] },
+      { t: 1.00, c: [116,  46, 218] },
+    ];
+
+    function rampColor(h) {
+      var t = Math.min(h / MAX_H, 1), i = 0;
+      while (i < RAMP.length - 2 && t > RAMP[i + 1].t) i++;
+      var lo = RAMP[i], hi = RAMP[i + 1];
+      var f  = (t - lo.t) / (hi.t - lo.t);
+      return lo.c.map(function (v, k) { return Math.round(v + (hi.c[k] - v) * f); });
+    }
+
+    /* ── draw helpers ── */
+    function drawGround(c, r) {
+      var ix = ox + (c - r) * TW / 2;
+      var iy = OY + (c + r) * TH / 2;
+      if (iy + TH / 2 < 0 || iy - TH / 2 > BOX_H) return;
+      ctx.beginPath();
+      ctx.moveTo(ix,           iy - TH / 2);
+      ctx.lineTo(ix + TW / 2,  iy);
+      ctx.lineTo(ix,           iy + TH / 2);
+      ctx.lineTo(ix - TW / 2,  iy);
+      ctx.closePath();
+      ctx.fillStyle   = 'rgba(175, 210, 230, 0.30)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(100, 150, 190, 0.20)';
+      ctx.lineWidth   = 0.5;
+      ctx.stroke();
+    }
+
+    function drawBlock(c, r, h) {
+      if (h < 1) return;
+      var ix = ox + (c - r) * TW / 2;
+      var iy = OY + (c + r) * TH / 2;
+      if (iy - h - TH / 2 > BOX_H || iy + TH / 2 < 0) return;
+      var rgb = rampColor(h);
+      var R = rgb[0], G = rgb[1], B = rgb[2];
+
+      ctx.beginPath();
+      ctx.moveTo(ix,           iy - h - TH / 2);
+      ctx.lineTo(ix + TW / 2,  iy - h);
+      ctx.lineTo(ix,           iy - h + TH / 2);
+      ctx.lineTo(ix - TW / 2,  iy - h);
+      ctx.closePath();
+      ctx.fillStyle = 'rgb(' + R + ',' + G + ',' + B + ')';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(ix - TW / 2,  iy - h);
+      ctx.lineTo(ix,            iy - h + TH / 2);
+      ctx.lineTo(ix,            iy + TH / 2);
+      ctx.lineTo(ix - TW / 2,  iy);
+      ctx.closePath();
+      ctx.fillStyle = 'rgb(' + (R * .48 | 0) + ',' + (G * .48 | 0) + ',' + (B * .48 | 0) + ')';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(ix + TW / 2,  iy - h);
+      ctx.lineTo(ix,            iy - h + TH / 2);
+      ctx.lineTo(ix,            iy + TH / 2);
+      ctx.lineTo(ix + TW / 2,  iy);
+      ctx.closePath();
+      ctx.fillStyle = 'rgb(' + (R * .66 | 0) + ',' + (G * .66 | 0) + ',' + (B * .66 | 0) + ')';
+      ctx.fill();
+    }
+
+    /* ── shared scene draw (painter order) ── */
+    function drawScene() {
+      ctx.clearRect(0, 0, W, BOX_H);
+      for (var sum = 0; sum < COLS + ROWS - 1; sum++) {
+        for (var c = 0; c < COLS; c++) {
+          var r = sum - c;
+          if (r < 0 || r >= ROWS) continue;
+          drawGround(c, r);
+          drawBlock(c, r, base[r][c] * riseT[r][c] + bonus[r][c]);
+        }
+      }
+    }
+
+    /* ── resize ── */
+    function resize() {
+      W             = 780;
+      canvas.width  = 780;
+      canvas.height = BOX_H;
+      ox = W / 2 - ((COLS - ROWS) / 2) * (TW / 2);
+    }
+
+    /* ── RISE LOOP — runs once on load, then stops ── */
+    function riseLoop(now) {
+      var elapsed = now - t0, allDone = true;
+      for (var r = 0; r < ROWS; r++)
+        for (var c = 0; c < COLS; c++) {
+          var t = easeOut(Math.max(0, Math.min(1, (elapsed - lag[r][c]) / RISE)));
+          riseT[r][c] = t;
+          if (t < 1) allDone = false;
+        }
+      drawScene();
+      if (allDone) { looping = false; }
+      else         { requestAnimationFrame(riseLoop); }
+    }
+
+    /* ── HOVER LOOP — event-driven, stops when bonuses reach zero ── */
+    function hoverLoop() {
+      looping = true;
+      var anyActive = false;
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          var ix    = ox + (c - r) * TW / 2;
+          var topY  = OY + (c + r) * TH / 2 - base[r][c]; // top-face y when settled
+          var target = 0;
+          if (hoverX >= 0) {
+            var dx = hoverX - ix, dy = hoverY - topY;
+            target = HOVER_BOOST * Math.exp(-(dx * dx + dy * dy) / (HOVER_R * HOVER_R));
+          }
+          var diff = target - bonus[r][c];
+          bonus[r][c] += diff * 0.14;                      // smooth lerp
+          if (Math.abs(bonus[r][c]) > 0.25 || target > 0.25) anyActive = true;
+        }
+      }
+      drawScene();
+      if (anyActive || hoverX >= 0) {
+        requestAnimationFrame(hoverLoop);
+      } else {
+        for (var r = 0; r < ROWS; r++)                     // zero out residuals
+          for (var c = 0; c < COLS; c++) bonus[r][c] = 0;
+        looping = false;
+      }
+    }
+
+    /* ── mouse events ── */
+    canvas.addEventListener('mousemove', function (e) {
+      var rect = canvas.getBoundingClientRect();
+      hoverX = (e.clientX - rect.left) * (W / rect.width);
+      hoverY = (e.clientY - rect.top)  * (BOX_H / rect.height);
+      if (!looping) requestAnimationFrame(hoverLoop);
+    });
+    canvas.addEventListener('mouseleave', function () {
+      hoverX = -1; hoverY = -1;
+      if (!looping) requestAnimationFrame(hoverLoop);
+    });
+
+    window.addEventListener('resize', resize);
+    resize();
+    looping = true;
+    requestAnimationFrame(riseLoop);
+  })();
+  </script>
+</body>
+</html>

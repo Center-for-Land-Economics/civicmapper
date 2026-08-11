@@ -1,0 +1,16 @@
+{
+  "displayName": "Chicago",
+  "state": "il",
+  "filename": "chicago-il-parcels.parquet",
+  "pmtilesFilename": "chicago-il-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "chicago-il-parking-lots.parquet",
+  "parkingVersion": "2026-06-11",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -87.6298,
+    41.8781
+  ]
+}

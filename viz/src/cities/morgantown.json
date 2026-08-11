@@ -1,0 +1,16 @@
+{
+  "displayName": "Morgantown",
+  "state": "wv",
+  "filename": "morgantown-wv-parcels.parquet",
+  "pmtilesFilename": "morgantown-wv-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "morgantown-wv-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -79.9559,
+    39.6295
+  ]
+}

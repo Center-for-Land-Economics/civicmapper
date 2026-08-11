@@ -1,0 +1,16 @@
+{
+  "displayName": "Columbus",
+  "state": "oh",
+  "filename": "columbus-oh-parcels.parquet",
+  "pmtilesFilename": "columbus-oh-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-14",
+  "hideRemnants": true,
+  "parkingFilename": "columbus-oh-parking-lots.parquet",
+  "parkingVersion": "2026-07-14",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -82.9988,
+    39.9612
+  ]
+}

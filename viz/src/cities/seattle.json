@@ -1,0 +1,33 @@
+{
+  "notes": [
+    "~189k Seattle parcels -> PMTiles + H3 hexes. Source: King County GIS one-stop parcel layer (geometry + APPRLNDVAL/APPR_IMPR + PREUSE_DESC), clipped to the City of Seattle municipal boundary (see run_seattle.py). Condos are mapped at the complex level by the county, so no per-unit stub merge is needed; run_seattle.py DOES merge King County's split multi-parcel developments (improvement value dumped on one \"minor\" beside zeroed siblings) so complexes no longer render as lone purple towers. NMA (Neighborhood Map Atlas) region show/hide toggles, like Houston — on BOTH the Land Value (3D) tab and the Parking tab. Columns added by augment_seattle_regions.py; the bake emits metadata.groups for each (H3_CATEGORICAL_FIELDS)."
+  ],
+  "displayName": "Seattle",
+  "state": "wa",
+  "filename": "seattle-wa-parcels.parquet",
+  "pmtilesFilename": "seattle-wa-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "seattle-wa-parking-lots.parquet",
+  "parkingVersion": "2026-06-29-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "neighborhood_district",
+      "label": "Neighborhood District",
+      "defaultMode": "all",
+      "overlayUrl": "seattle-neighborhood_district-overlay.geojson"
+    },
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "seattle-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -122.3321,
+    47.6062
+  ]
+}

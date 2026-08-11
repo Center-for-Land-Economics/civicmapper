@@ -1,0 +1,37 @@
+name: Verify Azure OIDC
+
+# Diagnostic: proves the GitHub→Azure OIDC chain (environment → token →
+# federated credential → service principal → subscription) with a read-only
+# az call. Run it from the Actions tab after adding/rotating credentials —
+# no deploy required. Also exercises the AZURE_* secrets azure/login consumes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Which environment's credential to verify"
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions: { id-token: write, contents: read }
+
+jobs:
+  verify:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Azure login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Read-only sanity check
+        run: |
+          echo "OIDC login OK for environment: ${{ inputs.environment }}"
+          az account show --query '{subscription: name, tenant: tenantId}' -o table

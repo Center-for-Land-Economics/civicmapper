@@ -1,0 +1,120 @@
+name: ETL Regression Tests
+
+# Run on push to main or develop to ensure prompt bundle changes don't break existing cities.
+# Also runnable manually to validate a prompt bundle before bumping CURRENT_VERSION.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'data/prompts/**'
+      - 'data/scripts/etl_ai_orchestrator.py'
+  workflow_dispatch:
+    inputs:
+      prompt_version:
+        description: 'Prompt bundle version to test (leave blank for CURRENT_VERSION)'
+        required: false
+        default: ''
+      city_filter:
+        description: 'Comma-separated city keys to test (leave blank for all golden cities)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic geopandas pyarrow --quiet
+
+      - name: Determine prompt version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.prompt_version }}" ]; then
+            VERSION="${{ github.event.inputs.prompt_version }}"
+          else
+            VERSION=$(cat data/prompts/CURRENT_VERSION)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Testing prompt version: $VERSION"
+
+      - name: Run regression tests
+        id: regression
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          PROMPTS_DIR: data/prompts
+          PROMPT_VERSION_OVERRIDE: ${{ steps.version.outputs.version }}
+          CITY_FILTER: ${{ github.event.inputs.city_filter }}
+        run: |
+          python data/scripts/etl_regression_runner.py \
+            --golden-dir data/prompts/golden \
+            --output-dir /tmp/regression-output \
+            --prompt-version "$PROMPT_VERSION_OVERRIDE" \
+            ${CITY_FILTER:+--city-filter "$CITY_FILTER"}
+
+          echo "result_path=/tmp/regression-output/regression_result.json" >> $GITHUB_OUTPUT
+
+      - name: Upload regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-${{ steps.version.outputs.version }}-${{ github.run_id }}
+          path: /tmp/regression-output/
+          retention-days: 14
+
+      - name: Report regression results
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys
+
+          try:
+              with open("/tmp/regression-output/regression_result.json") as f:
+                  result = json.load(f)
+          except Exception as e:
+              print(f"Could not read result: {e}")
+              sys.exit(1)
+
+          summary = result.get("summary", {})
+          passed = summary.get("passed", 0)
+          failed = summary.get("failed", 0)
+          total = summary.get("total", 0)
+          skipped = summary.get("skipped", 0)
+
+          print(f"\n{'='*60}")
+          print(f"ETL Regression Results — {result.get('prompt_version', '?')}")
+          print(f"{'='*60}")
+          print(f"  Total cities: {total}")
+          print(f"  Passed:  {passed}")
+          print(f"  Failed:  {failed}")
+          print(f"  Skipped: {skipped}")
+          print(f"{'='*60}\n")
+
+          for city in result.get("cities", []):
+              status = "✅" if city["passed"] else ("⚠️" if city.get("skipped") else "❌")
+              print(f"{status}  {city['city_key']}")
+              if not city["passed"] and not city.get("skipped"):
+                  for check in city.get("failed_checks", []):
+                      print(f"     ❌ {check}")
+
+          if failed > 0:
+              print(f"\n❌ {failed} city/cities failed regression. Check artifacts for details.")
+              sys.exit(1)
+          else:
+              print(f"\n✅ All regression tests passed!")
+          PYEOF

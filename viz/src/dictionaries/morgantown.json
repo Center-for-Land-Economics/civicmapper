@@ -1,0 +1,26 @@
+{
+  "_config": {
+    "smoothLandField": "smooth_land_value_per_sqft",
+    "assessedLandField": "land_value_per_sqft",
+    "hasParkingData": true,
+    "usePmtiles": true,
+    "pmtilesUrl": "morgantown-wv-parcels.pmtiles",
+    "pmtilesMetadataUrl": "morgantown-wv-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 12.5,
+    "lowZoomFadeEnd": 13,
+    "parcelMinZoom": 13
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "current_tax": "Current Tax",
+  "current_tax_per_sqft": "Current tax/land ft²",
+  "current_full_land_value": "Land Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "smooth_full_land_value": "Smoothed Land Assessed Value",
+  "smooth_land_value_per_sqft": "Smoothed land value/land ft²",
+  "improvement_value": "Improvements Assessed Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "link": "Parcel link"
+}

@@ -1,0 +1,292 @@
+name: ETL Run (AI Orchestrator)
+
+# DORMANT: the trigger was a /run-etl comment on PRs in the retired
+# civicmapper-cities intake repo. City proposals are now GitHub issues on this
+# repo; this pipeline needs an issue-based trigger rework before it runs again
+# (the repository_dispatch hook below still works for manual invocation).
+# Full pipeline: generate → execute (with self-correction) → validate → stage → report.
+
+on:
+  repository_dispatch:
+    types: [run-etl]
+
+permissions:
+  contents: read
+
+jobs:
+  run-etl:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout geovizwiz-sb
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic geopandas pyarrow azure-storage-blob osmnx requests --quiet
+
+      - name: Prepare city file(s)
+        id: prep
+        env:
+          CITY_FILES: ${{ toJson(github.event.client_payload.city_files) }}
+          FILE_CONTENTS: ${{ toJson(github.event.client_payload.file_contents) }}
+        run: |
+          mkdir -p /tmp/city-etl/input /tmp/city-etl/output /tmp/city-etl/etl-work
+
+          python3 - <<'PYEOF'
+          import json, os, re
+          city_files = json.loads(os.environ["CITY_FILES"])
+          file_contents = json.loads(os.environ["FILE_CONTENTS"])
+
+          for path, content in file_contents.items():
+              dest = f"/tmp/city-etl/input/{os.path.basename(path)}"
+              with open(dest, "w", encoding="utf-8") as f:
+                  f.write(content)
+              print(f"Wrote: {dest}  ({len(content):,} chars)")
+
+              # Extract city_key and state for downstream steps
+              city_key_m = re.search(r'\*\*City key\*\*\s*\|\s*`([^`]+)`', content)
+              state_m = re.search(r'\*\*State code\*\*\s*\|\s*`([^`]+)`', content)
+              if city_key_m:
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+                      gh.write(f"city_key={city_key_m.group(1).strip()}\n")
+              if state_m:
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+                      gh.write(f"state={state_m.group(1).strip()}\n")
+          PYEOF
+
+          CITY_FILE=$(ls /tmp/city-etl/input/*.md | head -1)
+          echo "city_file=$CITY_FILE" >> $GITHUB_OUTPUT
+
+      # ── Step 1: Generate ETL script via Claude ────────────────────────────────
+      - name: Generate ETL script
+        id: generate
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          PROMPTS_DIR: data/prompts
+          DRY_RUN: "true"
+        run: |
+          python data/scripts/etl_ai_orchestrator.py \
+            --city-file "${{ steps.prep.outputs.city_file }}" \
+            --output-dir /tmp/city-etl/output \
+            --dry-run
+
+          echo "script_path=/tmp/city-etl/output/generated_etl.py" >> $GITHUB_OUTPUT
+          echo "result_path=/tmp/city-etl/output/orchestrator_result.json" >> $GITHUB_OUTPUT
+
+      # ── Step 2: Execute the generated ETL script (with self-correction) ────────
+      - name: Execute ETL script
+        id: execute
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          ETL_OUTPUT_DIR: /tmp/city-etl/etl-work
+          PROMPTS_DIR: data/prompts
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          DRY_RUN: "false"
+        run: |
+          mkdir -p data/jurisidictions  # ensure working dir exists
+
+          python data/scripts/etl_ai_orchestrator.py \
+            --city-file "${{ steps.prep.outputs.city_file }}" \
+            --output-dir /tmp/city-etl/output
+
+          # Discover output parquet
+          CITY_KEY="${{ steps.prep.outputs.city_key }}"
+          STATE="${{ steps.prep.outputs.state }}"
+          PARQUET=$(find /tmp/city-etl/etl-work data/jurisidictions -name "${CITY_KEY}-${STATE}-parcels.parquet" 2>/dev/null | head -1)
+          PMTILES=$(find /tmp/city-etl/etl-work data/jurisidictions -name "${CITY_KEY}-${STATE}-parcels.pmtiles" 2>/dev/null | head -1)
+          PARKING=$(find /tmp/city-etl/etl-work data/jurisidictions -name "${CITY_KEY}-${STATE}-parking-lots.parquet" 2>/dev/null | head -1)
+
+          echo "parquet_path=${PARQUET}" >> $GITHUB_OUTPUT
+          echo "pmtiles_path=${PMTILES}" >> $GITHUB_OUTPUT
+          echo "parking_path=${PARKING}" >> $GITHUB_OUTPUT
+
+      # ── Step 3: Validate the output parquet ───────────────────────────────────
+      - name: Validate parquet output
+        id: validate
+        if: steps.execute.outputs.parquet_path != ''
+        run: |
+          python data/scripts/validate_city_parquet.py \
+            "${{ steps.execute.outputs.parquet_path }}" \
+            --output-json /tmp/city-etl/output/validation_result.json
+
+          echo "validation_path=/tmp/city-etl/output/validation_result.json" >> $GITHUB_OUTPUT
+
+      # ── Step 4: Stage artifacts to Azure Blob ─────────────────────────────────
+      - name: Stage artifacts
+        id: stage
+        if: steps.execute.outputs.parquet_path != ''
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          PMTILES_ARG=""
+          if [ -n "${{ steps.execute.outputs.pmtiles_path }}" ]; then
+            PMTILES_ARG="--pmtiles ${{ steps.execute.outputs.pmtiles_path }}"
+          fi
+          PARKING_ARG=""
+          if [ -n "${{ steps.execute.outputs.parking_path }}" ]; then
+            PARKING_ARG="--parking ${{ steps.execute.outputs.parking_path }}"
+          fi
+          VAL_ARG=""
+          if [ -f /tmp/city-etl/output/validation_result.json ]; then
+            VAL_ARG="--validation-json /tmp/city-etl/output/validation_result.json"
+          fi
+
+          python data/scripts/stage_city.py \
+            --city-key "${{ steps.prep.outputs.city_key }}" \
+            --state "${{ steps.prep.outputs.state }}" \
+            --parquet "${{ steps.execute.outputs.parquet_path }}" \
+            --pr-number ${{ github.event.client_payload.pr_number }} \
+            --etl-script /tmp/city-etl/output/generated_etl.py \
+            $PMTILES_ARG $PARKING_ARG $VAL_ARG \
+            --output-json /tmp/city-etl/output/staging_manifest.json
+
+          echo "manifest_path=/tmp/city-etl/output/staging_manifest.json" >> $GITHUB_OUTPUT
+
+      # ── Upload all artifacts ──────────────────────────────────────────────────
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etl-output-pr${{ github.event.client_payload.pr_number }}
+          path: /tmp/city-etl/output/
+          retention-days: 30
+
+      # ── Post result comment to civicmapper-cities PR ──────────────────────────
+      - name: Post result comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          STAGING_MANIFEST: ${{ steps.stage.outputs.manifest_path }}
+          VALIDATION_PATH: ${{ steps.validate.outputs.validation_path }}
+          RESULT_PATH: ${{ steps.generate.outputs.result_path }}
+        with:
+          github-token: ${{ secrets.GH_CITIES_PAT }}
+          script: |
+            const fs = require('fs');
+            const prNumber = ${{ github.event.client_payload.pr_number }};
+            const prRepo = '${{ github.event.client_payload.pr_repo }}';
+            const [owner, repo] = prRepo.split('/');
+
+            let result = {};
+            try { result = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8')); } catch {}
+
+            let manifest = null;
+            try { manifest = JSON.parse(fs.readFileSync(process.env.STAGING_MANIFEST, 'utf8')); } catch {}
+
+            let validation = null;
+            try { validation = JSON.parse(fs.readFileSync(process.env.VALIDATION_PATH, 'utf8')); } catch {}
+
+            const m = result.city_metadata || {};
+            const execResult = result.execution || {};
+            const totalAttempts = result.total_attempts || 1;
+            const notes = result.notes || [];
+            const markdownIssue = result.markdown_issue || null;
+
+            let body;
+
+            if (result.status === 'success' && manifest) {
+              // Build validation summary lines
+              const valLines = [];
+              if (validation) {
+                const passed = validation.checks?.filter(c => c.status === 'pass').length || 0;
+                const total = validation.checks?.length || 0;
+                const warns = validation.checks?.filter(c => c.status === 'warn').length || 0;
+                const emoji = validation.passed ? '✅' : '❌';
+                valLines.push(`**Validation:** ${emoji} ${passed}/${total} checks passed${warns ? ` (${warns} warnings)` : ''}`);
+                if (validation.row_count) valLines.push(`**Parcel count:** ${validation.row_count.toLocaleString()}`);
+                if (!validation.passed) {
+                  const fails = (validation.checks || []).filter(c => c.status === 'fail');
+                  for (const f of fails) valLines.push(`  - ❌ \`${f.name}\`: ${f.message}`);
+                }
+              }
+
+              // Notes from self-correction retries
+              const notesLines = [];
+              if (totalAttempts > 1 && notes.length > 0) {
+                notesLines.push('');
+                notesLines.push(`**Notes from self-correction (${totalAttempts} attempts):**`);
+                for (const note of notes) notesLines.push(`- ${note}`);
+              } else if (totalAttempts > 1) {
+                notesLines.push('');
+                notesLines.push(`_Script self-corrected over ${totalAttempts} attempts._`);
+              }
+
+              body = [
+                `## ✅ ETL pipeline complete`,
+                '',
+                `**City:** ${m.display_name || m.city_key}  |  **State:** ${(m.state||'').toUpperCase()}`,
+                `**Prompt bundle:** \`${result.prompt_bundle_version}\`  |  **Model:** \`${result.model}\``,
+                ...(valLines.length ? ['', ...valLines] : []),
+                ...notesLines,
+                '',
+                `**Review URL:** ${manifest.review_url}`,
+                `**Staging ID:** \`${manifest.staging_id}\``,
+                `**Artifacts:** ${Object.keys(manifest.artifacts).join(', ')}  |  **Total:** ${(manifest.total_bytes / 1_048_576).toFixed(1)} MB`,
+                '',
+                `> To promote to dev: merge this PR. The promotion pipeline will run automatically.`,
+              ].join('\n');
+
+            } else if (markdownIssue) {
+              // Claude identified that the markdown itself contains incorrect information
+              body = [
+                `## ❌ ETL failed — city Markdown may contain incorrect information`,
+                '',
+                `**City:** ${m.display_name || m.city_key || 'unknown'}`,
+                '',
+                'After attempting to correct the generated script, the pipeline determined that the issue is likely in the city Markdown file rather than the code. The specific concern:',
+                '',
+                '```',
+                markdownIssue,
+                '```',
+                '',
+                'Please review the Markdown file for the field mappings, exemption logic, category logic, or CRS described, correct any inaccuracies, and then trigger the pipeline again.',
+              ].join('\n');
+
+            } else if (result.status === 'etl_failed' || (execResult && !execResult.success)) {
+              // ETL execution failed after all retry attempts
+              const attemptNote = totalAttempts > 1
+                ? `\n**Attempts:** ${totalAttempts} (self-correction exhausted)`
+                : '';
+              body = [
+                `## ❌ ETL execution failed`,
+                '',
+                `**City:** ${m.display_name || m.city_key || 'unknown'}`,
+                `**Exit code:** ${execResult.exit_code || 'unknown'}`,
+                execResult.timed_out ? '**Cause:** Timed out after 1 hour' : '',
+                attemptNote,
+                '',
+                '**Last stderr output:**',
+                '```',
+                (execResult.stderr || '(none)').slice(-1500),
+                '```',
+              ].filter(l => l !== '').join('\n');
+
+            } else if (result.status === 'success' && !manifest) {
+              // Script generated but not staged (parquet not found)
+              body = [
+                `## ⚠️ ETL script generated but no parquet output found`,
+                '',
+                `**City:** ${m.display_name || m.city_key}`,
+                `**Script:** ${result.generated_script_lines} lines  |  **Tokens:** ${result.api_usage?.output_tokens?.toLocaleString()}`,
+                '',
+                'The ETL script was generated and executed, but no output parquet file was discovered. ',
+                'The script may have succeeded but written to an unexpected path.',
+              ].join('\n');
+
+            } else {
+              body = [
+                `## ❌ ETL orchestrator failed`,
+                '',
+                `An unexpected error occurred. Check the pipeline run for details.`,
+              ].join('\n');
+            }
+
+            await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });

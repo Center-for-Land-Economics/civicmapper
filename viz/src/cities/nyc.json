@@ -1,0 +1,33 @@
+{
+  "notes": [
+    "Borough + NTA neighborhood region show/hide toggles (Land Value 3D tab + Parking tab). Columns added by augment_nyc_regions.py (parcels) / augment_parking_regions.py (parking) from NYC DCP's 2020 NTA layer; the bake emits metadata.groups (H3_CATEGORICAL_FIELDS)."
+  ],
+  "displayName": "New York City",
+  "state": "ny",
+  "filename": "nyc-ny-parcels.parquet",
+  "pmtilesFilename": "nyc-ny-parcels.pmtiles",
+  "pmtilesVersion": "2026-06-30-regions",
+  "parkingFilename": "nyc-ny-parking-lots.parquet",
+  "parkingVersion": "2026-06-30-regions",
+  "hideUnderutilized": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "borough",
+      "label": "Borough",
+      "defaultMode": "all",
+      "overlayUrl": "nyc-borough-overlay.geojson"
+    },
+    {
+      "field": "neighborhood",
+      "label": "Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "nyc-neighborhood-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -74.006,
+    40.7128
+  ]
+}

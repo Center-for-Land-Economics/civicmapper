@@ -1,0 +1,32 @@
+{
+  "_config": {
+    "hasParkingData": true
+  },
+  "parcel_id": "Parcel ID",
+  "gpin": "Geo Parcel ID",
+  "parcel_number": "Parcel Number",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "use_code": "Use Code",
+  "state_code": "State Category",
+  "tax_type": "Tax Type",
+  "zoning": "Zoning",
+  "owner": "Owner",
+  "address": "Address",
+  "legal_description": "Legal Description",
+  "current_full_land_value": "Land Assessed Value",
+  "improvement_value": "Improvements Assessed Value",
+  "full_market_value": "Total Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "full_market_value_per_sqft": "Total value/land ft²",
+  "REALLANDVA": "Land Assessed Value",
+  "REALIMPROV": "Improvements Assessed Value",
+  "REALLANDVA_per_sqft": "Land value/land ft²",
+  "REALIMPROV_per_sqft": "Improvements value/land ft²",
+  "TLLDIMPROV": "Total Land & Improvements",
+  "IMPR_LAND_RATIO": "Improvement to Land Ratio",
+  "IMPR_LAND_PCT": "Improvement to Land Ratio (%)",
+  "IMPR_PCT_TOTAL": "Improvement value share (%)",
+  "area_sqft": "Parcel Area (Sqft)"
+}

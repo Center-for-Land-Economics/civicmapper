@@ -1,0 +1,17 @@
+{
+  "displayName": "San Antonio",
+  "state": "tx",
+  "filename": "sanantonio-tx-parcels.parquet",
+  "pmtilesFilename": "sanantonio-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "sanantonio-tx-parking-lots.parquet",
+  "parkingVersion": "2026-06-09",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -98.4936,
+    29.4241
+  ]
+}

@@ -1,0 +1,11 @@
+<svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Map Pin — same proportions as light version. Mint pin reads on dark purple. -->
+  <path d="M11 44C5 38 0 33 0 25C0 18.373 4.925 13 11 13C17.075 13 22 18.373 22 25C22 33 17 38 11 44Z" fill="#B7E3E0"/>
+  <!-- Purple ring -->
+  <circle cx="11" cy="24" r="5.5" fill="#342877"/>
+  <!-- White center dot -->
+  <circle cx="11" cy="24" r="2.5" fill="white"/>
+
+  <!-- White wordmark -->
+  <text x="30" y="32" font-family="'DM Sans', system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="white">Civic Mapper</text>
+</svg>

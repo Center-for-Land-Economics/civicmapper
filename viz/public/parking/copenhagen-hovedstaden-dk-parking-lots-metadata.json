@@ -1,0 +1,64 @@
+{
+  "parkingTotals": {
+    "total_area_sqft": 17048211.9432242,
+    "total_area_acres": 391.37309327879245,
+    "surface_area_sqft": 0.0,
+    "surface_area_acres": 0.0,
+    "matched_area_sqft": 17048211.9432242,
+    "matched_area_acres": 391.37309327879245,
+    "total_estimated_land_value": 2834647690.0432444,
+    "matched_estimated_land_value": 2834647690.0432444,
+    "taxable_estimated_land_value": 2834647690.0432444,
+    "exempt_estimated_land_value": 0.0,
+    "matched_feature_count": 2713,
+    "taxable_feature_count": 2713,
+    "exempt_feature_count": 0,
+    "mean_land_value_per_sqft": 219.3695890728586,
+    "feature_count": 2713,
+    "detection_sources": [
+      "osm"
+    ],
+    "coverage_type": "osm_only",
+    "imagery_source": null,
+    "imagery_resolution_m": null,
+    "model": null
+  },
+  "classificationTotals": {
+    "byType": {
+      "surface": {
+        "count": 2660,
+        "effective_surface_land_value": 2506361335.8452883,
+        "surface_area_sqft": 15152065.026236834
+      },
+      "structure": {
+        "count": 43,
+        "effective_surface_land_value": 0.0,
+        "surface_area_sqft": 0.0
+      },
+      "uncertain": {
+        "count": 4,
+        "effective_surface_land_value": 60777.07514185681,
+        "surface_area_sqft": 5359.658211687063
+      },
+      "excluded": {
+        "count": 6,
+        "effective_surface_land_value": 0.0,
+        "surface_area_sqft": 0.0
+      }
+    },
+    "surface_estimated_land_value": 2506361335.8452883,
+    "uncertain_estimated_land_value": 60777.07514185681,
+    "surface_feature_count": 2660,
+    "structure_feature_count": 43,
+    "excluded_feature_count": 6,
+    "uncertain_feature_count": 4,
+    "building_source": "overture-2026-05-20.0",
+    "parcel_context_applied": true,
+    "surface_high_context_feature_count": 981,
+    "surface_high_context_area_sqft": 8159589.094977871,
+    "surface_high_context_land_value": 2199903668.155732,
+    "surface_low_context_feature_count": 1679,
+    "surface_low_context_area_sqft": 6992475.931258964,
+    "surface_low_context_land_value": 306457667.6895562
+  }
+}

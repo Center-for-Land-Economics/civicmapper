@@ -1,0 +1,16 @@
+{
+  "displayName": "Rochester",
+  "state": "ny",
+  "filename": "rochester-ny-parcels.parquet",
+  "pmtilesFilename": "rochester-ny-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "rochester-ny-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -77.6088,
+    43.1566
+  ]
+}

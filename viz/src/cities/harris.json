@@ -1,0 +1,46 @@
+{
+  "notes": [
+    "Dev-only twin of Houston: ALL of Harris County (incorporated + UNINCORPORATED), baked exactly like Houston from the full-Harris parquet. devOnly => never in the picker, and blocked on prod (only loads on localhost via ?city=harris). Reuses Houston's region overlays. No parking data."
+  ],
+  "displayName": "Harris County",
+  "state": "tx",
+  "filename": "harris-tx-parcels.parquet",
+  "pmtilesFilename": "harris-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-06-18-landacres",
+  "devOnly": true,
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Municipal Jurisdiction",
+      "primary": "Houston",
+      "defaultMode": "primaryOnly",
+      "overlayUrl": "houston-jurisdiction-overlay.geojson"
+    },
+    {
+      "field": "council_district",
+      "label": "City Council District",
+      "defaultMode": "all",
+      "overlayUrl": "houston-council_district-overlay.geojson"
+    },
+    {
+      "field": "super_neighborhood",
+      "label": "Super Neighborhood",
+      "defaultMode": "all",
+      "overlayUrl": "houston-super_neighborhood-overlay.geojson"
+    },
+    {
+      "field": "civic_club",
+      "label": "Civic Club",
+      "defaultMode": "all",
+      "overlayUrl": "houston-civic_club-overlay.geojson"
+    }
+  ],
+  "coords": [
+    -95.3698,
+    29.7604
+  ]
+}

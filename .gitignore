@@ -1,0 +1,49 @@
+!docs/
+!docs/parcel-parquet-format.md
+!data/prompts/**/*.md
+!data/prompts/*.md
+!data/README.md
+data/jurisidictions/cache/
+cache/
+data/jurisidictions/data
+data/__pycache__/
+node_modules/
+viz/dist/
+.env
+.env.*
+!.env.example
+data/.venv/*
+*checkpoint.ipynb
+
+# Analytics outputs
+analytics/exports/
+analytics/dashboard.html
+data/.venv/*
+data/jurisidictions/.ipynb_checkpoints/*
+.claude/settings.local.json
+data/parking/*
+
+*.parquet
+data/scripts/__pycache__/
+*.kml
+
+# Tiles, mesh exports & other large binary blobs — never commit (served from blob storage /
+# generated locally). Small text sidecars like *-metadata.json stay tracked.
+*.pmtiles
+*.mbtiles
+*.stl
+
+# Local diagnostic/scratch scripts (underscore-prefixed) in data root
+data/_*
+
+# Python bytecode cache (anywhere)
+__pycache__/
+
+research/2412.13179v1.pdf
+
+data/jurisidictions/copenhagen-vurdst-access-email.md
+.npm-cache/
+
+# macOS folder junk + Vite dep cache — never commit
+.DS_Store
+.vite/

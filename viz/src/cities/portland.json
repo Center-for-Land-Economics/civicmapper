@@ -1,0 +1,16 @@
+{
+  "displayName": "Portland",
+  "state": "or",
+  "filename": "portland-or-parcels.parquet",
+  "pmtilesFilename": "portland-or-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "hideRemnants": true,
+  "parkingFilename": "portland-or-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -122.6784,
+    45.5152
+  ]
+}

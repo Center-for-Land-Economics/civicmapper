@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "The DMV is ONE city stitched from many independent jurisdictions across 3 states. Each parcel carries a `jurisdiction` column (set directly in run_dmv.py), driving a Houston-style region toggle that switches by jurisdiction. Value-bearing jurisdictions with open assessed land/improvement data: DC (Owner Polygons), Montgomery + Prince George's (MD SDAT statewide MD_ParcelBoundaries), Fairfax County, Arlington County, City of Fairfax. (Alexandria, Falls Church, Loudoun, Prince William withhold dollar values from open GIS — pending a CAMA extract.) Local-dev only: never listed in the picker, and on any deployed host (prod OR the dev deployment) `?city=dmv` falls back to the default. Reachable only on localhost. Region toggle switches by jurisdiction (city/county), like Houston's Municipal Jurisdiction group. The `jurisdiction` column is in H3_CATEGORICAL_FIELDS so the bake emits metadata.groups. WMATA Metrorail overlay (lines colored by route + station markers), toggled on the map."
+  ],
+  "displayName": "DC · Maryland · Virginia",
+  "state": "dc",
+  "filename": "dmv-dc-parcels.parquet",
+  "pmtilesFilename": "dmv-dc-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-06-initial",
+  "hideRemnants": true,
+  "devOnly": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Jurisdiction",
+      "defaultMode": "all",
+      "overlayUrl": "dmv-jurisdiction-overlay.geojson"
+    }
+  ],
+  "transitOverlay": {
+    "lines": "dmv-metro-lines.geojson",
+    "stations": "dmv-metro-stations.geojson",
+    "label": "Metro"
+  },
+  "coords": [
+    -77.0369,
+    38.9072
+  ]
+}

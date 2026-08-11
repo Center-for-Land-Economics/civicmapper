@@ -1,0 +1,173 @@
+name: Promote City To Prod
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: "City key to promote (e.g. cleveland)"
+        required: true
+        type: string
+      overwrite:
+        description: "Overwrite existing prod blobs"
+        required: true
+        default: true
+        type: boolean
+      include_pmtiles:
+        description: "Promote PMTiles and PMTiles metadata when present"
+        required: true
+        default: true
+        type: boolean
+      include_parking:
+        description: "Promote parking parquet and metadata when present"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  promote:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install azure-storage-blob --quiet
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve city artifact names
+        env:
+          CITY: ${{ inputs.city }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path.cwd()))
+          from data.parquet_registry import resolve_city
+
+          meta = resolve_city(os.environ["CITY"])
+          print(f"PARQUET_BLOB={meta.canonical_filename}")
+          print(f"PMTILES_BLOB={meta.canonical_filename.replace('.parquet', '.pmtiles')}")
+          print(f"PMTILES_METADATA_BLOB={meta.canonical_filename.replace('.parquet', '-metadata.json')}")
+          print(f"PARKING_BLOB=parking/{meta.parking_filename}")
+          print(f"PARKING_METADATA_BLOB=parking/{meta.parking_metadata_filename}")
+          PY
+
+      - name: Promote selected city artifacts to prod
+        env:
+          STORAGE_ACCOUNT: landeconomics
+          DEV_CONTAINER: parquets-dev
+          PROD_CONTAINER: parquets-prod
+          OVERWRITE: ${{ inputs.overwrite }}
+          INCLUDE_PMTILES: ${{ inputs.include_pmtiles }}
+          INCLUDE_PARKING: ${{ inputs.include_parking }}
+        run: |
+          set -euo pipefail
+
+          promote_blob() {
+            local src_blob="$1"
+            local dst_blob="$2"
+            local required="${3:-false}"
+
+            local src_exists
+            src_exists=$(az storage blob exists \
+              --account-name "$STORAGE_ACCOUNT" \
+              --container-name "$DEV_CONTAINER" \
+              --name "$src_blob" \
+              --auth-mode login \
+              --query exists -o tsv)
+
+            if [[ "$src_exists" != "true" ]]; then
+              if [[ "$required" == "true" ]]; then
+                echo "Required dev blob not found: ${DEV_CONTAINER}/${src_blob}" >&2
+                exit 1
+              fi
+              echo "Skipping missing dev blob: ${DEV_CONTAINER}/${src_blob}"
+              return
+            fi
+
+            if [[ "$OVERWRITE" == "true" ]]; then
+              local dst_exists
+              dst_exists=$(az storage blob exists \
+                --account-name "$STORAGE_ACCOUNT" \
+                --container-name "$PROD_CONTAINER" \
+                --name "$dst_blob" \
+                --auth-mode login \
+                --query exists -o tsv)
+              if [[ "$dst_exists" == "true" ]]; then
+                az storage blob delete \
+                  --account-name "$STORAGE_ACCOUNT" \
+                  --container-name "$PROD_CONTAINER" \
+                  --name "$dst_blob" \
+                  --auth-mode login \
+                  --only-show-errors
+              fi
+            fi
+
+            echo "Promoting ${DEV_CONTAINER}/${src_blob} -> ${PROD_CONTAINER}/${dst_blob}"
+            az storage blob copy start \
+              --account-name "$STORAGE_ACCOUNT" \
+              --destination-container "$PROD_CONTAINER" \
+              --destination-blob "$dst_blob" \
+              --source-account-name "$STORAGE_ACCOUNT" \
+              --source-container "$DEV_CONTAINER" \
+              --source-blob "$src_blob" \
+              --auth-mode login \
+              --only-show-errors 1>/dev/null
+
+            local status="pending"
+            local attempts=0
+            until [[ "$status" == "success" ]]; do
+              attempts=$((attempts + 1))
+              if [[ "$attempts" -gt 300 ]]; then
+                echo "Timed out waiting for copy of ${dst_blob}" >&2
+                exit 1
+              fi
+              sleep 1
+              status=$(az storage blob show \
+                --account-name "$STORAGE_ACCOUNT" \
+                --container-name "$PROD_CONTAINER" \
+                --name "$dst_blob" \
+                --auth-mode login \
+                --query "properties.copy.status" -o tsv)
+              if [[ "$status" == "failed" || "$status" == "aborted" ]]; then
+                az storage blob show \
+                  --account-name "$STORAGE_ACCOUNT" \
+                  --container-name "$PROD_CONTAINER" \
+                  --name "$dst_blob" \
+                  --auth-mode login \
+                  --query "properties.copy" -o json
+                exit 1
+              fi
+            done
+          }
+
+          promote_blob "$PARQUET_BLOB" "$PARQUET_BLOB" true
+
+          if [[ "$INCLUDE_PMTILES" == "true" ]]; then
+            promote_blob "$PMTILES_BLOB" "$PMTILES_BLOB" false
+            promote_blob "$PMTILES_METADATA_BLOB" "$PMTILES_METADATA_BLOB" false
+          fi
+
+          if [[ "$INCLUDE_PARKING" == "true" ]]; then
+            promote_blob "$PARKING_BLOB" "$PARKING_BLOB" false
+            promote_blob "$PARKING_METADATA_BLOB" "$PARKING_METADATA_BLOB" false
+          fi

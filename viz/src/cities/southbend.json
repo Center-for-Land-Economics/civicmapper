@@ -1,0 +1,13 @@
+{
+  "displayName": "South Bend",
+  "state": "in",
+  "filename": "southbend-in-parcels.parquet",
+  "parkingFilename": "southbend-in-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-classifier",
+  "devCategoryField": "property_category_refined",
+  "origCategoryField": "PROPERTY_CATEGORY",
+  "coords": [
+    -86.252,
+    41.6764
+  ]
+}

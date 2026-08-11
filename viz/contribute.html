@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contribute a City - Civic Mapper</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg">
+  <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="/src/design-system.css">
+  <link rel="stylesheet" href="/src/components.css">
+  <style>
+    body { margin: 0; background: var(--color-gray-50); }
+
+    /* Header */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,0.97); backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: var(--shadow-sm);
+    }
+    .header-content {
+      max-width: 960px; margin: 0 auto;
+      padding: var(--space-4) var(--space-6);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo-link {
+      display: flex; align-items: center; gap: var(--space-3);
+      text-decoration: none; color: var(--text-primary);
+      font-weight: var(--font-semibold); font-size: var(--text-lg);
+    }
+    .logo-link img { height: 28px; }
+
+    /* Progress */
+    .progress-bar {
+      max-width: 960px; margin: var(--space-6) auto var(--space-2);
+      padding: 0 var(--space-6);
+      display: flex; align-items: center; gap: var(--space-3);
+    }
+    .progress-dots { display: flex; gap: var(--space-2); align-items: center; }
+    .progress-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: var(--text-sm); font-weight: var(--font-semibold);
+      border: 2px solid var(--border-default);
+      background: white; color: var(--text-tertiary);
+      transition: all 0.2s;
+    }
+    .progress-dot.active { background: var(--color-primary-600); color: white; border-color: var(--color-primary-600); }
+    .progress-dot.done { background: var(--color-primary-100); color: var(--color-primary-700); border-color: var(--color-primary-300); }
+    .progress-line { flex: 1; height: 2px; background: var(--border-default); border-radius: 1px; }
+    .step-label { font-size: var(--text-sm); color: var(--text-secondary); margin-left: auto; white-space: nowrap; }
+
+    /* Card */
+    .form-card {
+      max-width: 760px; margin: var(--space-4) auto var(--space-16);
+      padding: 0 var(--space-6);
+    }
+    .card {
+      background: white; border: 1px solid var(--border-default);
+      border-radius: var(--radius-2xl); padding: var(--space-8);
+      box-shadow: var(--shadow-sm);
+    }
+    .card h2 { margin: 0 0 var(--space-2); font-size: var(--text-2xl); color: var(--text-primary); }
+    .card .step-desc { margin: 0 0 var(--space-6); color: var(--text-secondary); line-height: var(--line-relaxed); }
+
+    /* Form */
+    .form-group { margin-bottom: var(--space-5); }
+    .form-group label {
+      display: block; font-weight: var(--font-medium);
+      margin-bottom: var(--space-2); color: var(--text-primary);
+      font-size: var(--text-sm);
+    }
+    .form-group label .optional {
+      font-weight: var(--font-normal); color: var(--text-tertiary); font-size: 0.85em;
+    }
+    .form-group input[type=text],
+    .form-group input[type=url],
+    .form-group input[type=number],
+    .form-group select,
+    .form-group textarea {
+      width: 100%; box-sizing: border-box;
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+      font-size: var(--text-base); font-family: inherit;
+      background: white; color: var(--text-primary);
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--color-primary-400);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+    }
+    .form-group textarea { min-height: 100px; resize: vertical; }
+    .form-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+    .form-check {
+      display: flex; align-items: center; gap: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+    .form-check input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+    .form-check label { font-size: var(--text-sm); color: var(--text-primary); cursor: pointer; margin: 0; }
+
+    /* Section divider */
+    .section-divider {
+      border: none; border-top: 1px solid var(--border-default);
+      margin: var(--space-6) 0;
+    }
+    .section-label {
+      font-size: var(--text-xs); font-weight: var(--font-semibold);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-tertiary); margin-bottom: var(--space-4);
+    }
+
+    /* Probe */
+    .probe-row { display: flex; gap: var(--space-3); align-items: flex-end; }
+    .probe-row .form-group { flex: 1; margin-bottom: 0; }
+    .status-msg {
+      margin-top: var(--space-2); font-size: var(--text-sm); padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+    }
+    .status-msg.info { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .status-msg.success { background: #f0fdf4; color: #166534; }
+    .status-msg.error { background: #fef2f2; color: #991b1b; }
+
+    /* Navigation */
+    .form-nav {
+      display: flex; gap: var(--space-3); justify-content: space-between;
+      margin-top: var(--space-8); padding-top: var(--space-6);
+      border-top: 1px solid var(--border-default);
+    }
+
+    /* Review step */
+    .review-box {
+      background: var(--color-gray-50); border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl); padding: var(--space-4);
+      margin-bottom: var(--space-5);
+    }
+    .review-box h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
+    .filepath-pill {
+      display: inline-block; padding: var(--space-1) var(--space-3);
+      background: var(--color-primary-50); color: var(--color-primary-700);
+      border-radius: var(--radius-full); font-family: monospace; font-size: var(--text-sm);
+      border: 1px solid var(--color-primary-200);
+    }
+    pre#preview-markdown {
+      max-height: 320px; overflow-y: auto;
+      background: var(--color-gray-900); color: #e2e8f0;
+      border-radius: var(--radius-xl); padding: var(--space-5);
+      font-size: var(--text-xs); line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .submit-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+    .note-box {
+      background: #fffbeb; border: 1px solid #fcd34d;
+      border-radius: var(--radius-lg); padding: var(--space-4);
+      font-size: var(--text-sm); color: #92400e;
+      margin-top: var(--space-4);
+    }
+    #gh-prefill-note { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <a href="/index.html" class="logo-link">
+        <img src="/logo.svg" alt="Civic Mapper">
+        <span>Civic Mapper</span>
+      </a>
+      <a href="/cities.html" class="btn btn-ghost btn-sm">← Cities</a>
+    </div>
+  </header>
+
+  <!-- Progress bar -->
+  <div class="progress-bar">
+    <div class="progress-dots">
+      <div class="progress-dot" id="progress-1">1</div>
+      <div class="progress-line"></div>
+      <div class="progress-dot" id="progress-2">2</div>
+      <div class="progress-line"></div>
+      <div class="progress-dot" id="progress-3">3</div>
+      <div class="progress-line"></div>
+      <div class="progress-dot" id="progress-4">4</div>
+      <div class="progress-line"></div>
+      <div class="progress-dot" id="progress-5">5</div>
+    </div>
+    <span class="step-label" id="step-label">Step 1 of 5</span>
+  </div>
+
+  <!-- Form card -->
+  <main class="form-card">
+
+    <!-- Step 1: City Identity -->
+    <div id="step-1" class="card">
+      <h2>City Identity</h2>
+      <p class="step-desc">
+        Tell us about the city you want to add. The city key is a short, lowercase identifier used
+        in URLs and filenames — it's auto-derived from the display name, but you can edit it.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-display-name">City display name</label>
+          <input type="text" id="f-display-name" placeholder="e.g. Portland" autocomplete="off">
+          <p class="form-hint">The full name shown on the cities page (no state suffix needed here).</p>
+        </div>
+        <div class="form-group">
+          <label for="f-state-code">State code</label>
+          <input type="text" id="f-state-code" placeholder="e.g. or" maxlength="2" autocomplete="off"
+                 style="text-transform: lowercase;">
+          <p class="form-hint">2-letter lowercase state abbreviation.</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-city-key">City key</label>
+        <input type="text" id="f-city-key" placeholder="e.g. portland" autocomplete="off"
+               pattern="[a-z0-9]+" title="Lowercase letters and numbers only">
+        <p class="form-hint">
+          Lowercase, no spaces or special characters. Used in the URL (<code>app.html?city=portland</code>)
+          and as the filename prefix. Must be unique across all cities.
+        </p>
+      </div>
+
+      <div class="form-nav">
+        <button class="btn btn-ghost btn-sm" id="btn-reset" type="button">Reset form</button>
+        <button class="btn btn-primary" id="btn-next-1" type="button">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Data Source -->
+    <div id="step-2" class="card" style="display:none">
+      <h2>Data Source</h2>
+      <p class="step-desc">
+        Paste your ArcGIS FeatureServer URL and click <strong>Probe</strong> to auto-discover the schema.
+        If CORS is blocked, fill in the fields manually.
+      </p>
+
+      <div class="probe-row">
+        <div class="form-group">
+          <label for="f-source-url">Source URL</label>
+          <input type="url" id="f-source-url" placeholder="https://services.arcgis.com/…/FeatureServer/0">
+        </div>
+        <button class="btn btn-secondary" id="btn-probe" type="button" style="margin-bottom: 0; white-space: nowrap;">
+          🔍 Probe
+        </button>
+      </div>
+      <div class="status-msg" id="probe-status" style="display:none"></div>
+
+      <hr class="section-divider">
+      <div class="section-label">Source details</div>
+
+      <div class="form-group">
+        <label for="f-source-type">Source type description</label>
+        <input type="text" id="f-source-type" value="ArcGIS FeatureServer"
+               placeholder="e.g. ArcGIS FeatureServer — Hamilton County CAGIS">
+      </div>
+
+      <div class="form-group">
+        <label for="f-layer-path">Layer / path description</label>
+        <input type="text" id="f-layer-path" placeholder="e.g. Layer 12 — Hamilton_County_Parcel_Polygons">
+        <p class="form-hint">Auto-filled if the probe succeeds.</p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-authentication">Authentication</label>
+          <select id="f-authentication">
+            <option>None</option>
+            <option>API Key</option>
+            <option>Requires login</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-geometry-included">Geometry included?</label>
+          <select id="f-geometry-included">
+            <option value="Yes">Yes — parcel polygons in same layer</option>
+            <option value="No — separate centroid layer">No — separate centroid layer</option>
+            <option value="No — geometry must be joined">No — geometry must be joined</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-update-frequency">Update frequency</label>
+          <select id="f-update-frequency">
+            <option>Annual</option>
+            <option>Quarterly</option>
+            <option>Monthly</option>
+            <option>As needed</option>
+            <option>Unknown</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-data-vintage">Data vintage (year)</label>
+          <input type="text" id="f-data-vintage" placeholder="2024" maxlength="4">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-source-crs">CRS of source <span class="optional">(auto-filled)</span></label>
+        <input type="text" id="f-source-crs" placeholder="e.g. EPSG:3435 (Illinois State Plane)">
+        <p class="form-hint">Auto-filled from ArcGIS probe. If unknown, check the layer's documentation.</p>
+      </div>
+
+      <div class="form-nav">
+        <button class="btn btn-ghost" id="btn-prev-2" type="button">← Back</button>
+        <button class="btn btn-primary" id="btn-next-2" type="button">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Field Mapping & Geographic Scope -->
+    <div id="step-3" class="card" style="display:none">
+      <h2>Field Mapping & Scope</h2>
+      <p class="step-desc">
+        Map the source fields to CivicMapper's canonical schema. If you ran the ArcGIS probe,
+        fields are pre-suggested — verify and adjust as needed.
+      </p>
+
+      <div class="section-label">Field mapping</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-parcel-id-field">Parcel ID field <span class="optional">(optional)</span></label>
+          <input type="text" id="f-parcel-id-field" list="dl-parcel" placeholder="e.g. PARCELID">
+          <datalist id="dl-parcel"></datalist>
+        </div>
+        <div class="form-group">
+          <label for="f-land-use-field">Land use category field</label>
+          <input type="text" id="f-land-use-field" list="dl-lu" placeholder="e.g. CLASS" required>
+          <datalist id="dl-lu"></datalist>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-land-value-field">Land value field</label>
+          <input type="text" id="f-land-value-field" list="dl-value" placeholder="e.g. MKTLND" required>
+          <datalist id="dl-value"></datalist>
+        </div>
+        <div class="form-group">
+          <label for="f-improvement-value-field">Improvement value field <span class="optional">(optional)</span></label>
+          <input type="text" id="f-improvement-value-field" list="dl-impr" placeholder="e.g. MKTIMP">
+          <datalist id="dl-impr"></datalist>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-owner-name-field">Owner name field <span class="optional">(optional)</span></label>
+        <input type="text" id="f-owner-name-field" list="dl-owner" placeholder="e.g. OWNER_NAME — leave blank if not used">
+        <datalist id="dl-owner"></datalist>
+        <p class="form-hint">Used for owner-name-based exemption detection.</p>
+      </div>
+
+      <hr class="section-divider">
+      <div class="section-label">Geographic scope</div>
+
+      <div class="form-group">
+        <label for="f-source-coverage">Source coverage</label>
+        <select id="f-source-coverage">
+          <option value="City-only">City-only (source already covers just this city)</option>
+          <option value="County-wide — clip required">County-wide — spatial clip to city boundary required</option>
+          <option value="State-wide — clip required">State-wide — clip required</option>
+        </select>
+      </div>
+
+      <div id="clip-fields" style="display:none">
+        <div class="form-group">
+          <label for="f-clip-method">Clip method</label>
+          <select id="f-clip-method">
+            <option>Spatial clip to city boundary</option>
+            <option>Filter by municipal name field</option>
+            <option>Filter by FIPS or jurisdiction code</option>
+            <option>Custom — describe in notes</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-filter-field">Filter field & value <span class="optional">(if applicable)</span></label>
+          <input type="text" id="f-filter-field" placeholder='e.g. CITY_NAME = "Portland"'>
+        </div>
+        <div class="form-group">
+          <label for="f-boundary-source">Boundary source <span class="optional">(for spatial clip)</span></label>
+          <input type="text" id="f-boundary-source"
+                 placeholder='e.g. osmnx.geocode_to_gdf("Portland, Oregon")'>
+          <p class="form-hint">Leave blank to use the default OSM-derived boundary.</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="f-geography-notes">Geography notes <span class="optional">(optional)</span></label>
+        <textarea id="f-geography-notes" rows="3"
+          placeholder="Describe any edge cases — e.g. enclaves, county islands, or boundary precision issues."></textarea>
+      </div>
+
+      <hr class="section-divider">
+      <div class="section-label">Assessor link <span class="optional">(optional)</span></div>
+
+      <div class="form-check">
+        <input type="checkbox" id="f-assessor-link-available">
+        <label for="f-assessor-link-available">This city has a public per-parcel assessor link</label>
+      </div>
+
+      <div id="assessor-link-fields" style="display:none">
+        <div class="form-group">
+          <label for="f-assessor-link-pattern">URL pattern</label>
+          <input type="text" id="f-assessor-link-pattern"
+                 placeholder="e.g. https://example.gov/parcel/{PARCELID}/summary">
+          <p class="form-hint">Use the field name in curly braces as a placeholder.</p>
+        </div>
+        <div class="form-group">
+          <label for="f-assessor-link-id-field">ID field used in URL</label>
+          <input type="text" id="f-assessor-link-id-field" placeholder="e.g. AUDPCLID">
+        </div>
+      </div>
+
+      <div class="form-nav">
+        <button class="btn btn-ghost" id="btn-prev-3" type="button">← Back</button>
+        <button class="btn btn-primary" id="btn-next-3" type="button">Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Scale & Extras -->
+    <div id="step-4" class="card" style="display:none">
+      <h2>Scale & Additional Options</h2>
+      <p class="step-desc">
+        Help us understand the city's scale and configure optional features.
+      </p>
+
+      <div class="form-group">
+        <label for="f-approx-parcel-count">Approximate parcel count</label>
+        <input type="text" id="f-approx-parcel-count" placeholder="e.g. ~85,000">
+        <p class="form-hint">
+          After any spatial clip and condo collapse. Used to determine if PMTiles rendering is needed.
+          Cities over ~100,000 parcels benefit from PMTiles.
+        </p>
+      </div>
+
+      <div class="form-check" style="margin-bottom: var(--space-4);">
+        <input type="checkbox" id="f-pmtiles-recommended">
+        <label for="f-pmtiles-recommended">Recommend PMTiles rendering (for cities with 100,000+ parcels)</label>
+      </div>
+
+      <div class="form-check" style="margin-bottom: var(--space-5);">
+        <input type="checkbox" id="f-include-parking">
+        <label for="f-include-parking">Include parking lot dataset</label>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="form-group">
+        <label for="f-contributor-notes">Contributor notes <span class="optional">(optional)</span></label>
+        <textarea id="f-contributor-notes" rows="4"
+          placeholder="Any additional context for reviewers — known data quirks, boundary issues, or implementation tips."></textarea>
+      </div>
+
+      <div class="form-nav">
+        <button class="btn btn-ghost" id="btn-prev-4" type="button">← Back</button>
+        <button class="btn btn-primary" id="btn-next-4" type="button">Preview & Submit →</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Review & Submit -->
+    <div id="step-5" class="card" style="display:none">
+      <h2>Review & Submit</h2>
+      <p class="step-desc">
+        Here's the generated city proposal. Use the button to open a pre-filled
+        GitHub issue on the Civic Mapper repository, or download the markdown
+        and paste it into a new issue yourself.
+      </p>
+
+      <div class="review-box">
+        <h3 style="margin-bottom: var(--space-1);">City</h3>
+        <strong id="review-city"></strong>
+      </div>
+
+      <div class="form-group" style="margin-bottom: var(--space-3);">
+        <label>Generated markdown</label>
+        <pre id="preview-markdown"></pre>
+        <p class="form-hint">
+          Sections 6–13 contain placeholders — you'll need to fill in the full category mapping,
+          condo/duplicate handling, and exemption logic when you edit the file.
+        </p>
+      </div>
+
+      <div class="submit-actions">
+        <button class="btn btn-primary" id="btn-github" type="button">
+          🐙 Open GitHub Issue
+        </button>
+        <button class="btn btn-secondary" id="btn-download" type="button">
+          ⬇ Download .md file
+        </button>
+      </div>
+
+      <div id="gh-prefill-note" class="note-box">
+        <strong>File downloaded.</strong> The proposal was too large to pre-fill in the GitHub URL.
+        Please paste the downloaded markdown into the blank issue that just opened.
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="note-box" style="background: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-800);">
+        <strong>Next steps after submitting:</strong>
+        <ol style="margin: var(--space-2) 0 0; padding-left: var(--space-5);">
+          <li>Submit the proposal as a <a href="https://github.com/Center-for-Land-Economics/civicmapper/issues/new?labels=city-proposal" target="_blank" rel="noopener">GitHub issue</a> on the Civic Mapper repository.</li>
+          <li>Complete the TODO sections in the proposal (category mapping, condo handling, exemption logic).</li>
+          <li>A maintainer will review the proposal and run the ETL pipeline.</li>
+          <li>After ETL completes, you'll receive a preview URL to verify the data.</li>
+        </ol>
+      </div>
+
+      <div class="form-nav">
+        <button class="btn btn-ghost" id="btn-prev-5" type="button">← Back</button>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module" src="/src/contribute/index.ts"></script>
+</body>
+</html>

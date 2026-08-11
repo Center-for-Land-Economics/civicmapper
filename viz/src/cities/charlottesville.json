@@ -1,0 +1,13 @@
+{
+  "displayName": "Charlottesville",
+  "state": "va",
+  "filename": "charlottesville-va-parcels.parquet",
+  "parkingFilename": "charlottesville-va-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-classifier",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -78.4767,
+    38.0293
+  ]
+}

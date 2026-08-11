@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "Estonian cadastre (Maa-amet). Land value only (maks_hind); no building value. Under ~40k parcels → raw GeoParquet path, no PMTiles. See docs/estonia-cadastre-glossary.md. Region grouping by linnaosa (city district). `district` (= ay_nimi) is a parcel property, so the region list is derived from the loaded parcels (no PMTiles metadata needed). Boundary outlines come from the official Maa-amet EHAK settlement-unit polygons (ehak:asustusyksuste_piirid); the overlay's `name` matches the cadastre district exactly."
+  ],
+  "displayName": "Tallinn",
+  "state": "ee",
+  "displayRegion": "Estonia",
+  "currencySymbol": "€",
+  "unitSystem": "metric",
+  "filename": "tallinn-harju-ee-parcels.parquet",
+  "parkingFilename": "tallinn-harju-ee-parking-lots.parquet",
+  "parkingVersion": "2026-07-06-regions",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "tallin",
+    "estonia"
+  ],
+  "jurisdictionGroups": [
+    {
+      "field": "district",
+      "label": "City District",
+      "defaultMode": "all",
+      "overlayUrl": "tallinn-district-overlay.geojson"
+    }
+  ],
+  "coords": [
+    24.7536,
+    59.437
+  ]
+}

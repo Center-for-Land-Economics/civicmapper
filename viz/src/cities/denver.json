@@ -1,0 +1,15 @@
+{
+  "displayName": "Denver",
+  "state": "co",
+  "filename": "denver-co-parcels.parquet",
+  "pmtilesFilename": "denver-co-parcels.pmtiles",
+  "pmtilesVersion": "2026-07-13-hexprune",
+  "parkingFilename": "denver-co-parking-lots.parquet",
+  "parkingVersion": "2026-06-02-dedup",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -104.9903,
+    39.7392
+  ]
+}

@@ -1,0 +1,318 @@
+name: ETL Promote (Staging → Dev)
+
+# DORMANT: the trigger was a merged city PR in the retired civicmapper-cities
+# intake repo (and the meta step still reads the proposal file from it via
+# GH_CITIES_PAT). City proposals are now GitHub issues on this repo; this
+# pipeline needs an issue-based rework before it runs again.
+# Promotes staging artifacts to live dev and opens a code PR.
+
+on:
+  repository_dispatch:
+    types: [promote-city]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    # CLE-specific deploy/ops job — skips automatically on forks.
+    if: github.repository_owner == 'Center-for-Land-Economics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout geovizwiz-sb
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install azure-storage-blob geopandas pyarrow --quiet
+
+      - name: Resolve city metadata from civicmapper-cities
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GH_CITIES_PAT }}
+          CITY_FILES: ${{ toJson(github.event.client_payload.city_files) }}
+          PR_REPO: ${{ github.event.client_payload.pr_repo }}
+          MERGED_SHA: ${{ github.event.client_payload.merged_sha }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, re, subprocess, sys
+
+          city_files = json.loads(os.environ["CITY_FILES"])
+          pr_repo = os.environ["PR_REPO"]
+          merged_sha = os.environ["MERGED_SHA"]
+          gh_token = os.environ["GH_TOKEN"]
+
+          if not city_files:
+              print("❌ No city files in payload")
+              sys.exit(1)
+
+          # Fetch file content from civicmapper-cities at merged SHA
+          file_path = city_files[0]
+          url = f"https://api.github.com/repos/{pr_repo}/contents/{file_path}?ref={merged_sha}"
+          import urllib.request
+          req = urllib.request.Request(url, headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github+json"})
+          resp = urllib.request.urlopen(req)
+          data = json.loads(resp.read())
+          import base64
+          content = base64.b64decode(data["content"]).decode("utf-8")
+
+          # Write to disk for downstream steps
+          with open("/tmp/city.md", "w") as f:
+              f.write(content)
+
+          # Extract city_key and state
+          city_key_m = re.search(r'\*\*City key\*\*\s*\|\s*`([^`]+)`', content)
+          state_m = re.search(r'\*\*State code\*\*\s*\|\s*`([^`]+)`', content)
+          display_m = re.search(r'\*\*Display name\*\*\s*\|\s*`?([^`|\n]+)`?', content)
+
+          city_key = city_key_m.group(1).strip() if city_key_m else ""
+          state = state_m.group(1).strip() if state_m else ""
+          display = display_m.group(1).strip().strip("`") if display_m else city_key
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              gh.write(f"city_key={city_key}\n")
+              gh.write(f"state={state}\n")
+              gh.write(f"display_name={display}\n")
+              gh.write(f"city_file=/tmp/city.md\n")
+
+          print(f"City: {display} ({city_key}-{state})")
+          PYEOF
+
+      - name: Find staging manifest for this PR
+        id: staging
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          PR_NUMBER: ${{ github.event.client_payload.pr_number }}
+          CITY_KEY: ${{ steps.meta.outputs.city_key }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, json
+          from azure.storage.blob import BlobServiceClient
+
+          conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+          pr_number = int(os.environ["PR_NUMBER"])
+          city_key = os.environ["CITY_KEY"]
+
+          blob_service = BlobServiceClient.from_connection_string(conn_str)
+          container = blob_service.get_container_client("parquets-dev")
+
+          # Find all staging manifests and pick the one for this city/PR
+          best_manifest = None
+          best_created = None
+
+          for blob in container.list_blobs(name_starts_with="staging/"):
+              if not blob.name.endswith("/_manifest.json"):
+                  continue
+              try:
+                  data = container.get_blob_client(blob.name).download_blob().readall()
+                  m = json.loads(data)
+                  if m.get("city_key") == city_key and m.get("pr_number") == pr_number:
+                      if best_created is None or blob.last_modified > best_created:
+                          best_manifest = m
+                          best_created = blob.last_modified
+              except Exception as e:
+                  print(f"Warning: could not read {blob.name}: {e}")
+
+          if not best_manifest:
+              print(f"❌ No staging manifest found for city_key={city_key}, pr_number={pr_number}")
+              import sys; sys.exit(1)
+
+          manifest_path = "/tmp/staging_manifest.json"
+          with open(manifest_path, "w") as f:
+              json.dump(best_manifest, f, indent=2)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              gh.write(f"staging_id={best_manifest['staging_id']}\n")
+              gh.write(f"manifest_path={manifest_path}\n")
+              gh.write(f"has_pmtiles={str(best_manifest.get('has_pmtiles', False)).lower()}\n")
+              gh.write(f"has_parking={str(best_manifest.get('has_parking', False)).lower()}\n")
+              gh.write(f"has_etl_script={str(best_manifest.get('has_etl_script', False)).lower()}\n")
+
+          print(f"Found staging slot: {best_manifest['staging_id']}")
+          PYEOF
+
+      # ── Download ETL script BEFORE promotion deletes the staging slot ──────────
+      - name: Download ETL script from staging
+        id: etl_script
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          python3 - <<'PYEOF'
+          import os
+          from azure.storage.blob import BlobServiceClient
+
+          conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+          staging_id = "${{ steps.staging.outputs.staging_id }}"
+
+          blob_service = BlobServiceClient.from_connection_string(conn_str)
+          container = blob_service.get_container_client("parquets-dev")
+
+          etl_blob = f"staging/{staging_id}/generated_etl.py"
+          etl_script_path = ""
+          try:
+              data = container.get_blob_client(etl_blob).download_blob().readall()
+              etl_script_path = "/tmp/generated_etl.py"
+              with open(etl_script_path, "wb") as f:
+                  f.write(data)
+              print(f"✅ Downloaded ETL script ({len(data):,} bytes)")
+          except Exception as e:
+              print(f"⚠️  ETL script not found in staging (old run or pre-existing city): {e}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              gh.write(f"etl_script_path={etl_script_path}\n")
+          PYEOF
+
+      - name: Promote staging to dev
+        id: promote
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          python data/scripts/promote_staging.py \
+            --staging-id "${{ steps.staging.outputs.staging_id }}" \
+            --city-key "${{ steps.meta.outputs.city_key }}" \
+            --state "${{ steps.meta.outputs.state }}" \
+            --output-json /tmp/promote_result.json
+
+      - name: Generate frontend patch files
+        id: patches
+        run: |
+          python data/scripts/generate_frontend_files.py \
+            --city-file "${{ steps.meta.outputs.city_file }}" \
+            --staging-manifest "${{ steps.staging.outputs.manifest_path }}" \
+            --output-dir /tmp/frontend-patches
+
+      - name: Apply patches and commit to a new branch
+        id: branch
+        env:
+          GIT_AUTHOR_NAME: civicmapper-bot
+          GIT_AUTHOR_EMAIL: bot@civicmapper.org
+          GIT_COMMITTER_NAME: civicmapper-bot
+          GIT_COMMITTER_EMAIL: bot@civicmapper.org
+        run: |
+          CITY_KEY="${{ steps.meta.outputs.city_key }}"
+          STATE="${{ steps.meta.outputs.state }}"
+          BRANCH="add-city/${CITY_KEY}-${STATE}-pr${{ github.event.client_payload.pr_number }}"
+
+          git checkout -b "$BRANCH"
+
+          PATCHES_DIR=/tmp/frontend-patches
+
+          # ── City registry: install viz/src/cities/<key>.json + registry entry ──
+          python3 data/scripts/apply_city_patches.py \
+            --city-key "$CITY_KEY" \
+            --state "$STATE" \
+            --patches-dir "$PATCHES_DIR"
+
+          git add "viz/src/cities/${CITY_KEY}.json" \
+                  data/parquet_registry.py || true
+
+          # ── Dictionary JSON ────────────────────────────────────────────────
+          cp "$PATCHES_DIR/dictionaries/${CITY_KEY}.json" "viz/src/dictionaries/${CITY_KEY}.json"
+          git add "viz/src/dictionaries/${CITY_KEY}.json"
+
+          # ── ETL script ─────────────────────────────────────────────────────
+          ETL_SCRIPT_PATH="${{ steps.etl_script.outputs.etl_script_path }}"
+          if [ -n "$ETL_SCRIPT_PATH" ] && [ -f "$ETL_SCRIPT_PATH" ]; then
+            mkdir -p "data/jurisdictions/${STATE}"
+            cp "$ETL_SCRIPT_PATH" "data/jurisdictions/${STATE}/${CITY_KEY}.py"
+            git add "data/jurisdictions/${STATE}/${CITY_KEY}.py"
+            echo "✅ Added ETL script: data/jurisdictions/${STATE}/${CITY_KEY}.py"
+          else
+            echo "⚠️  No ETL script found — skipping data/jurisdictions/ entry"
+          fi
+
+          git commit -m "feat: add ${CITY_KEY}-${STATE} city (auto-generated from PR ${{ github.event.client_payload.pr_number }})"
+
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Open code PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cityKey = '${{ steps.meta.outputs.city_key }}';
+            const state = '${{ steps.meta.outputs.state }}';
+            const displayName = '${{ steps.meta.outputs.display_name }}';
+            const citiesPrNumber = ${{ github.event.client_payload.pr_number }};
+            const citiesRepo = '${{ github.event.client_payload.pr_repo }}';
+            const branch = '${{ steps.branch.outputs.branch }}';
+            const stagingId = '${{ steps.staging.outputs.staging_id }}';
+            const hasEtlScript = '${{ steps.staging.outputs.has_etl_script }}' === 'true';
+
+            const changes = [
+              `- \`viz/src/cities/${cityKey}.json\` — new city registry file (auto-discovered, no shared-file edits)`,
+              '- `data/parquet_registry.py` — parquet registry entry',
+              `- \`viz/src/dictionaries/${cityKey}.json\` — data dictionary (starter)`,
+            ];
+            if (hasEtlScript) {
+              changes.push(`- \`data/jurisdictions/${state}/${cityKey}.py\` — generated ETL script`);
+            }
+
+            const checklist = [
+              '- [ ] Verify city card appears correctly on the cities page',
+              '- [ ] Verify map loads at `app.html?city=' + cityKey + '`',
+              '- [ ] Review and expand the data dictionary JSON as needed',
+            ];
+            if (hasEtlScript) {
+              checklist.push(`- [ ] Review ETL script at \`data/jurisdictions/${state}/${cityKey}.py\``);
+            }
+            checklist.push(`- [ ] Staging preview: https://dev.civicmapper.org/app.html?city=staging-${stagingId}`);
+
+            const body = [
+              `## Add ${displayName} (${cityKey}-${state.toUpperCase()})`,
+              '',
+              `Auto-generated from community contribution [${citiesRepo}#${citiesPrNumber}](https://github.com/${citiesRepo}/pull/${citiesPrNumber}).`,
+              '',
+              '### Changes',
+              ...changes,
+              '',
+              '### Review checklist',
+              ...checklist,
+              '',
+              '> Merge this PR to promote the city to production.',
+            ].join('\n');
+
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `feat: add ${displayName} (${cityKey}-${state.toUpperCase()})`,
+              head: branch,
+              base: 'develop',
+              body,
+            });
+
+            console.log(`PR created: ${pr.data.html_url}`);
+
+      - name: Post promotion summary to civicmapper-cities
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_CITIES_PAT }}
+          script: |
+            const [owner, repo] = '${{ github.event.client_payload.pr_repo }}'.split('/');
+            const prNumber = ${{ github.event.client_payload.pr_number }};
+            const cityKey = '${{ steps.meta.outputs.city_key }}';
+            const displayName = '${{ steps.meta.outputs.display_name }}';
+
+            await github.rest.issues.createComment({
+              owner, repo,
+              issue_number: prNumber,
+              body: [
+                `## ✅ Promoted to dev`,
+                '',
+                `**${displayName}** is now live on dev at:`,
+                `https://dev.civicmapper.org/app.html?city=${cityKey}`,
+                '',
+                'A review is underway to wire up the frontend.',
+                'Once that review is complete, the city will be visible on the production cities page.',
+              ].join('\n'),
+            });
