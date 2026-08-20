@@ -1,0 +1,16 @@
+{
+  "displayName": "Lakewood",
+  "state": "co",
+  "filename": "lakewood-co-parcels.parquet",
+  "pmtilesFilename": "lakewood-co-parcels.pmtiles",
+  "pmtilesVersion": "2026-08-20-initial",
+  "parkingFilename": "lakewood-co-parking-lots.parquet",
+  "parkingVersion": "2026-08-20-initial",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "hideRemnants": true,
+  "coords": [
+    -105.0814,
+    39.7047
+  ]
+}

@@ -65,6 +65,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "columbus": "Columbus, Ohio, USA",
     "charlottesville": "Charlottesville, Virginia, USA",
     "pueblo": "Pueblo, Colorado, USA",
+    "lakewood": "Lakewood, Colorado, USA",
     "portland": "Portland, Oregon, USA",
     "houston": "Houston, Texas, USA",
     "austin": "Austin, Texas, USA",
