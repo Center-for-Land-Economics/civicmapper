@@ -14,7 +14,7 @@
   "property_land_use_refined": "Property Category (Refined)",
   "current_tax": "Current Tax",
   "current_tax_per_sqft": "Current tax/land ft²",
-  "land_value": "Land Assessed Value (CAD)",
+  "current_full_land_value": "Land Assessed Value (CAD)",
   "land_value_per_sqft": "Land value/land ft²",
   "improvement_value": "Improvements Assessed Value (CAD)",
   "improvement_value_per_sqft": "Improvements value/land ft²",

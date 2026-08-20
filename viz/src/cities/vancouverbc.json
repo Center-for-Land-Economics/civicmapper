@@ -4,7 +4,8 @@
     "origCategoryField is zoning_classification (BC Assessment's actual-use code is not published in this open extract, so zoning is the best available land-use proxy — it is a legal-use bucket, not true use).",
     "hideUnderutilized is true: the default land-share classifier flags ~95% of parcels as 'Underdeveloped' (vs ~33% in Seattle) because Vancouver land value is famously and genuinely far larger than improvement value even for ordinary single-family homes (median improvement value is only ~12% of land value citywide). That's a real market feature, not a data bug, but it makes the tab non-discriminating, so it's hidden per Greg's call (2026-08-20).",
     "93,409 parcels -> PMTiles + H3 hexes (parquet_to_pmtiles.py), right at the ~100k rule-of-thumb threshold; baked given the city's profile. parcels z12-14, parcels_low (H3) z0-11, parcels_under z1-14 — all three layers verified present.",
-    "Currency is CAD; currencySymbol 'CA$' to distinguish from the USD cities."
+    "Currency is CAD; currencySymbol 'CA$' to distinguish from the USD cities.",
+    "2026-08-20 fix: 3D 'Land Value' height rendered flat (Full Market Value was fine). Cause: main.ts's client-side per-sqft height/color expression (PER_SQFT_SRC) hardcodes the raw source property name for land mode as 'current_full_land_value', not 'land_value' — the ETL originally shipped 'land_value'. Renamed the export column (run_vancouverbc.py + this dictionary key) to match; re-baked with pmtilesVersion bumped."
   ],
   "displayName": "Vancouver",
   "state": "bc",
@@ -13,7 +14,7 @@
   "hideUnderutilized": true,
   "filename": "vancouver-bc-ca-parcels.parquet",
   "pmtilesFilename": "vancouver-bc-parcels.pmtiles",
-  "pmtilesVersion": "2026-08-20-initial",
+  "pmtilesVersion": "2026-08-20-landvaluefix",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [

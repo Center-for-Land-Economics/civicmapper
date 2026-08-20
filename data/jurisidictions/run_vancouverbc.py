@@ -290,7 +290,12 @@ COLUMNS = ["geometry", "exemption_flag", "property_land_use_category", "property
 for c in COLUMNS:
     if c not in ex.columns:
         ex[c] = np.nan
-final = ex[COLUMNS].copy()
+# main.ts's client-side per-sqft height/color expression (PER_SQFT_SRC) hardcodes the raw
+# source field for "Land Value" mode as 'current_full_land_value' — NOT 'land_value' — so
+# the export column must be named exactly that or the 3D height/color renders flat (found
+# 2026-08-20: full_market_value/improvement_value already matched by luck, land_value did
+# not). Same convention run_vancouver.py (WA) uses.
+final = ex[COLUMNS].rename(columns={"land_value": "current_full_land_value"}).copy()
 final["geometry"] = final["geometry"].apply(lambda x: x if x is None or x.is_valid else x.buffer(0))
 final = gpd.GeoDataFrame(final, geometry="geometry", crs=ex.crs)
 if final.crs is None or final.crs.to_epsg() != 4326:
