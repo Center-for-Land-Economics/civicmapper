@@ -37,7 +37,15 @@ import pandas as pd
 from shapely.geometry import box
 import shapely.wkb
 
-OVERTURE_RELEASE = "2026-05-20.0"
+# Overture prunes old releases from S3, so a stale pin makes the surface/structure
+# classification fail outright ("No files found that match the pattern ...") and the
+# parking export silently drops its classification columns. Re-pin when that happens;
+# list live releases with:
+#   curl -s "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/?list-type=2&prefix=release/&delimiter=/"
+# Bumped 2026-08-20 from the pruned 2026-05-20.0 (only 2026-07-22.0 and 2026-08-19.0
+# remained). Cities baked against an earlier release keep their existing parking
+# metadata; only re-runs pick this up.
+OVERTURE_RELEASE = "2026-08-19.0"
 OVERTURE_BUILDINGS = (
     f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/"
     "theme=buildings/type=building/*"

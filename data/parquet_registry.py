@@ -59,6 +59,9 @@ CITY_PARQUETS: dict[str, CityParquet] = {
         city="fortcollins", state="co", legacy_filename="fortcollins-co-parcels.parquet"
     ),
     "pueblo": CityParquet(city="pueblo", state="co", legacy_filename="pueblo-co-parcels.parquet"),
+    "lakewood": CityParquet(
+        city="lakewood", state="co", legacy_filename="lakewood-co-parcels.parquet"
+    ),
     "southbend": CityParquet(city="southbend", state="in", legacy_filename="southbend.parquet"),
     "syracuse": CityParquet(
         city="syracuse",
