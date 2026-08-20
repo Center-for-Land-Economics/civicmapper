@@ -21,7 +21,7 @@ ALL_CITIES = [
     'denver','fortcollins','cincinnati','cleveland','columbus','charlottesville',
     'ibx','stpaul','nyc','baltimore','albuquerque','pueblo','portland','houston',
     'austin','dallas','sanantonio','bcs','detroit','chicago',
-    'tulsa','newportnews','olympia','seattle','vancouver','dmv','washington',
+    'tulsa','newportnews','olympia','seattle','vancouver','vancouverbc','dmv','washington',
     'hartfordmetro',
     'tallinn','copenhagen',
 ]

@@ -1,0 +1,26 @@
+{
+  "_config": {
+    "hasParkingData": false,
+    "usePmtiles": true,
+    "pmtilesUrl": "vancouver-bc-parcels.pmtiles",
+    "pmtilesMetadataUrl": "vancouver-bc-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Zoning Classification (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "current_tax": "Current Tax",
+  "current_tax_per_sqft": "Current tax/land ft²",
+  "land_value": "Land Assessed Value (CAD)",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Assessed Value (CAD)",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "land_area_acres": "Land Area (acres)",
+  "zoning_district": "Zoning District",
+  "legal_type": "Legal Type",
+  "unit_count": "Strata Units on Parcel",
+  "year_built": "Year Built"
+}

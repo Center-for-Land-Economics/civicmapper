@@ -100,6 +100,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "vancouver": CityParquet(
         city="vancouver", state="wa", legacy_filename="vancouver-wa-parcels.parquet"
     ),
+    "vancouverbc": CityParquet(
+        city="vancouver", state="bc", country="ca",
+        legacy_filename="vancouver-bc-ca-parcels.parquet",
+    ),
     "dmv": CityParquet(city="dmv", state="dc", legacy_filename="dmv-dc-parcels.parquet"),
     "washington": CityParquet(
         city="washington", state="dc", legacy_filename="washington-dc-parcels.parquet"
