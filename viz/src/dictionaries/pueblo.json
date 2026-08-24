@@ -21,5 +21,8 @@
   "neighborhood": "Neighborhood",
   "subdivision": "Subdivision",
   "assessor_url": "Assessor URL",
-  "zoning_url": "Zoning Reference"
+  "zoning_url": "Zoning Reference",
+  "land_value_per_sqft": "Land Value per sqft",
+  "improvement_value_per_sqft": "Improvement Value per sqft",
+  "full_market_value_per_sqft": "Total Value per sqft"
 }
