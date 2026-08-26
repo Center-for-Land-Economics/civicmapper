@@ -33,27 +33,78 @@ Jeffco schema notes (probed live 2026-08-20)
 - `PIN` is 'ROW' for road right-of-way (6,033 polygons in Lakewood) and 'WATER'
   for water bodies. These are not assessable parcels and are dropped.
 
-The condo trap (the Fort Collins lesson, present here)
------------------------------------------------------
-Jeffco books condominium value 100% to improvements: class 1230 units have
-`TOTACTVAL == TOTACTIMPV` and NO land component (`ASMASDLND` is null). The
-development's land sits on a separate common-area/association parcel whose
-`TAXCLS` IS BLANK and whose value is $0 -- exactly the parcel a naive exempt or
-"drop rows with no class" filter would delete, leaving 5,394 unit polygons
-stacked on missing land (max observed stack: 75 parcels on one point).
+The condo trap (the Fort Collins lesson, present here) -- THREE regimes
+-----------------------------------------------------------------------
+Jefferson County maps THREE distinct parcel regimes, and they must be told apart
+by whether the account owns ground *in fee*, not by `POLYCAT` (an earlier version
+of this ETL keyed off `POLYCAT in (2,3)` and silently missed regime A entirely).
 
-Because those unit polygons OVERLAP the association polygon, keeping both would
-double-count the city's land area. So we merge each development's units DOWN onto
-its association parcel, linked by the PIN plat root (first three PIN groups, e.g.
-units `39-331-01-0xx` -> association `39-331-01-105`), with a spatial-intersection
-fallback. Improvement values are summed onto the real footprint.
+The reliable discriminator is `LGLSQFT`, the deeded legal area. For ordinary
+fee-simple parcels `LGLSQFT / polygon_area` has a median of 1.001 (verified over
+40,130 parcels), so `LGLSQFT <= 0` means "this account owns no ground in fee".
+
+  regime N  fee-simple            ~40,130  LGLSQFT > 0.  Polygon IS the deeded
+                                           lot. Nothing to do.
+  regime A  attached / townhome    ~6,741  LGLSQFT = 0, `STTSTRC` = 'Townhomes',
+                                           REAL per-unit land value (~$543M
+                                           citywide). Polygon is the BUILDING
+                                           FOOTPRINT only (median 794 sqft); the
+                                           development's ground is a separate HOA
+                                           tract. Because the height field is
+                                           land_value_per_sqft, an unmerged
+                                           townhome with $115k of land on a
+                                           450 sqft footprint extrudes at
+                                           $255/sqft against a true ~$18.
+  regime C  true condominium       ~5,239  LGLSQFT = 0, class 1230/2245/3230,
+                                           land value $0 (see limitation below).
+                                           Unit polygons stacked on one
+                                           footprint.
+
+Both A and C are merged DOWN onto the development's ground tract. Linkage is by
+PIN plat root (first three PIN groups, e.g. units `39-363-06-0xx` -> tract
+`39-363-06-016`) and then by spatial adjacency, which is essential: several
+developments' HOA tracts live in an ADJACENT plat root (root `49-173-03`'s units
+sit on `49-172-06-191`, "SECOND GREEN MOUNTAIN TOWNHOUSE CORP", 18.3 acres).
+
+*** The spatial test MUST be `intersects`, never `within`. *** The tract has each
+unit footprint punched out as an interior ring, so a unit is never geometrically
+`within` its own tract -- `within` matches ZERO units (measured). Holes are closed
+with fill_holes() once the units are merged back in.
+
+Guards that matter (each one is load-bearing; removing any re-breaks the map):
+- A ground tract that has ANY unit on its plat root or adjacent to it is never
+  dropped. The reverse -- dropping tracts that absorbed nothing -- is what
+  deleted 533 acres of townhome ground in the 2026-08-20 build.
+- `LGLSQFT <= 0` alone is NOT sufficient to call something a unit. 383 genuine
+  fee-simple parcels merely lack a recorded `LGLSQFT` (e.g. `39-284-03-031`,
+  Applewood Knolls, a real 1.28-acre lot; a 5.6-acre church). They are excluded
+  by `TOTACR <= 0.10` -- a real lot states its acreage, a unit states ~0 -- plus
+  a footprint cap for anything not stacked. They are additionally protected by
+  the fact that nothing merges unless it links to a ground tract.
+- Most ground tracts have a blank `TAXCLS`, but a handful are coded as vacant
+  land (0xxx) with a nominal value and an association owner -- e.g. Sienna Park's
+  `49-274-16-059`, 2.33 acres, $700, owner "SIENNA TOWNHOMES". Those count as
+  tracts too, or 104 townhomes keep spiking.
+
+Value aggregation, and why it differs from the account dedup below:
+- Regime A/C unit values are GENUINE PER-UNIT ALLOCATIONS, so land and
+  improvement values are SUMMED across a development's units.
+- The `SCH` account dedup does the OPPOSITE (`first`), because there one
+  account's single value is broadcast across its several GIS polygons and
+  summing would inflate it N-fold.
+  These two are easy to confuse. They are not the same operation.
 
 *** KNOWN DATA LIMITATION (surfaced, not silently absorbed) ***
-Condo land value is genuinely absent from the Jeffco feed -- not hidden in
-another field and not recoverable by any join. ~5,200 condo parcels carrying
-~$1.64B of improvements have $0 land value, so Lakewood's citywide land-value
-total UNDERSTATES true land value. We do not impute it. The ETL reports the
-magnitude so it can be cited as a caveat.
+Regime C condo land value is genuinely absent from the Jeffco feed -- not hidden
+in another field and not recoverable by any join. Of 5,800 class-1230 accounts in
+the county pull, exactly ONE carries any land value. We therefore merge regime C
+geometry but leave its land value at $0 rather than imputing one: CivicMapper
+shows assessor data as published, and inventing land value in a public data
+viewer is not acceptable. Those developments render flat/zero-height, which is
+honest, and each carries a `land_value_basis` note explaining why so a viewer is
+not left to conclude the land is worthless. ~5,200 condo parcels carrying ~$1.64B
+of improvements are affected, so Lakewood's citywide land-value total
+UNDERSTATES true land value. The ETL reports the magnitude so it can be cited.
 
 Outputs
 -------
@@ -76,6 +127,7 @@ import requests
 from pyproj import Geod
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
+from shapely.validation import make_valid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from data.parcel_calculations import add_improvement_ratio_fields  # noqa: E402
@@ -111,6 +163,31 @@ NON_PARCEL_PINS = {"ROW", "WATER"}
 # Slivers below this are flagged so the frontend + hex bake can drop them; a real
 # Lakewood lot starts around 2,000 sqft, so 500 is comfortably below any real lot.
 REMNANT_SQFT = 500
+
+# --- unit / ground-tract detection (see "The condo trap" in the module docstring) ---
+# A unit account owns no ground in fee (LGLSQFT <= 0) AND the assessor's own
+# structure type says it is attached housing. `STTSTRC` is the discriminator, not
+# a size heuristic: an earlier attempt gated on TOTACR <= 0.10 acres + a footprint
+# cap and it BOTH swallowed real detached homes on small lots (49-273-10-060, a
+# 0.099-acre single-family lot with $127,500 of land, and two more on Ames Street)
+# AND missed 270 genuine condo units whose stated acreage exceeds the cap (Belmar
+# Plaza units state 0.816 acres each on a shared 35,000 sqft building footprint).
+# Structure type gets both right, because it is what the assessor actually
+# recorded rather than something inferred from geometry.
+UNIT_TOWNHOME_STRUCTURE = "Townhomes"
+# Every condo structure type in the feed: 'Condo, Res: Attached', 'Office/Condo',
+# 'Warehouse/Condo', 'Retail/Condo', 'Condos, Res: Low Rise (1-3)',
+# 'Industrial/Condo'. Matched as a substring so a new variant is picked up.
+UNIT_CONDO_STRUCTURE_PAT = r"Condo"
+# Colorado abstract classes for condominiums, as a backstop where STTSTRC is blank.
+UNIT_CONDO_CLASSES = {"1230", "1212", "1225", "1250", "1240", "2245", "3230"}
+# A ground tract coded as vacant land rather than left blank (the Sienna Park
+# pattern) must be big, essentially valueless, and carry several units on its root.
+TRACT_MIN_SQFT = 5_000
+TRACT_MAX_LAND_VALUE = 10_000
+TRACT_MIN_UNITS_IN_ROOT = 2
+# Spatial-adjacency safety net: only merge a unit into a tract that dwarfs it.
+TRACT_MIN_AREA_RATIO = 3.0
 
 # Safety net for government land miscoded as taxable. The playbook warns that
 # government parcels are frequently miscoded as commercial with zero
@@ -254,6 +331,44 @@ def geodesic_area_sqft(geom) -> float:
     return np.nan
 
 
+def safe_union(geoms):
+    """unary_union that survives the county's self-intersecting polygons.
+
+    A handful of Jeffco tract polygons are topologically invalid, and GEOS raises
+    "side location conflict" when unioning them. Repair with make_valid (buffer(0)
+    as a last resort) and retry, so one bad ring cannot abort the whole merge.
+    """
+    gs = [g for g in geoms if g is not None and not g.is_empty]
+    if not gs:
+        return None
+    try:
+        return unary_union(gs)
+    except Exception:
+        pass
+    repaired = []
+    for g in gs:
+        if g.is_valid:
+            repaired.append(g)
+            continue
+        try:
+            r = make_valid(g)
+        except Exception:
+            r = g.buffer(0)
+        if r is not None and not r.is_empty:
+            # make_valid can emit lines/points from degenerate rings; keep areas only.
+            if r.geom_type in ("GeometryCollection", "MultiLineString", "LineString", "Point"):
+                polys = [p for p in getattr(r, "geoms", []) if p.geom_type in ("Polygon", "MultiPolygon")]
+                r = unary_union(polys) if polys else None
+            if r is not None and not r.is_empty:
+                repaired.append(r)
+    if not repaired:
+        return None
+    try:
+        return unary_union(repaired)
+    except Exception:
+        return unary_union([g.buffer(0) for g in repaired])
+
+
 def fill_holes(geom):
     """Drop interior rings.
 
@@ -304,10 +419,77 @@ def plat_root(pin: pd.Series) -> pd.Series:
     return pin.fillna("").astype(str).str.strip().str.split("-").str[:3].str.join("-")
 
 
-def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Merge stacked condo unit parcels down onto their association parcel.
+def identify_units_and_tracts(gdf: gpd.GeoDataFrame) -> tuple[pd.Series, pd.Series]:
+    """Split the frame into condo/townhome UNITS and their GROUND TRACTS.
 
-    Association parcels (blank TAXCLS, a real PIN, real footprint, $0 value) are
+    Keyed off `LGLSQFT` (deeded legal area), not `POLYCAT`. See the module
+    docstring: `POLYCAT in (2,3)` misses 6,535 of the 6,741 regime-A townhome
+    units, which is what produced the spikes-and-gaps artifact.
+    """
+    tax = gdf["_tax"]
+    pin_ok = (~gdf["_pin"].isin(NON_PARCEL_PINS)) & (gdf["_pin"] != "")
+    lgl = pd.to_numeric(gdf["LGLSQFT"], errors="coerce").fillna(0)
+    land = pd.to_numeric(gdf["TOTACTLNDV"], errors="coerce").fillna(0)
+    area = gdf["_fp_sqft"]
+    strc = gdf["STTSTRC"].fillna("").astype(str).str.strip()
+
+    # No ground held in fee -> this account is a candidate unit...
+    cand = (tax != "") & pin_ok & (lgl <= 0)
+    # ...and the assessor's structure type decides whether it really is one.
+    stacked = gdf["_pt_key"].map(gdf["_pt_key"][cand].value_counts()).fillna(0) > 1
+    is_unit = cand & (
+        strc.eq(UNIT_TOWNHOME_STRUCTURE)
+        | strc.str.contains(UNIT_CONDO_STRUCTURE_PAT, case=False, na=False)
+        | tax.isin(UNIT_CONDO_CLASSES)
+        | (strc.eq("") & stacked)  # unlabelled stubs piled on one footprint
+    )
+
+    units_per_root = gdf.loc[is_unit].groupby("_root")["_pin"].size()
+    root_units = gdf["_root"].map(units_per_root).fillna(0)
+
+    # Ground tracts: normally a blank TAXCLS (captured BEFORE any exempt/blank
+    # filter, per the playbook, so they survive to participate in the merge)...
+    is_tract = (tax == "") & pin_ok
+    # ...but a few are coded as vacant land with a nominal value and an
+    # association owner (Sienna Park's 49-274-16-059: 2.33 ac, $700).
+    is_tract |= (
+        tax.str.startswith("0")
+        & pin_ok
+        & (area > TRACT_MIN_SQFT)
+        & (land <= TRACT_MAX_LAND_VALUE)
+        & (root_units >= TRACT_MIN_UNITS_IN_ROOT)
+    )
+    is_tract &= ~is_unit  # a tract is never also a unit
+    # A PIN is ONE parcel that may be drawn as several polygons. If any of them is
+    # the development's ground, they all are -- otherwise a twin row is left behind
+    # in `others`, and the SCH dedup below (which takes `first`) can discard the
+    # merged development's summed value in favour of the leftover's nominal one.
+    # Measured: without this, PIN 49-124-26-008 lost $563,500.
+    tract_pins = set(gdf.loc[is_tract, "_pin"])
+    is_tract |= gdf["_pin"].isin(tract_pins) & ~is_unit
+
+    print("\n--- unit / ground-tract identification ---")
+    print(f"Candidate no-fee-ground accounts (LGLSQFT<=0, classed): {int(cand.sum()):,}")
+    print(f"  -> units (attached/condo per STTSTRC):               {int(is_unit.sum()):,}")
+    excluded = cand & ~is_unit
+    print(f"  -> excluded as genuine parcels missing LGLSQFT:       {int(excluded.sum()):,} "
+          f"(${land[excluded].sum() / 1e6:,.1f}M land preserved in place)")
+    print("     their structure types: "
+          + ", ".join(f"{k or '(blank)'} {v}" for k, v in
+                      strc[excluded].value_counts().head(5).items()))
+    print(f"Ground tracts captured: {int(is_tract.sum()):,} "
+          f"(blank TAXCLS {int(((tax == '') & pin_ok & ~is_unit).sum()):,}, "
+          f"vacant-coded {int((is_tract & (tax != '')).sum()):,})")
+    old_test = int((gdf["POLYCAT"].isin([2, 3]) & (tax != "")).sum())
+    print(f"[regression guard] the old POLYCAT-based test would have found only "
+          f"{old_test:,} units")
+    return is_unit, is_tract
+
+
+def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Merge condo/townhome unit parcels down onto their ground tract.
+
+    Ground tracts (blank TAXCLS, a real PIN, real footprint, $0 value) are
     captured BEFORE any exempt/blank filtering, per the playbook, so they can
     still participate in the merge.
     """
@@ -315,9 +497,12 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     gdf["_pin"] = gdf["PIN"].fillna("").astype(str).str.strip()
     gdf["_tax"] = gdf["TAXCLS"].fillna("").astype(str).str.strip()
     gdf["_root"] = plat_root(gdf["_pin"])
+    # Projected footprint area + a stacking key, needed by the unit test.
+    gdf["_fp_sqft"] = gdf.to_crs(UTM_EPSG).geometry.area * 10.763910416709722
+    _rp = gdf.geometry.representative_point()
+    gdf["_pt_key"] = _rp.x.round(6).astype(str) + "," + _rp.y.round(6).astype(str)
 
-    is_assoc = (gdf["_tax"] == "") & (~gdf["_pin"].isin(NON_PARCEL_PINS)) & (gdf["_pin"] != "")
-    is_unit = gdf["POLYCAT"].isin([2, 3]) & (gdf["_tax"] != "")
+    is_unit, is_assoc = identify_units_and_tracts(gdf)
 
     assoc = gdf[is_assoc].copy()
     units = gdf[is_unit].copy()
@@ -327,45 +512,62 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # so each association PIN is a single merge target.
     if assoc["_pin"].duplicated().any():
         n_before = len(assoc)
-        geom = assoc.groupby("_pin")["geometry"].apply(
-            lambda gs: unary_union([g for g in gs if g is not None]))
+        geom = assoc.groupby("_pin")["geometry"].apply(safe_union)
         assoc = assoc.drop_duplicates("_pin").set_index("_pin")
         assoc["geometry"] = geom
         assoc = gpd.GeoDataFrame(assoc.reset_index(), geometry="geometry", crs=gdf.crs)
         print(f"Dissolved multi-polygon association plats: {n_before:,} -> {len(assoc):,}")
 
-    print("\n--- condo / common-area merge ---")
-    print(f"Association (common-area) parcels captured: {len(assoc):,}")
-    print(f"Stacked condo unit parcels: {len(units):,}")
+    print("\n--- condo / townhome merge ---")
+    print(f"Ground tracts available as merge targets: {len(assoc):,} "
+          f"({assoc['_fp_sqft'].sum() / 43560:,.1f} acres)")
+    print(f"Unit parcels to merge down: {len(units):,} "
+          f"(carrying ${units['TOTACTLNDV'].pipe(pd.to_numeric, errors='coerce').fillna(0).sum() / 1e6:,.1f}M of land value "
+          f"on {units['_fp_sqft'].sum() / 43560:,.1f} acres of footprint)")
 
     # smoke alarm: how much stacking are we actually fixing?
-    key = gdf.geometry.representative_point()
-    k = key.x.round(5).astype(str) + "," + key.y.round(5).astype(str)
-    vc = k.value_counts()
+    vc = gdf["_pt_key"].value_counts()
     print(f"Stacked clusters before merge: {int((vc > 1).sum()):,} (max stack {int(vc.max())})")
 
     if units.empty or assoc.empty:
         print("Nothing to merge.")
         return gdf.drop(columns=["_pin", "_tax", "_root"])
 
-    # link unit -> association: plat root first, spatial intersection as fallback
-    root_to_assoc = (assoc.drop_duplicates("_root").set_index("_root")["_pin"].to_dict())
+    # Link unit -> ground tract: plat root first, then spatial ADJACENCY.
+    # Where a root holds several tracts, the largest is the development's ground.
+    root_to_assoc = (assoc.sort_values("_fp_sqft", ascending=False)
+                     .drop_duplicates("_root").set_index("_root")["_pin"].to_dict())
     units["_target"] = units["_root"].map(root_to_assoc)
     by_root = int(units["_target"].notna().sum())
 
+    # Spatial fallback. `intersects`, NOT `within`: the tract has every unit
+    # footprint punched out as an interior ring, so no unit is ever `within` its
+    # own tract (measured: `within` matches zero). Several developments' HOA
+    # tracts genuinely live in an adjacent plat root, which is what this catches.
     missing = units[units["_target"].isna()]
     if len(missing):
-        a3 = assoc.to_crs(UTM_EPSG)[["_pin", "geometry"]].rename(columns={"_pin": "_apin"})
-        m3 = missing.to_crs(UTM_EPSG)[["_pin", "geometry"]]
-        j = gpd.sjoin(m3, a3, how="left", predicate="intersects")
-        j = j.dropna(subset=["_apin"]).drop_duplicates("_pin")
+        a3 = assoc.to_crs(UTM_EPSG)[["_pin", "geometry", "_fp_sqft"]].rename(
+            columns={"_pin": "_apin", "_fp_sqft": "_a_sqft"})
+        m3 = missing.to_crs(UTM_EPSG)[["_pin", "geometry", "_fp_sqft"]]
+        j = gpd.sjoin(m3, a3, how="inner", predicate="intersects")
+        # Safety net: only merge into a tract that dwarfs the unit, so an ordinary
+        # parcel that merely abuts some tract can never be swallowed by it.
+        j = j[j["_a_sqft"] >= TRACT_MIN_AREA_RATIO * j["_fp_sqft"]]
+        j = j.sort_values("_a_sqft", ascending=False).drop_duplicates("_pin")
         fill = dict(zip(j["_pin"], j["_apin"]))
         units.loc[units["_target"].isna(), "_target"] = (
             units.loc[units["_target"].isna(), "_pin"].map(fill))
     by_spatial = int(units["_target"].notna().sum()) - by_root
     unmatched = units[units["_target"].isna()]
-    print(f"Linked by PIN plat root: {by_root:,}; by spatial overlap: {by_spatial:,}; "
+    print(f"Linked by PIN plat root: {by_root:,}; by spatial adjacency: {by_spatial:,}; "
           f"unmatched: {len(unmatched):,}")
+    if len(unmatched):
+        u_land = pd.to_numeric(unmatched["TOTACTLNDV"], errors="coerce").fillna(0)
+        print(f"  unmatched detail: ${u_land.sum() / 1e6:,.2f}M land on "
+              f"{unmatched['_fp_sqft'].sum() / 43560:,.2f} acres of footprint; "
+              f"{int((u_land > 0).sum()):,} carry land value and keep a "
+              f"footprint-based $/sqft (left as published, not imputed)")
+        print(unmatched.groupby("_tax")["_pin"].size().head(6).to_string())
 
     matched = units[units["_target"].notna()].copy()
     val_cols = ["TOTACTLNDV", "TOTACTIMPV", "TOTACTVAL"]
@@ -373,6 +575,9 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         matched[c] = pd.to_numeric(matched[c], errors="coerce").fillna(0)
         assoc[c] = pd.to_numeric(assoc[c], errors="coerce").fillna(0)
 
+    # Land and improvement values are SUMMED here -- these are genuine per-unit
+    # allocations, unlike the account dedup below, where one account's value is
+    # broadcast across its polygons and `first` is correct. Do not conflate them.
     agg = matched.groupby("_target").agg(
         _n_units=("_pin", "size"),
         _lnd=("TOTACTLNDV", "sum"),
@@ -381,7 +586,9 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         _tax_mode=("_tax", lambda s: s.value_counts().index[0]),
         _sub=("SUBNAM", "first"),
         _use=("STTTYPUSE", "first"),
-        _units_geom=("geometry", lambda gs: unary_union([g for g in gs if g is not None])),
+        _strc=("STTSTRC", lambda s: (s.dropna().value_counts().index[0]
+                                     if s.notna().any() else None)),
+        _units_geom=("geometry", safe_union),
     )
 
     assoc = assoc.set_index("_pin")
@@ -389,28 +596,62 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # the merged development footprint: association land + unit footprints, holes closed
     new_geom = []
     for pin in hit:
-        g = unary_union([assoc.loc[pin, "geometry"], agg.loc[pin, "_units_geom"]])
+        g = safe_union([assoc.loc[pin, "geometry"], agg.loc[pin, "_units_geom"]])
         new_geom.append(fill_holes(g))
     assoc.loc[hit, "geometry"] = gpd.GeoSeries(new_geom, index=hit, crs=assoc.crs)
     for c, src in [("TOTACTLNDV", "_lnd"), ("TOTACTIMPV", "_imp"), ("TOTACTVAL", "_val")]:
         assoc.loc[hit, c] = assoc.loc[hit, c].values + agg.loc[hit, src].values
-    # give the merged development the units' dominant class so it classifies as condo
+    # give the merged development the units' dominant class + structure type, so a
+    # townhome development classifies as attached housing rather than as one
+    # enormous single-family home.
     assoc.loc[hit, "TAXCLS"] = agg.loc[hit, "_tax_mode"].values
     assoc.loc[hit, "SUBNAM"] = assoc.loc[hit, "SUBNAM"].fillna(
         pd.Series(agg.loc[hit, "_sub"].values, index=hit))
     assoc.loc[hit, "STTTYPUSE"] = assoc.loc[hit, "STTTYPUSE"].fillna(
         pd.Series(agg.loc[hit, "_use"].values, index=hit))
+    assoc.loc[hit, "STTSTRC"] = pd.Series(agg.loc[hit, "_strc"].values, index=hit)
     assoc["_merged_units"] = 0
     assoc.loc[hit, "_merged_units"] = agg.loc[hit, "_n_units"].values
     assoc = assoc.reset_index().rename(columns={"index": "_pin"})
 
-    print(f"Developments formed: {len(hit):,} (absorbing {int(agg.loc[hit, '_n_units'].sum()):,} units)")
+    print(f"Developments formed: {len(hit):,} "
+          f"(absorbing {int(agg.loc[hit, '_n_units'].sum()):,} units, "
+          f"${agg.loc[hit, '_lnd'].sum() / 1e6:,.1f}M land, "
+          f"{assoc.loc[assoc['_merged_units'] > 0, '_fp_sqft'].sum() / 43560:,.1f} acres "
+          f"of tract ground recovered)")
 
-    # Association parcels that absorbed nothing are common area / open space with
-    # no class and no value -- they are not assessable parcels, so drop them.
-    leftover = assoc[assoc["_merged_units"] == 0]
-    print(f"Unmerged association parcels dropped: {len(leftover):,}")
-    assoc = assoc[assoc["_merged_units"] > 0]
+    # Ground tracts that absorbed NOTHING are normally open space / drainage /
+    # medians with no class and no value -- not assessable parcels, so they are
+    # dropped. Two exceptions are retained, because dropping ground that sits
+    # under or among housing is exactly the defect this build fixes (the
+    # 2026-08-20 build deleted 533 acres of live townhome ground):
+    #   1. tracts that absorbed units (regimes A and C), and
+    #   2. tracts serving FEE-SIMPLE townhomes (regime D). Those units hold their
+    #      ~1,300 sqft footprint in fee (LGLSQFT > 0), so they are correctly
+    #      mapped and are NOT merged -- but their HOA common ground is still a
+    #      real, separately-deeded polygon and must not vanish. It is kept at the
+    #      county's published $0 land value; nothing is imputed.
+    attached = (gdf["STTSTRC"].fillna("").astype(str) == "Townhomes")
+    attached_roots = set(gdf.loc[attached, "_root"])
+    retain = (assoc["_merged_units"] > 0) | assoc["_root"].isin(attached_roots)
+    if (~retain).any():
+        cand_tracts = assoc[~retain]
+        att = gdf.loc[attached, ["geometry"]].to_crs(UTM_EPSG)
+        if len(att):
+            ct = cand_tracts[["geometry"]].to_crs(UTM_EPSG)
+            touched = set(gpd.sjoin(ct, att, how="inner", predicate="intersects").index)
+            retain |= assoc.index.isin(touched)
+    assoc["_common_area"] = ((assoc["_merged_units"] == 0) & retain).astype(int)
+
+    leftover = assoc[~retain]
+    kept_ca = assoc[assoc["_common_area"] == 1]
+    print(f"Unmerged tracts RETAINED as HOA common area beside fee-simple townhomes: "
+          f"{len(kept_ca):,} ({kept_ca['_fp_sqft'].sum() / 43560:,.1f} acres, "
+          f"published land value $0)")
+    print(f"Unmerged tracts dropped (genuinely valueless open space/drainage): "
+          f"{len(leftover):,} ({leftover['_fp_sqft'].sum() / 43560:,.1f} acres, "
+          f"${pd.to_numeric(leftover['TOTACTLNDV'], errors='coerce').fillna(0).sum():,.0f} land value)")
+    assoc = assoc[retain]
 
     out = pd.concat([others, assoc, unmatched], ignore_index=True)
     out = gpd.GeoDataFrame(out, geometry="geometry", crs=gdf.crs)
@@ -420,8 +661,8 @@ def merge_condo_developments(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     vc = k.value_counts()
     print(f"Stacked clusters after merge: {int((vc > 1).sum()):,} "
           f"(max stack {int(vc.max()) if len(vc) else 0})")
-    return out.drop(columns=["_pin", "_tax", "_root", "_units_geom", "_target"],
-                    errors="ignore")
+    return out.drop(columns=["_pin", "_tax", "_root", "_units_geom", "_target",
+                             "_fp_sqft", "_pt_key"], errors="ignore")
 
 
 # --------------------------------------------------------------------------- #
@@ -454,8 +695,7 @@ def collapse_duplicate_accounts(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     agg = {c: "first" for c in value_cols}          # account-level -> first
     agg.update({c: "first" for c in other_cols})
     collapsed = multi.groupby("_sch", dropna=False).agg(agg).reset_index()
-    geom = multi.groupby("_sch", dropna=False)["geometry"].apply(
-        lambda gs: unary_union([g for g in gs if g is not None]))
+    geom = multi.groupby("_sch", dropna=False)["geometry"].apply(safe_union)
     collapsed["geometry"] = geom.values
 
     out = pd.concat([single, gpd.GeoDataFrame(collapsed, geometry="geometry", crs=gdf.crs)],
@@ -469,10 +709,18 @@ def collapse_duplicate_accounts(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 # --------------------------------------------------------------------------- #
 # classification
 # --------------------------------------------------------------------------- #
-def classify_category(tax: str, use: str, impr: float) -> str:
-    """Lakewood/Jeffco-specific mapping from the Colorado 4-digit abstract class."""
+def classify_category(tax: str, use: str, impr: float, strc: str = "") -> str:
+    """Lakewood/Jeffco-specific mapping from the Colorado 4-digit abstract class.
+
+    `STTSTRC` (the assessor's own structure type) overrides the abstract class for
+    attached housing. Colorado codes a townhome 1112, the same as a detached house,
+    so class alone labelled 6,586 townhome units and 1,444 fee-simple townhome lots
+    "Single Family Residential". The assessor does distinguish them -- STTSTRC is
+    literally 'Townhomes' -- so we use it.
+    """
     t = (tax or "").strip()
     u = (use or "").strip()
+    s = (strc or "").strip()
     if not t:
         return "Unclassified"
     if t.startswith("9"):
@@ -486,6 +734,8 @@ def classify_category(tax: str, use: str, impr: float) -> str:
             return "Multi-Family Residential"
         if t == "1140":
             return "Residential Other"
+        if s == "Townhomes":
+            return "Townhome / Attached Residential"
         return "Single Family Residential"
     if t.startswith("2"):
         if t == "2245":
@@ -586,6 +836,10 @@ def build_export(raw: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDa
     gdf["neighborhood"] = clean(gdf["NHDNAM"])
     gdf["tax_class"] = clean(gdf["TAXCLS"])
     gdf["structure_use"] = clean(gdf["STTTYPUSE"])
+    gdf["structure_type"] = clean(gdf["STTSTRC"])
+    gdf["merged_unit_count"] = (
+        pd.to_numeric(gdf["_merged_units"], errors="coerce").fillna(0).astype(int)
+        if "_merged_units" in gdf.columns else 0)
     gdf["year_built"] = pd.to_numeric(gdf["STTYRBLT"], errors="coerce")
     gdf["building_sqft"] = pd.to_numeric(gdf["STTGRSAREA"], errors="coerce")
     gdf["assessor_url"] = np.where(
@@ -596,9 +850,41 @@ def build_export(raw: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDa
     )
 
     gdf["property_land_use_category"] = [
-        classify_category(t, u, i) for t, u, i in
-        zip(gdf["TAXCLS"].fillna(""), gdf["STTTYPUSE"].fillna(""), gdf["TOTACTIMPV"])
+        classify_category(t, u, i, s) for t, u, i, s in
+        zip(gdf["TAXCLS"].fillna(""), gdf["STTTYPUSE"].fillna(""), gdf["TOTACTIMPV"],
+            gdf["STTSTRC"].fillna(""))
     ]
+
+    # Retained HOA common-area tracts have a blank TAXCLS, which would otherwise
+    # classify as "Unclassified" and be dropped again. Name them for what they are.
+    if "_common_area" in gdf.columns:
+        ca = pd.to_numeric(gdf["_common_area"], errors="coerce").fillna(0) > 0
+        gdf.loc[ca, "property_land_use_category"] = "Common Area (HOA)"
+        print(f"\nRetained HOA common-area tracts categorised: {int(ca.sum()):,}")
+
+    # Per-parcel provenance for the land-value figure. Regime C condos genuinely
+    # have NO published land value; rather than silently rendering them as
+    # zero-height "worthless" land, every parcel says where its number came from.
+    # This is a plain data column surfaced through the city dictionary -- no
+    # frontend change needed (only dictionary fields reach the popup).
+    merged_n = (pd.to_numeric(gdf["_merged_units"], errors="coerce").fillna(0)
+                if "_merged_units" in gdf.columns else pd.Series(0.0, index=gdf.index))
+    gdf["land_value_basis"] = np.where(
+        (gdf["TOTACTLNDV"] <= 0) & gdf["property_land_use_category"].str.contains("Condominium"),
+        "Not published: Jefferson County books condominium value entirely to "
+        "improvements and records no land value for these units",
+        np.where(
+            gdf["property_land_use_category"].eq("Common Area (HOA)"),
+            "Common ground held by a homeowners association; Jefferson County "
+            "publishes no separate land value for it",
+            np.where(
+                merged_n > 0,
+                "Assessor land value, summed across " + merged_n.astype(int).astype(str)
+                + " attached units on their common ground tract",
+                "Assessor land value for this parcel",
+            ),
+        ),
+    )
 
     gdf["current_full_land_value"] = gdf["TOTACTLNDV"].clip(lower=0)
     gdf["improvement_value"] = gdf["TOTACTIMPV"].clip(lower=0)
@@ -646,8 +932,9 @@ def build_export(raw: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDa
 
     keep = [
         "geometry", "parcel_id", "schedule_number", "owner", "property_address",
-        "subdivision", "neighborhood", "tax_class", "structure_use", "year_built",
-        "building_sqft", "assessor_url",
+        "subdivision", "neighborhood", "tax_class", "structure_use", "structure_type",
+        "year_built", "building_sqft", "assessor_url",
+        "land_value_basis", "merged_unit_count",
         "property_land_use_category", "property_land_use_refined",
         "current_full_land_value", "improvement_value", "full_market_value",
         "area_sqft", "land_area_sqft", "stated_acres",
@@ -693,6 +980,42 @@ def report_quality(out: gpd.GeoDataFrame) -> None:
     print("  land share:       %.1f%%" % (100 * land / (land + impr)))
     print("  acres:            %.1f" % acres)
     print("  land $/acre:      $%.0f" % (land / acres))
+
+    # --- the spikes-and-gaps regression check -------------------------------- #
+    # The 3D height field is land_value_per_sqft. When townhome units sit on a
+    # footprint with their ground tract deleted, the extreme tail of this
+    # distribution is entirely artifact: ~800 sqft polygons carrying a full
+    # unit's land value. A healthy build has a tail dominated by genuinely small
+    # or genuinely valuable parcels, not by uniform sub-1000 sqft footprints.
+    print("\nLAND $/SQFT TAIL COMPOSITION (artifact detector)")
+    v = out.assign(_ppsf=lvps).dropna(subset=["_ppsf"])
+    v = v[v["_ppsf"] > 0]
+    for label, q in [("top 1%", 0.99), ("top 0.1%", 0.999)]:
+        tail = v[v["_ppsf"] >= v["_ppsf"].quantile(q)]
+        if not len(tail):
+            continue
+        small = int((tail["area_sqft"] < 1500).sum())
+        print(f"  {label:9s} n={len(tail):5d}  min ${tail['_ppsf'].min():,.0f}/sqft  "
+              f"median footprint {tail['area_sqft'].median():,.0f} sqft  "
+              f"sub-1500-sqft share {100 * small / len(tail):5.1f}%")
+        print(f"    {'':7s} top categories: "
+              f"{', '.join(f'{k} {n}' for k, n in tail['property_land_use_category'].value_counts().head(3).items())}")
+
+    print("\nNAMED-DEVELOPMENT SPOT CHECKS (land $/sqft; artifacts read high)")
+    for name in ["HAMPDEN VILLA", "GREEN MOUNTAIN TOWNHOUSE", "PHEASANT CREEK",
+                 "JEFFERSON GREEN", "VICTORIA VILLAGE", "SAN FRANCISCO WEST",
+                 "VILLA WEST", "AMMONS PARK", "KIPLING KLUB", "WALKER PARK",
+                 "SIENNA PARK"]:
+        sub = out[out["subdivision"].fillna("").str.upper().str.contains(name, na=False)]
+        if not len(sub):
+            print(f"  {name:26s} -- no parcels")
+            continue
+        land = sub["current_full_land_value"].sum()
+        ac = sub["area_sqft"].sum() / 43560
+        ppsf = land / sub["area_sqft"].sum() if sub["area_sqft"].sum() else float("nan")
+        units = int(sub.get("merged_unit_count", pd.Series(0, index=sub.index)).sum())
+        print(f"  {name:26s} parcels={len(sub):4d} units={units:4d} "
+              f"land=${land / 1e6:7.2f}M acres={ac:7.2f} ${ppsf:7.1f}/sqft")
 
     zero_land = out[out["current_full_land_value"] <= 0]
     print("\nZERO-LAND-VALUE PARCELS (the Jeffco condo limitation)")
