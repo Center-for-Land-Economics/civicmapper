@@ -5,7 +5,7 @@
   "pmtilesFilename": "pueblo-co-parcels.pmtiles",
   "pmtilesVersion": "2026-08-26-condo-merge-fix",
   "parkingFilename": "pueblo-co-parking-lots.parquet",
-  "parkingVersion": "2026-08-26-condo-merge-fix",
+  "parkingVersion": "2026-06-02-dedup",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "hideRemnants": true,
