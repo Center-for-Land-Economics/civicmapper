@@ -3,11 +3,12 @@
   "state": "co",
   "filename": "pueblo-co-parcels.parquet",
   "pmtilesFilename": "pueblo-co-parcels.pmtiles",
-  "pmtilesVersion": "2026-07-13-hexprune",
+  "pmtilesVersion": "2026-08-26-condo-merge-fix",
   "parkingFilename": "pueblo-co-parking-lots.parquet",
-  "parkingVersion": "2026-06-02-dedup",
+  "parkingVersion": "2026-08-26-condo-merge-fix",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
+  "hideRemnants": true,
   "coords": [
     -104.6091,
     38.2544
