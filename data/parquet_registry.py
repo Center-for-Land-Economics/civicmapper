@@ -94,6 +94,11 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "newportnews": CityParquet(
         city="newportnews", state="va", legacy_filename="newportnews-va-parcels.parquet"
     ),
+    # City of Richmond, VA — the independent city (FIPS 51760), NOT Richmond County VA
+    # (51159), Richmond CA, or Richmond KY.
+    "richmond": CityParquet(
+        city="richmond", state="va", legacy_filename="richmond-va-parcels.parquet"
+    ),
     "olympia": CityParquet(
         city="olympia", state="wa", legacy_filename="olympia-wa-parcels.parquet"
     ),

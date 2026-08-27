@@ -1,0 +1,28 @@
+{
+  "notes": [
+    "City of Richmond, VA — the Virginia INDEPENDENT CITY (FIPS 51760). Not Richmond County, VA (FIPS 51159, a rural Northern Neck county), not Richmond CA, not Richmond KY.",
+    "~68.4k taxable parcels from the city's own AGOL Parcels layer (services1.arcgis.com/k3vhq11XkBNeeOfM, 2026-01-01 assessment roll). See run_richmond.py. Independent city, so the source layer is already city-only — no county clip.",
+    "Do NOT source from the same org's 'City_of_Richmond_Parcels' (CORparcels) layer: despite the name it holds only ~1,340 CITY-OWNED parcels at a 2022 assessment date. 'Parcels' is the full roll.",
+    "Parking is OSM-only AND unclassified (--osm-only --no-classify): the surface-vs-structure step wedged on repeated Overpass fuel-station fetches, so surface_area_acres is 0 and the totals cover ALL parking (surface + structures), same shape as newportnews. It also undercounts: OSM has 492 parking polygons in the city (289.8 ac) while Richmond's own assessor classifies 748 parcels (393 ac) as surface parking. Re-run without --no-classify when Overpass cooperates to get the surface/structure split.",
+    "hideRemnants: the feed maps ~5.5k condo/LIHTC/apartment unit records with a per-unit SHARE in LandSqFt (often 0-5 sqft) against the real shared polygon; run_richmond.py falls back to geodesic polygon area whenever reported area is outside 0.5-2.0x the polygon, which drops max land $/sqft from $4.1M to $412."
+  ],
+  "displayName": "Richmond",
+  "state": "va",
+  "filename": "richmond-va-parcels.parquet",
+  "pmtilesFilename": "richmond-va-parcels.pmtiles",
+  "pmtilesVersion": "2026-08-27-h3",
+  "hideRemnants": true,
+  "parkingFilename": "richmond-va-parking-lots.parquet",
+  "parkingVersion": "2026-08-27-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "richmond-va",
+    "richmond_va",
+    "rva"
+  ],
+  "coords": [
+    -77.436,
+    37.5407
+  ]
+}
