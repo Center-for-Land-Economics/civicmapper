@@ -79,6 +79,8 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",
+    # The independent city, not Richmond County VA / Richmond CA / Richmond KY.
+    "richmond": "Richmond, Virginia, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "vancouver": "Vancouver, Washington, USA",
