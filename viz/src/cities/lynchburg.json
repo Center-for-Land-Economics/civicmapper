@@ -1,0 +1,28 @@
+{
+  "notes": [
+    "City of Lynchburg, VA — the Virginia INDEPENDENT CITY (FIPS 51680). Not Lynchburg TN (Moore County), and not the surrounding Campbell/Bedford/Amherst County land.",
+    "~31.1k shipped parcels from the city's own GIS open-data layer (mapviewer.lynchburgva.gov OpenData/ODPDynamic MapServer/41), the full assessor roll. Independent city, so the source layer is already city-only — no county clip. See run_lynchburg.py. ~31k parcels -> browser GeoParquet path, no PMTiles/H3.",
+    "EXEMPT has one deliberate exception: the DAV classes (791/792/793/795) are disabled-veteran relief granted to the OWNER, not institutionally exempt land — all 259 carry normal market assessments and are kept. PUBLIC SERVICE CORPORATION (class 801, 135 parcels) IS excluded: every one has zero local value, being state-assessed by the VA State Corporation Commission.",
+    "hideRemnants: the assessor maps condo units as their own ~100-400 sqft slice of the building rather than stacking them on a shared footprint. Those 445 sub-500-sqft slices carry a median $33/sqft against $2.57/sqft for normal parcels, so they are filtered; rendered max land $/sqft drops from $461 to $236.",
+    "232 HOA 'Common Area' parcels legitimately carry $0 land value (their value sits in the member lots) and so appear in the gp-error layer. Accurate source data, not an ETL fault.",
+    "Exempt filtering follows the assessor's class code, NOT an owner-name heuristic, deliberately: ~47 Liberty University and 3 Randolph College parcels are KEPT because they are the colleges' taxable commercial holdings (hotel, medical office, big-box retail), which Virginia taxes since exemption follows USE. A Baltimore-style ownership heuristic would wrongly delete ~$10M of land the city actually taxes.",
+    "Parking is OSM-only for consistency with the other shipped cities, but unlike richmond it IS classified (2,671 surface / 13 structure / 60 excluded / 3 uncertain). 2,747 polygons, 661.2 acres. Undercounts like every OSM-only city; the NAIP+ML path was not run. Note the surface/structure split lives in metadata.classificationTotals, not parkingTotals.surface_area_acres.",
+    "link is the parcel-viewer ROOT, not a per-parcel deep link: the city moved to the CivQuest SPA (lynchburgva.civ.quest), which ignores URL query params (?parcel=/?search=/?q= all tested). The popup shows the Address, which is what its search box takes."
+  ],
+  "displayName": "Lynchburg",
+  "state": "va",
+  "filename": "lynchburg-va-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "lynchburg-va-parking-lots.parquet",
+  "parkingVersion": "2026-08-29-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "lynchburg-va",
+    "lynchburg_va"
+  ],
+  "coords": [
+    -79.1734,
+    37.4013
+  ]
+}
