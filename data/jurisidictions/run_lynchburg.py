@@ -339,12 +339,26 @@ def _dev_key(legal):
 
 
 ex["_dev"] = ex["Legal1"].apply(_dev_key)
-is_unit = ex["prop_class"].eq("105")
 is_ca = ex["prop_class"].isin(("108", "499"))
+# A "unit" is class 105 (RESIDENTIAL - CONDOMINIUM) OR any other parcel whose legal description
+# is a UNIT ("PIEDMONT OFFICE CONDOS, UNIT III", "IVY CREEK TOWNHOMES, UNIT 204", "CARRIAGE SQUARE
+# CONDO, UNIT 27"): the assessor files townhome condos under 103/106, office/retail condos under
+# 402/415/416/430 and disabled-veteran condo units under 791, all mapped as the same building-slice
+# stubs inside a $0 common-area donut. Parcels whose legal says LOT (fee-simple townhouse and
+# Town Center shop lots inside an HOA common area) are NOT units: they own their small lot and
+# are left alone (playbook §6b: don't fill legit fee-simple holes). A UNIT parcel only merges if
+# it actually joins a common-area group below; otherwise it is untouched.
+# "LAKESIDE PLAZA CONDO" / "MCCONVILLE PARK CONDO UNIT 1" style legals count too (CONDO without
+# UNIT); non-105 candidates are capped at 15,000 sqft so a whole valued condo-regime parent parcel
+# is never mistaken for a unit.
+_legal_u = ex["Legal1"].fillna("").str.upper()
+_is_unit_legal = _legal_u.str.contains(r"\bUNITS?\b|\bCONDO", regex=True) & (ex.geometry.to_crs(UTM).area * 10.763910416709722 < 15000)
+is_unit = (ex["prop_class"].eq("105") | _is_unit_legal) & ~is_ca
 mp = ex[is_unit | is_ca].to_crs(UTM)
 mp["_sqft"] = mp.geometry.area * 10.763910416709722
-units = mp[mp["prop_class"].eq("105")]
-cas = mp[~mp["prop_class"].eq("105")]
+mp["_is_unit"] = is_unit[mp.index].values
+units = mp[mp["_is_unit"]]
+cas = mp[~mp["_is_unit"]]
 
 # 1) Unit groups: union-find over units only — touching slices (same building) or same dev name.
 upos = {i: k for k, i in enumerate(units.index)}
@@ -407,7 +421,13 @@ for i, g in zip(cas.index, _cabuf.values):
 _gs = pd.DataFrame({"units": ugrp.value_counts()})
 _gs["cas"] = pd.Series(ca_grp).value_counts().reindex(_gs.index).fillna(0).astype(int)
 _gs["unit_med_sqft"] = units.groupby(ugrp)["_sqft"].median()
-_merge = _gs.index[(_gs.cas > 0) | ((_gs.units > 1) & (_gs.unit_med_sqft < STUB_SQFT))]
+_gs["all_105"] = units.groupby(ugrp)["prop_class"].agg(lambda s: bool(s.eq("105").all()))
+# Merge a group when it has common-area land, or when it is a multi-unit group of class-105
+# building slices with no common area at all (their union is the building footprint). UNIT-legal
+# parcels of other classes only ever merge onto a common-area lot.
+# At least two units either way: one lone "unit" next to a common-area lot is a mis-keyed legal,
+# not a development, and would just dilute its value over land it does not own.
+_merge = _gs.index[(_gs.units > 1) & ((_gs.cas > 0) | ((_gs.unit_med_sqft < STUB_SQFT) & _gs["all_105"]))]
 _sum_cols = ["land_val", "bld_val", "tot_appr_val", "NumDwlg", "FinSize"]
 rows, drop_idx = [], []
 for gid in _merge:
@@ -419,7 +439,11 @@ for gid in _merge:
     for c in _sum_cols:
         row[c] = float(pd.to_numeric(grp[c], errors="coerce").fillna(0).sum())
     row["stated_acres"] = np.nan          # the merged footprint is the land denominator
-    row["PROPERTY_CATEGORY"] = "Condominium"
+    # Residential unit classes (1xx, DAV 79x) -> Condominium; office/retail condo units (4xx) ->
+    # Commercial, so the improvement-ratio rule judges the complex like any other commercial parcel.
+    _ucls = mp.loc[u_idx, "prop_class"].astype(str)
+    _res = (_ucls.str.startswith("1") | _ucls.isin(DAV_CLASSES)).mean()
+    row["PROPERTY_CATEGORY"] = "Condominium" if _res >= 0.5 else "Commercial"
     row["_dev"] = " / ".join(sorted(grp_devs[gid])) or "(unnamed)"
     row["_n_units"] = len(u_idx)
     row["_n_ca"] = len(c_idx)
@@ -429,7 +453,7 @@ if rows:
     merged = gpd.GeoDataFrame(rows, geometry="geometry", crs=UTM)
     merged["geometry"] = merged.geometry.apply(lambda g: g if g.is_valid else g.buffer(0))
     merged = merged.to_crs("EPSG:4326")
-    n_u = int(mp.loc[drop_idx, "prop_class"].eq("105").sum())
+    n_u = int(mp.loc[drop_idx, "_is_unit"].sum())
     n_c = len(drop_idx) - n_u
     ex = gpd.GeoDataFrame(pd.concat([ex.drop(index=drop_idx), merged], ignore_index=True),
                           geometry="geometry", crs="EPSG:4326")
@@ -437,16 +461,16 @@ if rows:
     _acres = merged.to_crs(UTM).geometry.area * 10.763910416709722 / SQFT_PER_ACRE
     _psf = merged["land_val"] / (_acres * SQFT_PER_ACRE)
     for r, a, v in sorted(zip(merged.to_dict("records"), _acres, _psf), key=lambda t: -t[0]["_n_units"]):
-        log(f"    {r['_dev'][:44]:44s} units={r['_n_units']:3d} ca={r['_n_ca']:2d} "
+        log(f"    {r['_dev'][:40]:40s} {r['PROPERTY_CATEGORY'][:5]} units={r['_n_units']:3d} ca={r['_n_ca']:2d} "
             f"{a:7.2f} ac  land ${r['land_val']:>12,.0f}  ${v:6.2f}/sqft")
     multi = merged[merged["_dev"].str.contains(" / ")]
     if len(multi):
         log(f"  NOTE: {len(multi)} merged parcel(s) span >1 development name (touching slices): "
             f"{multi['_dev'].tolist()}")
 left = ex[ex["prop_class"].eq("105")]
-log(f"Condo units left as individual parcels: {len(left):,} "
+log(f"Class-105 condo units left as individual parcels: {len(left):,} "
     f"(median footprint {left.to_crs(UTM).geometry.area.median() * 10.7639:,.0f} sqft)")
-ex = ex.drop(columns=["_dev", "_n_units", "_n_ca"], errors="ignore")
+ex = ex.drop(columns=["_dev", "_n_units", "_n_ca", "_is_unit"], errors="ignore")
 
 ex["property_land_use_category"] = ex["PROPERTY_CATEGORY"]
 ex["land_value"] = pd.to_numeric(ex["land_val"], errors="coerce")
