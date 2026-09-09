@@ -49,14 +49,19 @@ Notes:
   is within 0.5-2.0x the geodesic polygon area (the run_richmond.py guard); otherwise the
   geodesic polygon area is the denominator. Where LegalAc IS populated it agrees closely
   with the polygon (0.34 vs 0.3399, 0.326 vs 0.3262), so the fallback is safe.
-- Condos: 712 condo-class parcels. Unlike Richmond/Newport News these are NOT stacked on a
-  shared footprint — the assessor gives each unit its own ~360 sqft slice of the building
-  (verified: the 28 units at 103 CAPITAL ST have 28 distinct polygons). The same-footprint
-  collapse still runs defensively, and the §6a smoke-alarm diagnostics print at the end.
+- Condos: 712 condo-class (105) parcels. Each UNIT is mapped as its own ~360 sqft slice of the
+  building carrying the unit's land-value share (~$12-20k), while the development's actual
+  land is a separate "COMMON AREA" parcel (108/499) assessed at $0. Left alone that renders as
+  a forest of $30-460/sqft pencils next to a $0 gp-error lot (skill §6a). So units are MERGED
+  DOWN onto their development's common-area land (skill §6b / run_olympia.py): grouped by the
+  Legal1 development name and by touching geometry, values summed, footprint = union of the
+  units + common area with holes filled. Units with no common area and real-sized lots
+  (detached "villa" condos) are left as individual parcels.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 import numpy as np
@@ -81,8 +86,10 @@ PARCELS_URL = ("https://mapviewer.lynchburgva.gov/ArcGIS/rest/services/"
 WHERE = "1=1"
 # Only what the ETL actually reads. Shape_Acres is the source's own GIS area and is used
 # purely as a cross-check on our geodesic computation (see the area-agreement guard below).
+# Legal1 is the legal description; its leading segment is the DEVELOPMENT name that links
+# condo units to their common-area land parcel (see the condo merge below).
 OUT_FIELDS = ("OBJECTID,Parcel_ID,PropClas,Current_Land,Current_Imp,Current_Total,"
-              "LegalAc,Shape_Acres,NumDwlg,FinSize")
+              "LegalAc,Shape_Acres,NumDwlg,FinSize,Legal1")
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36",
            "Accept": "application/json, text/plain, */*"}
 SQFT_PER_ACRE = 43560.0
@@ -276,6 +283,170 @@ drop_utility = parcel["prop_class"].eq(PUBLIC_SERVICE_CLASS)
 log(f"Excluding {int(parcel['exemption_flag'].sum()):,} exempt + "
     f"{int(drop_utility.sum()):,} public-service-corporation (zero local value) parcels")
 ex = parcel[(parcel["exemption_flag"] == 0) & (~drop_utility)].copy()
+
+# ── condo units -> merge DOWN onto their development's common-area land (skill §6b) ──────
+# Lynchburg maps each condo unit (class 105) as its own slice of the building and carries the
+# unit's land-value share on that slice; the development's real land is a separate COMMON AREA
+# parcel (108/499) assessed at $0. Group units with their common-area parcel(s) — linked by the
+# Legal1 development name ("PARKSIDE GRANDE, BLDG 1, UNIT 101" <-> "PARKSIDE GRANDE, COMMON
+# AREA") OR by touching geometry (0.5 m) — and collapse each group to ONE parcel: land/building
+# values summed, footprint = union of units + common area with holes filled. Same recipe as
+# run_olympia.py; the assessor's own common-area polygon is the land, nothing is synthesized.
+from shapely.geometry import Polygon, MultiPolygon
+
+UTM = "EPSG:32617"
+STUB_SQFT = 1500.0  # units-only groups merge only when they are slices, not detached villa lots
+
+
+def _fill_holes(g):
+    if g is None or g.is_empty:
+        return g
+    if g.geom_type == "Polygon":
+        return Polygon(g.exterior)
+    if g.geom_type == "MultiPolygon":
+        return MultiPolygon([Polygon(p.exterior) for p in g.geoms])
+    return g
+
+
+_GENERIC = re.compile(r"\b(CONDOS?|CONDOMINIUMS?|CONOMINIUM|TOWNHOMES?|TOWNHOUSES?)\b")
+_TOKEN = re.compile(r"^(BLK|BLOCK|LOTS?|UNITS?|BLDG|BUILDING|PH|PHASE|COMMON AREA|PART|RESIDUE|REV PARCEL|PARCEL)\b")
+
+
+def _dev_key(legal):
+    """Development name from Legal1, e.g. "PARKSIDE GRANDE, BLDG 1, UNIT 101" -> PARKSIDE GRANDE.
+
+    - Generic suffixes are dropped so "CHELSEA HOUSE, BLDG A, UNIT 3" matches its lot
+      "CHELSEA HOUSE CONDO, COMMON AREA" (also EAST RIDGE CONDOMINIUM(S), the CONOMINIUM typo...).
+    - Downtown parcels read "DOWNTOWN, BLK 93, 1220 MAIN ST CONDOS, UNIT 3": the first segment is
+      the whole district, so the building name is the first non-token segment after it.
+    - A few common-area lots lead with the token: "COMMON AREA, TOWN CENTER, BLK F, LOT 8,
+      PARKSIDE GRANDE" -> the development is the LAST non-token segment.
+    """
+    segs = [x.strip() for x in str(legal or "").upper().split(",") if x.strip()]
+    if not segs:
+        return ""
+    if segs[0] == "DOWNTOWN":
+        rest = [x for x in segs[1:] if not _TOKEN.match(x)]
+        name = re.sub(r"\b(UNITS?)\b.*$", "", rest[0]).strip() if rest else ""
+        return "DOWNTOWN | " + name if name else "DOWNTOWN"
+    if segs[0] == "COMMON AREA":
+        rest = [x for x in segs[1:] if not _TOKEN.match(x)]
+        name = rest[-1] if rest else ""
+    else:
+        name = segs[0]
+    name = _GENERIC.sub("", name)
+    return re.sub(r"\s+", " ", name).strip(" -@")
+
+
+ex["_dev"] = ex["Legal1"].apply(_dev_key)
+is_unit = ex["prop_class"].eq("105")
+is_ca = ex["prop_class"].isin(("108", "499"))
+mp = ex[is_unit | is_ca].to_crs(UTM)
+mp["_sqft"] = mp.geometry.area * 10.763910416709722
+units = mp[mp["prop_class"].eq("105")]
+cas = mp[~mp["prop_class"].eq("105")]
+
+# 1) Unit groups: union-find over units only — touching slices (same building) or same dev name.
+upos = {i: k for k, i in enumerate(units.index)}
+_parent = list(range(len(units)))
+
+
+def _find(a):
+    while _parent[a] != a:
+        _parent[a] = _parent[_parent[a]]
+        a = _parent[a]
+    return a
+
+
+def _union(a, b):
+    ra, rb = _find(a), _find(b)
+    if ra != rb:
+        _parent[rb] = ra
+
+
+_ubuf = units.geometry.buffer(0.5)
+_usidx = _ubuf.sindex
+for k, g in enumerate(_ubuf.values):
+    for j in _usidx.query(g, predicate="intersects"):
+        if j > k:
+            _union(k, int(j))
+for dev in set(units["_dev"]) - {""}:
+    ks = [upos[i] for i in units.index[units["_dev"].eq(dev)]]
+    for k in ks[1:]:
+        _union(ks[0], k)
+ugrp = pd.Series([_find(upos[i]) for i in units.index], index=units.index)
+grp_devs = units.groupby(ugrp)["_dev"].agg(lambda s: set(s) - {""})
+
+# 2) Attach common-area parcels to unit groups: by development NAME first (the association's own
+#    land); a CA that matches no name attaches to a unit group it TOUCHES only if that group has
+#    no named CA yet. Common-area parcels never chain to each other — otherwise a master-planned
+#    community's HOA open space (Wyndhurst "PARK AREA RESIDUE", Cornerstone "REV PARCEL A") gets
+#    swallowed into whichever condo it happens to border and dilutes its $/sqft.
+ca_grp = {}
+named = set()
+for i, dev in zip(cas.index, cas["_dev"]):
+    if not dev:
+        continue
+    hits = [g for g, devs in grp_devs.items() if dev in devs]
+    if hits:
+        g = max(hits, key=lambda g: int((ugrp == g).sum()))
+        ca_grp[i] = g
+        named.add(g)
+_cabuf = cas.geometry.buffer(0.5)
+for i, g in zip(cas.index, _cabuf.values):
+    if i in ca_grp:
+        continue
+    touched = ugrp.loc[units.index[_usidx.query(g, predicate="intersects")]]
+    touched = [t for t in set(touched) if t not in named]
+    if touched:
+        ca_grp[i] = max(touched, key=lambda t: int((touched == t) if False else (ugrp == t).sum()))
+
+# 3) Merge each group that has a CA, or is a multi-unit group of building SLICES (no CA at all —
+#    the slices' union is the building footprint). Multi-unit groups of real-sized lots (detached
+#    "villa" condos on their own land) are left as individual parcels.
+_gs = pd.DataFrame({"units": ugrp.value_counts()})
+_gs["cas"] = pd.Series(ca_grp).value_counts().reindex(_gs.index).fillna(0).astype(int)
+_gs["unit_med_sqft"] = units.groupby(ugrp)["_sqft"].median()
+_merge = _gs.index[(_gs.cas > 0) | ((_gs.units > 1) & (_gs.unit_med_sqft < STUB_SQFT))]
+_sum_cols = ["land_val", "bld_val", "tot_appr_val", "NumDwlg", "FinSize"]
+rows, drop_idx = [], []
+for gid in _merge:
+    u_idx = list(ugrp.index[ugrp == gid])
+    c_idx = [i for i, g in ca_grp.items() if g == gid]
+    grp = mp.loc[u_idx + c_idx]
+    row = mp.loc[u_idx[0]].to_dict()
+    row["geometry"] = _fill_holes(unary_union(list(grp.geometry.values)))
+    for c in _sum_cols:
+        row[c] = float(pd.to_numeric(grp[c], errors="coerce").fillna(0).sum())
+    row["stated_acres"] = np.nan          # the merged footprint is the land denominator
+    row["PROPERTY_CATEGORY"] = "Condominium"
+    row["_dev"] = " / ".join(sorted(grp_devs[gid])) or "(unnamed)"
+    row["_n_units"] = len(u_idx)
+    row["_n_ca"] = len(c_idx)
+    rows.append(row)
+    drop_idx += u_idx + c_idx
+if rows:
+    merged = gpd.GeoDataFrame(rows, geometry="geometry", crs=UTM)
+    merged["geometry"] = merged.geometry.apply(lambda g: g if g.is_valid else g.buffer(0))
+    merged = merged.to_crs("EPSG:4326")
+    n_u = int(mp.loc[drop_idx, "prop_class"].eq("105").sum())
+    n_c = len(drop_idx) - n_u
+    ex = gpd.GeoDataFrame(pd.concat([ex.drop(index=drop_idx), merged], ignore_index=True),
+                          geometry="geometry", crs="EPSG:4326")
+    log(f"Condo merge: {n_u:,} units + {n_c:,} common-area parcels -> {len(rows):,} development parcels")
+    _acres = merged.to_crs(UTM).geometry.area * 10.763910416709722 / SQFT_PER_ACRE
+    _psf = merged["land_val"] / (_acres * SQFT_PER_ACRE)
+    for r, a, v in sorted(zip(merged.to_dict("records"), _acres, _psf), key=lambda t: -t[0]["_n_units"]):
+        log(f"    {r['_dev'][:44]:44s} units={r['_n_units']:3d} ca={r['_n_ca']:2d} "
+            f"{a:7.2f} ac  land ${r['land_val']:>12,.0f}  ${v:6.2f}/sqft")
+    multi = merged[merged["_dev"].str.contains(" / ")]
+    if len(multi):
+        log(f"  NOTE: {len(multi)} merged parcel(s) span >1 development name (touching slices): "
+            f"{multi['_dev'].tolist()}")
+left = ex[ex["prop_class"].eq("105")]
+log(f"Condo units left as individual parcels: {len(left):,} "
+    f"(median footprint {left.to_crs(UTM).geometry.area.median() * 10.7639:,.0f} sqft)")
+ex = ex.drop(columns=["_dev", "_n_units", "_n_ca"], errors="ignore")
 
 ex["property_land_use_category"] = ex["PROPERTY_CATEGORY"]
 ex["land_value"] = pd.to_numeric(ex["land_val"], errors="coerce")
