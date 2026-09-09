@@ -99,6 +99,11 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "richmond": CityParquet(
         city="richmond", state="va", legacy_filename="richmond-va-parcels.parquet"
     ),
+    # City of Lynchburg, VA — the independent city (FIPS 51680), NOT Lynchburg TN
+    # (Moore County) and not the surrounding Campbell/Bedford/Amherst County land.
+    "lynchburg": CityParquet(
+        city="lynchburg", state="va", legacy_filename="lynchburg-va-parcels.parquet"
+    ),
     "olympia": CityParquet(
         city="olympia", state="wa", legacy_filename="olympia-wa-parcels.parquet"
     ),
