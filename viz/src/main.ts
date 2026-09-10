@@ -1299,6 +1299,11 @@ async function loadSelectedColumns() {
       // not display fields — they live in HIDDEN_METRIC_FIELDS, not every city's dictionary, so
       // they must be kept explicitly or trimming silently disables the hideRemnants filter.
       'likely_remnant','exemption_flag',
+      // The lot-area denominator. Only 2 of 41 dictionaries declare it, so without this line the
+      // trim deletes it and every per-sqft metric divides by nothing (see perSqftExpr), the popup
+      // per-sqft readout goes blank, and the acreage headline silently skips zero-land-value
+      // parcels. Keep it centrally rather than editing 40 dictionaries.
+      'land_area_acres',
       ...ALL_FIELDS,
       bldgSizeField || '',
       landSizeField || '',
@@ -1605,7 +1610,16 @@ function perSqftExpr(field: string): Expression | null {
   const raw = PER_SQFT_SRC[field];
   if (!raw) return null;
   const sqft: Expression = ['*', ['to-number', ['get', 'land_area_acres']], 43560] as any;
-  return ['case', ['<=', sqft, 0], 0, ['/', ['to-number', ['get', raw]], sqft]] as any;
+  // Some GeoParquet cities (Charlottesville, Rockville, Spokane) never carried a lot-area column
+  // at all — their ETLs export only the PRE-COMPUTED per-sqft columns. Dividing by a missing
+  // denominator yields to-number(null) -> 0, i.e. every parcel painted flat zero while the legend
+  // still showed a real range. So when there is no usable denominator, read the baked per-sqft
+  // column the file already carries. Hexes always carry summed land_area_acres and so keep using
+  // the Σvalue/Σarea division above, which is what makes the aggregate correct.
+  return ['case',
+    ['>', sqft, 0], ['/', ['to-number', ['get', raw]], sqft],
+    ['to-number', ['get', field]]
+  ] as any;
 }
 
 function buildValueExpression(): Expression {
@@ -2727,7 +2741,10 @@ function computeDisplayedMetricFromProps(props: Record<string, any>): number | n
   } else if (PER_SQFT_SRC[currentField]) {
     const v = numOrNull(props[PER_SQFT_SRC[currentField]]);
     const acres = numOrNull(props.land_area_acres);
-    base = (v != null && acres != null && acres > 0) ? v / (acres * 43560) : null;
+    // Mirror perSqftExpr: no lot-area denominator -> use the baked per-sqft column.
+    base = (v != null && acres != null && acres > 0)
+      ? v / (acres * 43560)
+      : numOrNull(props[currentField]);
   } else {
     base = numOrNull(props[currentField]);
   }

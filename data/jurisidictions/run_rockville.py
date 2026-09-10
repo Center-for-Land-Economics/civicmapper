@@ -39,7 +39,7 @@ from pyproj import Geod
 
 # parcel_calculations.py lives in data/ (one level up from this script)
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from parcel_calculations import add_improvement_ratio_fields  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft  # noqa: E402
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -185,18 +185,6 @@ def categorize_property_refined(row):
 
 # ── 4. Geodesic area helper ─────────────────────────────────────────────────────
 _GEOD = Geod(ellps="WGS84")
-
-
-def geodesic_area_sqft(geom):
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = _GEOD.polygon_area_perimeter(lon, lat)
-        return abs(area_m2) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(p) for p in geom.geoms)
-    return np.nan
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

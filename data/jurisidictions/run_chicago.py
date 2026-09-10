@@ -53,7 +53,7 @@ from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from data.parcel_calculations import add_improvement_ratio_fields  # noqa: E402
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "chicago"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -297,23 +297,6 @@ def categorize_refined(row):
 
 
 # ── 4. Geometry helpers ────────────────────────────────────────────────────────
-def geodesic_area_sqft(geom):
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = geod.polygon_area_perimeter(lon, lat)
-        hole = 0.0
-        for ring in geom.interiors:
-            lon_h, lat_h = ring.coords.xy
-            a, _ = geod.polygon_area_perimeter(lon_h, lat_h)
-            hole += abs(a)
-        return max(abs(area_m2) - hole, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(p) for p in geom.geoms)
-    return np.nan
-
-
 def main():
     geom = fetch_geometry()
     geom["pin"] = pin14_from_parts(geom)

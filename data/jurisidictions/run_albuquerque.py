@@ -35,7 +35,7 @@ from shapely.ops import unary_union
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from data.parcel_calculations import add_improvement_ratio_fields
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft, is_parking_structure_label
 
 
 ASSESSOR_BASE = "https://assessormap.bernco.gov/server/rest/services/GIS/ASROnline_Public_Map/MapServer"
@@ -244,24 +244,6 @@ def download_raw(boundary_geometry: dict, raw_path: Path) -> gpd.GeoDataFrame:
     return raw_gdf
 
 
-def geodesic_area_sqft(geom) -> float:
-    geod = Geod(ellps="WGS84")
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = geod.polygon_area_perimeter(lon, lat)
-        hole_area = 0.0
-        for ring in geom.interiors:
-            lon_h, lat_h = ring.coords.xy
-            part_area, _ = geod.polygon_area_perimeter(lon_h, lat_h)
-            hole_area += abs(part_area)
-        return max(abs(area_m2) - hole_area, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(part) for part in geom.geoms)
-    return np.nan
-
-
 def clean_text(value: object) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return ""
@@ -282,7 +264,11 @@ def classify_refined(row: pd.Series) -> str | None:
 
     if "VACANT" in category_upper:
         return "Vacant"
-    if "PARKING" in category_upper and "PARKS/" not in category_upper and "MOBILE HOME PARK" not in category_upper:
+    # Parking STRUCTURES (garage/deck/ramp) are buildings, so they fall through to the
+    # improvement-ratio test below rather than being force-labelled underused (issue #12).
+    if ("PARKING" in category_upper and "PARKS/" not in category_upper
+            and "MOBILE HOME PARK" not in category_upper
+            and not is_parking_structure_label(category)):
         return "Parking Lot"
     if total > 0 and (0 if pd.isna(improvement_value) else improvement_value) <= 0:
         return "Vacant"

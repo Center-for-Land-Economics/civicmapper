@@ -51,7 +51,7 @@ from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "data"))
-from parcel_calculations import add_improvement_ratio_fields, classify_property_refined  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, classify_property_refined, gis_area_sqft  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "detroit"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -265,23 +265,6 @@ ex["property_land_use_refined"] = classify_property_refined(
 )
 
 # ── 8. Canonical fields — reported lot sqft denominator (geodesic fallback) ───
-def gis_area_sqft(g):
-    if g is None or g.is_empty:
-        return np.nan
-    if g.geom_type == "Polygon":
-        lon, lat = g.exterior.coords.xy
-        a, _ = geod.polygon_area_perimeter(lon, lat)
-        hole = 0.0
-        for ring in g.interiors:
-            lh, ph = ring.coords.xy
-            ah, _ = geod.polygon_area_perimeter(lh, ph)
-            hole += abs(ah)
-        return max(abs(a) - hole, 0.0) * 10.763910416709722
-    if g.geom_type == "MultiPolygon":
-        return sum(gis_area_sqft(p) for p in g.geoms)
-    return np.nan
-
-
 ex["geometry"] = ex["geometry"].apply(lambda x: x if x is None or x.is_valid else x.buffer(0))
 log("Computing geodesic areas...")
 ex["gis_area_sqft"] = ex["geometry"].apply(gis_area_sqft)
