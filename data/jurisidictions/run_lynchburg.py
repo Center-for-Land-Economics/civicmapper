@@ -75,7 +75,7 @@ from pyproj import Geod
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "data"))
-from parcel_calculations import add_improvement_ratio_fields, classify_property_refined  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, classify_property_refined, gis_area_sqft  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "lynchburg"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -484,47 +484,13 @@ ex["property_land_use_refined"] = classify_property_refined(
     bld_ar_col="bld_ar",
     fetch_footprints=False)
 
-# classify_property_refined flags ANY category containing "Parking" as an underutilized
-# "Parking Lot". A parking GARAGE is a built structure, not underused surface land, so undo
-# that and let the ordinary improvement-ratio rule judge it on its merits.
-garage = ex["property_land_use_category"].eq("Parking Garage")
-if garage.any():
-    land_g = ex.loc[garage, "land_value"].fillna(0)
-    impr_g = ex.loc[garage, "improvement_value"].fillna(0)
-    tot_g = land_g + impr_g
-    ex.loc[garage, "property_land_use_refined"] = np.where(
-        (tot_g > 0) & (land_g / tot_g.replace(0, np.nan) >= 0.50), "Underdeveloped", None)
-    log(f"Parking Garage rows re-judged by improvement ratio: {int(garage.sum())}")
+# Parking GARAGES need no local handling any more: classify_property_refined now excludes
+# parking structures from the 'Parking Lot' force-label repo-wide, so class 423 is judged
+# by the ordinary improvement ratio automatically.
 
 log(f"After exempt/utility filter -> {len(ex):,}")
 
 # ── canonical fields — LegalAc denominator, guarded, geodesic fallback ───────
-def gis_area_sqft(geom):
-    """Geodesic area in sqft, with interior rings (holes) SUBTRACTED.
-
-    Donut parcels are common in this feed (88 in the raw pull). Measuring the exterior
-    ring alone overstates them by a median 25% (max 6x) — checked against the source's own
-    Shape_Acres, where exterior-only lands at 1.2477x and hole-subtracted at 1.0001x. The
-    error compounds: the 0.5-2.0x guard below compares reported acreage against this
-    denominator, so an inflated area also causes CORRECT assessor acreage to be rejected.
-    NOTE: run_newportnews.py and run_richmond.py still have the exterior-only version.
-    """
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        a, _ = geod.polygon_area_perimeter(lon, lat)
-        total = abs(a)
-        for ring in geom.interiors:
-            rlon, rlat = ring.coords.xy
-            ra, _ = geod.polygon_area_perimeter(rlon, rlat)
-            total -= abs(ra)
-        return total * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(gis_area_sqft(p) for p in geom.geoms)
-    return np.nan
-
-
 ex["geometry"] = ex["geometry"].apply(lambda x: x if x is None or x.is_valid else x.buffer(0))
 log("Computing GIS areas...")
 ex["geom_area_sqft"] = ex["geometry"].apply(gis_area_sqft)

@@ -48,7 +48,7 @@ from pyproj import Geod
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "data"))
-from parcel_calculations import add_improvement_ratio_fields, classify_property_refined  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, classify_property_refined, gis_area_sqft  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "richmond"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -247,18 +247,6 @@ log(f"Classified {len(ex):,} taxable parcels")
 
 
 # ── canonical fields — LandSqFt denominator, geodesic fallback ───────────────
-def gis_area_sqft(geom):
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        a, _ = geod.polygon_area_perimeter(lon, lat)
-        return abs(a) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(gis_area_sqft(p) for p in geom.geoms)
-    return np.nan
-
-
 ex["geometry"] = ex["geometry"].apply(lambda x: x if x is None or x.is_valid else x.buffer(0))
 log("Computing GIS areas...")
 ex["geom_area_sqft"] = ex["geometry"].apply(gis_area_sqft)

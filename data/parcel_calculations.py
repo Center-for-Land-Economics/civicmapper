@@ -4,6 +4,91 @@ import numpy as np
 import pandas as pd
 
 
+SQM_TO_SQFT = 10.763910416709722
+
+_GEOD = None
+
+
+def _geod():
+    """Lazily built WGS84 Geod, so importing this module never hard-requires pyproj."""
+    global _GEOD
+    if _GEOD is None:
+        from pyproj import Geod
+        _GEOD = Geod(ellps="WGS84")
+    return _GEOD
+
+
+PARKING_STRUCTURE_RE = r"Garage|Deck|Structure|Ramp"
+
+
+def is_parking_structure_label(category) -> bool:
+    """True when a land-use label names a parking STRUCTURE rather than a surface lot.
+
+    House rule (issue #12): a deck/garage/ramp is a building on developed land, so it is judged
+    by the ordinary improvement ratio instead of being force-labelled underused. Cities with
+    their own row-wise classifier call this so they agree with classify_property_refined.
+    """
+    import re as _re
+    return bool(_re.search(PARKING_STRUCTURE_RE, str(category or ""), _re.I))
+
+
+def geodesic_area_sqft(geom) -> float:
+    """Geodesic (WGS84) area of a lon/lat polygon in SQUARE FEET, interior rings SUBTRACTED.
+
+    Every ETL used to carry its own copy of this, and all of them measured the EXTERIOR ring
+    only, so a donut parcel (a lot with another parcel carved out of the middle) had the hole
+    counted as part of its own land. Measured against the sources' own GIS area columns the
+    overstatement ran ~1.24-1.58x median on affected parcels and up to ~2.8x. Two consequences:
+    per-sqft values come out too LOW (so nothing looks visibly wrong), and — worse — an ETL that
+    sanity-checks reported acreage against computed acreage will REJECT correct assessor acreage
+    because the computed figure is inflated. Newport News shows the second effect plainly: 84%
+    of its donut parcels fell back to computed area versus 0% citywide.
+
+    Donut parcels are rare (0.0-0.3% of a typical roll), so this is an accuracy fix rather than
+    an emergency; cities pick it up whenever they are next re-run.
+
+    Returns NaN for missing/empty/non-polygonal geometry, matching the old per-ETL helpers.
+    """
+    if geom is None or getattr(geom, "is_empty", True):
+        return np.nan
+    gt = getattr(geom, "geom_type", None)
+    if gt == "Polygon":
+        g = _geod()
+        a, _ = g.polygon_area_perimeter(*geom.exterior.coords.xy)
+        total = abs(a)
+        for ring in geom.interiors:
+            ra, _ = g.polygon_area_perimeter(*ring.coords.xy)
+            total -= abs(ra)
+        return max(total, 0.0) * SQM_TO_SQFT
+    if gt == "MultiPolygon":
+        parts = [geodesic_area_sqft(sub) for sub in geom.geoms]
+        parts = [v for v in parts if v == v]  # drop NaN
+        return float(np.sum(parts)) if parts else np.nan
+    return np.nan
+
+
+# Both names exist across the ETLs; keep them interchangeable.
+gis_area_sqft = geodesic_area_sqft
+
+
+def check_area_agreement(computed_sqft, source_sqft, *, label="source area", tol=0.05, log=print):
+    """Log how well our computed geodesic area agrees with the source's own area column.
+
+    Individual parcels can legitimately differ; a shifted MEDIAN cannot, so this is the cheap
+    tripwire that catches an area routine measuring the wrong thing (an exterior-only area lands
+    near 1.25x on a hole-heavy roll, hole-subtracted lands at 1.0000). Logs and returns the
+    median ratio; never raises, so an ETL can call it purely as a diagnostic.
+    """
+    c = pd.to_numeric(pd.Series(computed_sqft).reset_index(drop=True), errors="coerce")
+    src = pd.to_numeric(pd.Series(source_sqft).reset_index(drop=True), errors="coerce")
+    ratio = (c / src.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+    med = ratio.median()
+    off = int((ratio.sub(1).abs() > tol).sum())
+    log(f"Area cross-check vs {label} — median ratio {med:.4f} (expect ~1.0000), "
+        f"rows off by >{tol:.0%}: {off:,}")
+    return med
+
+
 def add_improvement_ratio_fields(
     df: pd.DataFrame,
     *,
@@ -201,7 +286,8 @@ def classify_property_refined(
 
     Multi-signal rule (defaults calibrated for Houston / HCAD, 2026-05-30):
       - category contains 'Vacant'  -> 'Vacant'  (assessor already says so)
-      - category contains 'Parking' -> 'Parking Lot'
+      - category contains 'Parking' -> 'Parking Lot', EXCEPT parking structures
+            (garage/deck/ramp), which are buildings and fall through to the ratio test
       - improvement_value == 0      -> 'Vacant' ONLY if the parcel is genuinely empty:
             no building sqft (bld_ar == 0), no Overture building footprint, and not
             exempt/utility/ag (state_class prefix in `exclude_state_class_prefixes`
@@ -224,6 +310,14 @@ def classify_property_refined(
     cat = gdf[category_col].astype(str)
     is_vacant_cat = cat.str.contains("Vacant", na=False).to_numpy()
     is_parking_cat = cat.str.contains("Parking", na=False).to_numpy()
+    # A parking STRUCTURE (deck / garage / ramp) is a building standing on developed land, so it
+    # must NOT be force-labelled underused the way a surface lot is. Excluding it here lets it
+    # fall through to the ordinary improvement-ratio test below and be judged on its merits.
+    # This was the Lynchburg-vs-Baltimore disagreement in issue #12: Baltimore forced decks into
+    # 'Parking Lot', Lynchburg judged them by ratio, and Lynchburg's reading is the house rule.
+    is_parking_structure = cat.str.contains(
+        r"Garage|Deck|Structure|Ramp", case=False, regex=True, na=False).to_numpy()
+    is_parking_cat = is_parking_cat & ~is_parking_structure  # new array: to_numpy() view is read-only
     is_sf = (cat == "Single Family").to_numpy()
     cat_arr = cat.to_numpy()
 

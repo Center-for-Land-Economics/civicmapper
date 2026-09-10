@@ -33,7 +33,7 @@ from shapely.ops import unary_union
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from data.parcel_calculations import add_improvement_ratio_fields
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft
 
 
 TAXLOTS_QUERY_URL = "https://www3.multco.us/gisagspublic/rest/services/DART/Taxlots_Orion_Public/MapServer/0/query"
@@ -202,24 +202,6 @@ def fetch_portland_boundary() -> gpd.GeoDataFrame:
     if boundary.empty:
         raise RuntimeError("Failed to fetch Portland municipal boundary.")
     return boundary
-
-
-def geodesic_area_sqft(geom) -> float:
-    geod = Geod(ellps="WGS84")
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = geod.polygon_area_perimeter(lon, lat)
-        hole_area = 0.0
-        for ring in geom.interiors:
-            lon_h, lat_h = ring.coords.xy
-            part_area, _ = geod.polygon_area_perimeter(lon_h, lat_h)
-            hole_area += abs(part_area)
-        return max(abs(area_m2) - hole_area, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(part) for part in geom.geoms)
-    return np.nan
 
 
 def clean_text(value: object) -> str:

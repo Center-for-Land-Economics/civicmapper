@@ -130,7 +130,7 @@ from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from data.parcel_calculations import add_improvement_ratio_fields  # noqa: E402
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft  # noqa: E402
 
 requests.packages.urllib3.disable_warnings()  # county host serves an incomplete chain
 
@@ -312,23 +312,6 @@ def download_parcels(boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 # geometry helpers
 # --------------------------------------------------------------------------- #
 _GEOD = Geod(ellps="WGS84")
-
-
-def geodesic_area_sqft(geom) -> float:
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = _GEOD.polygon_area_perimeter(lon, lat)
-        holes = 0.0
-        for ring in geom.interiors:
-            lo, la = ring.coords.xy
-            part, _ = _GEOD.polygon_area_perimeter(lo, la)
-            holes += abs(part)
-        return max(abs(area_m2) - holes, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(p) for p in geom.geoms)
-    return np.nan
 
 
 def safe_union(geoms):

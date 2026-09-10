@@ -8,7 +8,7 @@ from shapely.ops import unary_union
 from pyproj import Geod
 
 sys.path.append("..")
-from parcel_calculations import add_improvement_ratio_fields
+from parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft
 from cloud_utils import get_feature_data_with_geometry, ensure_geodataframe
 
 DATA_DIR = "data/baltimore"
@@ -141,7 +141,9 @@ export_gdf["property_land_use_category"] = export_gdf["PROPERTY_CATEGORY"]
 def categorize_property_refined(row):
     cat = str(row["PROPERTY_CATEGORY"])
     if "Vacant" in cat:   return "Vacant"
-    if "Parking Garage" in cat: return "Parking Lot"
+    # NOTE: 'Parking Garage' (SDAT 44000/44100) deliberately gets NO special case — a deck is a
+    # built structure, so it is judged by the improvement ratio below like any other building.
+    # This matches the repo-wide rule in parcel_calculations.classify_property_refined.
     if row["improvement_value"] < 0.5 * (row["land_value"] + row["improvement_value"]):
         return "Underdeveloped"
     return None
@@ -150,16 +152,6 @@ export_gdf["property_land_use_refined"] = export_gdf.apply(categorize_property_r
 
 # Area
 geod = Geod(ellps="WGS84")
-def geodesic_area_sqft(geom):
-    if geom is None or geom.is_empty: return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = geod.polygon_area_perimeter(lon, lat)
-        return abs(area_m2) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(p) for p in geom.geoms)
-    return np.nan
-
 export_gdf["geometry"] = export_gdf["geometry"].apply(
     lambda g: g if g is None or g.is_valid else g.buffer(0)
 )

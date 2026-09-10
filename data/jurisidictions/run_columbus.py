@@ -60,7 +60,7 @@ from shapely.ops import unary_union
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.append(str(ROOT / "data"))
-from parcel_calculations import add_improvement_ratio_fields, classify_property_refined  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, classify_property_refined, gis_area_sqft  # noqa: E402
 from pyproj import Geod  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "columbus"
@@ -323,18 +323,6 @@ log(f"After exempt filter -> {len(ex):,} (dropped {int(parcel['exemption_flag'].
 # ── canonical fields — geodesic geometry area denominator ─────────────────────
 # STATEDAREA mixes sqft and acres row-to-row and ACRES is null for Franklin, so the
 # reported area is unusable; geometry is the denominator for every parcel.
-def gis_area_sqft(g):
-    if g is None or g.is_empty:
-        return np.nan
-    if g.geom_type == "Polygon":
-        lon, lat = g.exterior.coords.xy
-        a, _ = geod.polygon_area_perimeter(lon, lat)
-        return abs(a) * 10.763910416709722
-    if g.geom_type == "MultiPolygon":
-        return sum(gis_area_sqft(p) for p in g.geoms)
-    return np.nan
-
-
 ex["geometry"] = ex["geometry"].apply(lambda x: x if x is None or x.is_valid else x.buffer(0))
 log("Computing GIS areas...")
 ex["land_area_sqft"] = ex["geometry"].apply(gis_area_sqft)

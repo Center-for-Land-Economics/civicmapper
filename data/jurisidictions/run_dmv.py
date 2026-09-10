@@ -46,7 +46,7 @@ from pyproj import Geod
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "data"))
-from parcel_calculations import add_improvement_ratio_fields  # noqa: E402
+from parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "dmv"
 RAW_DIR = DATA_DIR / "raw"
@@ -149,18 +149,6 @@ def cached_fetch(key: str, fetch_fn, force: bool) -> gpd.GeoDataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 def make_valid(gs: gpd.GeoSeries) -> gpd.GeoSeries:
     return gs.apply(lambda g: g if (g is None or g.is_valid) else g.buffer(0))
-
-
-def geodesic_area_sqft(geom) -> float:
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        a, _ = GEOD.polygon_area_perimeter(lon, lat)
-        return abs(a) * SQM_TO_SQFT
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(p) for p in geom.geoms)
-    return np.nan
 
 
 def collapse_stacked_footprints(parcel: gpd.GeoDataFrame, sum_cols: list[str]) -> gpd.GeoDataFrame:

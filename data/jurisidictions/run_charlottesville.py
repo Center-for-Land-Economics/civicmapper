@@ -39,7 +39,7 @@ from pyproj import Geod
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from data.parcel_calculations import add_improvement_ratio_fields
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft
 
 
 SERVICE_1 = "https://gisweb.charlottesville.org/arcgis/rest/services/OpenData_1/MapServer"
@@ -207,23 +207,6 @@ def combine_unique(series: pd.Series) -> object:
     return " | ".join(values)
 
 
-def geodesic_area_sqft(geom) -> float:
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = GEOD.polygon_area_perimeter(lon, lat)
-        holes_m2 = 0.0
-        for ring in geom.interiors:
-            lon_h, lat_h = ring.coords.xy
-            hole_area, _ = GEOD.polygon_area_perimeter(lon_h, lat_h)
-            holes_m2 += abs(hole_area)
-        return max(abs(area_m2) - holes_m2, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(part) for part in geom.geoms)
-    return np.nan
-
-
 def aggregate_by_parcel(df: pd.DataFrame, aggregations: dict[str, object]) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["parcel_number", *aggregations.keys()])
@@ -246,7 +229,9 @@ def classify_refined(row: pd.Series) -> str | None:
     improvement = float(pd.to_numeric(row.get("improvement_value"), errors="coerce") or 0.0)
     total = land + improvement
 
-    if "parking lot" in use_code or "parking structure" in use_code:
+    # Only surface lots: a "parking structure" is a building and is judged by the improvement
+    # ratio further down, matching the repo-wide rule (issue #12).
+    if "parking lot" in use_code:
         return "Parking Lot"
 
     if "vacant" in use_code or "490 land" in use_code:

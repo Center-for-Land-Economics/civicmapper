@@ -29,7 +29,7 @@ from shapely.ops import unary_union
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from data.parcel_calculations import add_improvement_ratio_fields
+from data.parcel_calculations import add_improvement_ratio_fields, geodesic_area_sqft, is_parking_structure_label
 
 
 QUERY_URL = "https://gis.cuyahogacounty.us/server/rest/services/MyPLACE/Parcels_WMA_GJOIN_WGS84/MapServer/2/query"
@@ -150,24 +150,6 @@ def download_raw(raw_path: Path) -> gpd.GeoDataFrame:
     return raw_gdf
 
 
-def geodesic_area_sqft(geom) -> float:
-    geod = Geod(ellps="WGS84")
-    if geom is None or geom.is_empty:
-        return np.nan
-    if geom.geom_type == "Polygon":
-        lon, lat = geom.exterior.coords.xy
-        area_m2, _ = geod.polygon_area_perimeter(lon, lat)
-        hole_area = 0.0
-        for ring in geom.interiors:
-            lon_h, lat_h = ring.coords.xy
-            part_area, _ = geod.polygon_area_perimeter(lon_h, lat_h)
-            hole_area += abs(part_area)
-        return max(abs(area_m2) - hole_area, 0.0) * 10.763910416709722
-    if geom.geom_type == "MultiPolygon":
-        return sum(geodesic_area_sqft(part) for part in geom.geoms)
-    return np.nan
-
-
 def collapse_duplicate_parcels(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     duplicate_count = gdf.duplicated(subset=["parcelpin"], keep=False).sum()
     print(f"Duplicate parcelpin rows: {duplicate_count:,}")
@@ -229,7 +211,8 @@ def refined_category(row: pd.Series) -> str | None:
     desc = str(row.get("tax_luc_description") or "").upper()
     if "VAC" in desc or "VACANT" in desc:
         return "Vacant"
-    if "PARKING" in desc:
+    # Parking structures are buildings; only surface lots are force-labelled (issue #12).
+    if "PARKING" in desc and not is_parking_structure_label(desc):
         return "Parking Lot"
 
     land = float(pd.to_numeric(row.get("current_full_land_value"), errors="coerce") or 0.0)
