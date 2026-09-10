@@ -60,6 +60,36 @@ def city_dir(subdir: str, city_key: str, meta) -> Path:
     return base / city_key  # default; missing artifacts are reported below
 
 
+# Owner-name columns must never reach a public container. An assessor site exposes a name one
+# lookup at a time; these parquets are bulk downloads on a public CDN, which is a different act.
+# Enforced HERE rather than in ~40 ETLs so it also covers cities added by new contributors.
+# Street addresses are deliberately NOT blocked: a parcel's address is its public identity and is
+# what the popup and the assessors' own search boxes key on.
+# A bare "NAME" column is always an owner name in these feeds (Des Moines and Portland ship
+# 40k and 177k distinct person names under it). Matched EXACTLY so it does not catch
+# TNT_NAME (8 distinct neighbourhoods), StName, or subdivision_name.
+PII_COLUMN_RE = r"(?i)((^|_)(owner|ownername|owner_name|parcel_owner|mail_name|taxpayer)($|_)|^name$)"
+# Per-household circumstances that identify a person's age, veteran status, or debts once joined
+# to a parcel location. The maps never read these.
+SENSITIVE_COLUMN_RE = r"(?i)^(senior_exe|vet_exempt|stars?|starc|amtdelinqu|yrsdelinqu)"
+
+
+def check_no_pii(path: Path) -> list[str]:
+    """Return the disallowed columns in a parcel parquet (empty list = clean).
+
+    Schema-only read, so this stays fast even on a 200 MB roll.
+    """
+    import re
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        print("WARN  pyarrow missing — cannot screen for owner-name columns")
+        return []
+    names = pq.ParquetFile(path).schema_arrow.names
+    return [c for c in names
+            if re.search(PII_COLUMN_RE, c) or re.search(SENSITIVE_COLUMN_RE, c)]
+
+
 def build_artifacts(city_key: str, meta) -> list[tuple[Path, str]]:
     """(local_path, blob_name) pairs. Parcel parquet first; others appended if present."""
     juris = city_dir("jurisidictions/data", city_key, meta)
@@ -119,6 +149,18 @@ def main() -> int:
     cc = svc.get_container_client(container)
 
     artifacts = build_artifacts(city_key, meta)
+
+    parcel_path = artifacts[0][0]
+    if parcel_path.exists():
+        bad = check_no_pii(parcel_path)
+        if bad:
+            sys.exit(
+                f"REFUSING TO UPLOAD: {parcel_path.name} carries disallowed column(s): "
+                f"{', '.join(bad)}\n"
+                "These publish owner names or per-household circumstances to a public CDN.\n"
+                "Drop them in the city's ETL export before uploading (street addresses are fine)."
+            )
+
     print(f"Uploading '{city_key}' artifacts to {container} ...")
 
     uploaded = 0
