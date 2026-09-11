@@ -22,17 +22,35 @@ matches the GIS `PIN` exactly and recovers 664 of them. Use `PIN`, never `RPIN` 
 that tables /8 and /10 space-pad their PIN ("R1001 001     ") while /3 and the parcel layer
 do not, which is why the fallback goes through /3 only.
 
-KNOWN GAP — CONDOMINIUMS ARE NOT MAPPED BY GWINNETT:
+CONDOMINIUMS — UNITS HAVE NO POLYGON; THE ADDRESS-POINT LAYER IS THE FIX:
   Condo units (PROPCLAS 106/355/356/357) exist in the Tax Master but have NO parcel polygon
-  anywhere in the county — verified: 0 of 1,402 Duluth-addressed condo records are mapped.
+  anywhere in the county (verified: 0 of 1,402 Duluth-addressed condo records are mapped).
   Their land is the development's `122`/`322` Condo Common Area polygon, which the assessor
-  values at $0. So Duluth ships 26 common-area parcels (95.8 ac) at $0 land value, and the
-  condo value itself is absent. Land-lot-weighted estimate of the in-city shortfall:
-  ~$19.6M land (~1.6% of city land value) and ~$219M of improvements. There is no reliable
-  unit->common-area key (PIN plat roots cover only 1 of the 26; addresses match 85 of 1,402),
-  and LOCCITY='DULUTH' spans far more unincorporated area than the city, so inventing a merge
-  would import out-of-city value. Documented rather than guessed. Revisit if Gwinnett ever
-  publishes condo footprints or a unit->common-area relationship.
+  values at $0 — so a naive build ships ~96 acres of $0 "common area" and simply loses the
+  condo value.
+
+  The county's ADDRESS POINTS layer closes this completely, and is the piece to reach for
+  first on any Gwinnett city:
+      Address_Points/FeatureServer/16  (note: layer 16, not 0)
+  Every unit address point carries the unit's PIN, a COMMONPIN naming its common-area parcel,
+  and a real coordinate. That gives an exact unit->development key AND a spatial test for
+  city membership, so nothing has to be guessed from addresses or PIN prefixes.
+
+  MUNICIPALITY on that layer is a postal/MSAG label, NOT a jurisdiction: of 2,294 envelope
+  points labelled 'DULUTH', only 1,170 fall inside the city polygon. Always clip the points
+  spatially — filtering on MUNICIPALITY imports ~1,100 points of unincorporated Gwinnett,
+  exactly the same trap as the Tax Master's LOCCITY.
+
+  Units already mapped as their own polygon (apartment complexes) are excluded before the
+  merge, or their value would be counted twice.
+
+  COMMERCIAL CONDOS CARRY A NOMINAL LAND VALUE — expect it, it is not a merge bug: Gwinnett
+  assigns office/retail condo units a token $1,000 of land each and puts effectively all the
+  value in the building, so a merged commercial-condo development lands around $0.15-$0.19/sqft
+  against a citywide median near $10. Residential condo developments, where the assessor does
+  allocate real land value, merge to $4.6-$32.8/sqft — squarely in the city's normal range.
+  Both are the assessor's own numbers passed through unchanged (the Seattle Westlake Center
+  precedent: publish the assessor's figure, never invent a replacement).
 
 City boundary: `City_Area` FeatureServer/0 on the same org, CITY_NAME='DULUTH' (one polygon,
 3 rings). Parcels are clipped CENTROID-WITHIN that polygon — do NOT filter on the Tax Master
@@ -86,10 +104,15 @@ BND_CACHE = DATA_DIR / "duluth-ga-boundary.parquet"
 TM_CACHE = DATA_DIR / "duluth-ga-taxmaster.parquet"
 LV_CACHE = DATA_DIR / "duluth-ga-landvalue.parquet"
 TM_PIN_CACHE = DATA_DIR / "duluth-ga-taxmaster-by-pin.parquet"
+AP_CACHE = DATA_DIR / "duluth-ga-address-points.parquet"
+UNIT_CACHE = DATA_DIR / "duluth-ga-condo-units.parquet"
 
 ORG = "https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services"
 PT = f"{ORG}/Property_and_Tax/FeatureServer"
 CITY_AREA = f"{ORG}/City_Area/FeatureServer/0/query"
+# Address Points is layer 16 (NOT 0) on its FeatureServer — the service exposes a single
+# layer at that id, so /0 answers "Invalid URL".
+ADDR_PTS = f"{ORG}/Address_Points/FeatureServer/16/query"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36",
            "Accept": "application/json, text/plain, */*"}
 SQFT_PER_ACRE = 43560.0
@@ -378,6 +401,135 @@ log(f"After exempt + utility filter -> {len(parcel):,}")
 # Parcels with no tax record at all carry no value and cannot be placed on a value map.
 parcel = parcel[parcel["tot_appr_val"].notna()].copy()
 log(f"After dropping value-less records -> {len(parcel):,}")
+
+# ── CONDO RECOVERY: merge unmapped unit records onto their common-area parcel ─
+# Gwinnett gives condo units no polygon, but the county's ADDRESS POINTS layer closes the
+# gap completely: every unit address point carries the unit's PIN, a COMMONPIN naming the
+# development's common-area parcel, and a real coordinate. So each unit can be placed in the
+# city SPATIALLY and attached to its development without guessing.
+#
+# Why the spatial clip is not optional: the address layer's MUNICIPALITY field is a postal /
+# MSAG label, not a jurisdiction — of 2,294 envelope points labelled 'DULUTH' only 1,170 are
+# actually inside the city polygon. Filtering on MUNICIPALITY would import ~1,100 points of
+# unincorporated Gwinnett, the same trap as the Tax Master's LOCCITY.
+#
+# Runs AFTER the exempt filter (common-area parcels are class 122/322, so they survive it —
+# the playbook's Fort Collins rule) and BEFORE classification, so merged developments get
+# categorized from their units' own class.
+def fetch_address_points(bd):
+    if AP_CACHE.exists():
+        log(f"Using cached address points: {AP_CACHE.name}")
+        return gpd.read_parquet(AP_CACHE)
+    xmin, ymin, xmax, ymax = bd.total_bounds
+    env = json.dumps({"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax,
+                      "spatialReference": {"wkid": 4326}})
+    log("Pulling address points carrying a COMMONPIN...")
+    pages, off = [], 0
+    while True:
+        g = None
+        for attempt in range(4):
+            try:
+                r = requests.post(ADDR_PTS, data={
+                    "where": "COMMONPIN IS NOT NULL", "geometry": env,
+                    "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+                    "spatialRel": "esriSpatialRelIntersects",
+                    "outFields": "PIN,COMMONPIN,FULLADDR,POINTTYPE,STATUS,MUNICIPALITY",
+                    "returnGeometry": "true", "outSR": 4326, "resultOffset": off,
+                    "resultRecordCount": PAGE, "orderByFields": "OBJECTID", "f": "geojson",
+                }, headers=HEADERS, timeout=300)
+                r.raise_for_status()
+                g = gpd.read_file(io.BytesIO(r.content))
+                break
+            except Exception as e:  # noqa: BLE001
+                log(f"  retry {attempt+1} @off {off}: {type(e).__name__}: {e}")
+                time.sleep(4 * (attempt + 1))
+        if g is None:
+            raise RuntimeError(f"Address-point pull failed at offset {off}")
+        if not len(g):
+            break
+        pages.append(g)
+        off += len(g)
+        if len(g) < PAGE:
+            break
+    ap = gpd.GeoDataFrame(pd.concat(pages, ignore_index=True), crs="EPSG:4326")
+    ap.to_parquet(AP_CACHE, index=False)
+    log(f"  cached address points -> {AP_CACHE.name} ({len(ap):,} rows)")
+    return ap
+
+
+parcel["_condo_merged"] = 0
+ap = fetch_address_points(bd)
+ap = ap[ap.geometry.notnull()].copy()
+ap["PIN"] = ap["PIN"].astype(str).str.strip()
+ap["COMMONPIN"] = ap["COMMONPIN"].astype(str).str.strip()
+ap = ap[ap.geometry.within(poly)].copy()          # SPATIAL clip, never MUNICIPALITY
+log(f"Address points with COMMONPIN inside Duluth: {len(ap):,} "
+    f"({ap['COMMONPIN'].nunique()} developments)")
+
+mapped_pins = set(parcel["PIN"])
+unit_pins = sorted(set(ap["PIN"]) - mapped_pins)   # already-mapped PINs would double-count
+log(f"  of which unmapped unit records to recover: {len(unit_pins):,}")
+if unit_pins:
+    if UNIT_CACHE.exists():
+        log(f"Using cached unit values: {UNIT_CACHE.name}")
+        units = pd.read_parquet(UNIT_CACHE)
+    else:
+        units = fetch_taxmaster_by_pin(unit_pins, TM_FIELDS)
+        units.to_parquet(UNIT_CACHE, index=False)
+    units["PIN"] = units["PIN"].astype(str).str.strip()
+    for c in ["DWLGVAL1", "LANDVAL1", "TOTVAL1"]:
+        units[c] = pd.to_numeric(units[c].astype(str).str.strip(), errors="coerce")
+    units["PROPCLAS"] = pd.to_numeric(units["PROPCLAS"], errors="coerce")
+    units = units.groupby("PIN", as_index=False).first()
+    # Same exempt/utility rule as the main pipeline, so a church or city-owned unit inside a
+    # development cannot sneak value back in through the side door.
+    n_before = len(units)
+    units = units[~(units["PROPCLAS"].between(600, 699)
+                    | units["PROPCLAS"].between(700, 799))].copy()
+    log(f"  dropped {n_before - len(units):,} exempt/utility unit records -> {len(units):,}")
+    # Common-area and HOA records are NOT units — they are the land shells themselves, and a
+    # stray one carries $0 while still winning the dominant-class vote for a single-record
+    # "development". That silently re-labelled Duluth's one hotel as 'Common Area' (it gained
+    # $0 and lost its real class). Only genuine unit records may merge.
+    NON_UNIT_CLASSES = {119, 120, 122, 322, 520}
+    n_before = len(units)
+    units = units[~units["PROPCLAS"].isin(NON_UNIT_CLASSES)].copy()
+    log(f"  dropped {n_before - len(units):,} common-area/HOA records (not units) "
+        f"-> {len(units):,}")
+
+    units = units.merge(ap[["PIN", "COMMONPIN"]].drop_duplicates("PIN"), on="PIN", how="inner")
+    # Fallback for a development whose COMMONPIN names no mapped parcel: attach the units to
+    # the parcel that spatially CONTAINS their address points.
+    unresolved = sorted(set(units["COMMONPIN"]) - mapped_pins)
+    if unresolved:
+        cont = gpd.sjoin(ap[ap["COMMONPIN"].isin(unresolved)][["COMMONPIN", "geometry"]],
+                         parcel[["PIN", "geometry"]], predicate="within", how="inner")
+        remap = cont.groupby("COMMONPIN")["PIN"].agg(
+            lambda s: s.value_counts().idxmax()).to_dict()
+        units["COMMONPIN"] = units["COMMONPIN"].replace(remap)
+        log(f"  resolved {len(remap)} development(s) by point-in-parcel containment: {remap}")
+
+    agg = units.groupby("COMMONPIN").agg(
+        u_land=("LANDVAL1", "sum"), u_bld=("DWLGVAL1", "sum"), u_tot=("TOTVAL1", "sum"),
+        u_n=("PIN", "size"), u_class=("PROPCLAS", lambda s: s.value_counts().idxmax()))
+    agg = agg[agg.index.isin(mapped_pins)]
+    log(f"  merging {int(agg['u_n'].sum()):,} units into {len(agg):,} developments: "
+        f"land ${agg['u_land'].sum():,.0f} + improvements ${agg['u_bld'].sum():,.0f}")
+    lost = units[~units["COMMONPIN"].isin(agg.index)]
+    if len(lost):
+        log(f"  UNRECOVERED: {len(lost):,} units (land ${lost['LANDVAL1'].sum():,.0f}) — "
+            "no mapped parcel for their development")
+
+    hit = parcel["PIN"].isin(agg.index)
+    idx = parcel.loc[hit, "PIN"]
+    for col, src in [("land_val", "u_land"), ("bld_val", "u_bld"), ("tot_appr_val", "u_tot")]:
+        parcel.loc[hit, col] = (pd.to_numeric(parcel.loc[hit, col], errors="coerce").fillna(0.0)
+                                + idx.map(agg[src]).to_numpy())
+    # Re-class the host to its units' own class so a merged development is categorized as the
+    # condominium it is, not as the empty 'Common Area' shell the assessor mapped.
+    parcel.loc[hit, "PROPCLAS"] = idx.map(agg["u_class"]).astype("Int64").astype(str).to_numpy()
+    parcel.loc[hit, "_condo_merged"] = 1
+    log(f"  hosts updated: {int(hit.sum()):,} parcels")
 
 # ── condo / stacked-footprint diagnostic (add-city skill §6a) ────────────────
 rp = parcel.geometry.representative_point()
