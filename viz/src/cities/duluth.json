@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "Duluth, GEORGIA — the Gwinnett County suburb in metro Atlanta (~10.3 sq mi, pop ~31k). NOT Duluth, Minnesota. This city holds the plain `duluth` key; a future Duluth MN must use a different key (e.g. `duluthmn`).",
+    "9,609 taxable parcels, $1.25B land value / $6.58B total market value. Source is Gwinnett County GIS's public AGOL `Property_and_Tax` FeatureServer (services3.arcgis.com/RfpmnkSAQleRbndX): geometry on layer 0, dollar values in the related Tax Master table (/3), stated land area in the Land Value table (/10). See run_duluth.py.",
+    "GEORGIA 40% ASSESSMENT RATIO: LANDVAL1/DWLGVAL1/TOTVAL1 are 100% fair market value; TAXTOT1 is the 40% assessed value. We ship market value. The ETL asserts the 0.40 ratio so a source change cannot silently under-report the city by 60%.",
+    "JOIN GOTCHA: the parcel layer leaves LRSN NULL on 665 real, valued parcels (1,209 acres, $64.2M of land value, 223 houses + 370 townhomes). An LRSN-only join drops all of them and just looks like a slightly low parcel count. run_duluth.py falls back to a PIN lookup against the Tax Master, which recovers 664.",
+    "KNOWN GAP — condos are not mapped by Gwinnett: condo units (PROPCLAS 106/355/356/357) have tax records but NO parcel polygon anywhere in the county (0 of 1,402 Duluth-addressed condo records are mapped). Their land is the development's 122/322 'Condo Common Area' polygon, which the assessor values at $0. So 51 common-area parcels render at $0 land value and the condo value is absent — a land-lot-weighted ~$19.6M of land (~1.6% of city land value) and ~$219M of improvements. No reliable unit-to-common-area key exists, so this is documented rather than guessed at.",
+    "Baked to PMTiles + H3 despite being well under the ~100k-parcel rule of thumb — small GeoParquet cities render sparse when zoomed out (the Olympia 2026-07-01 lesson). Baked with --drop-remnants to match hideRemnants.",
+    "Parking is OSM-only AND unclassified (--osm-only; the surface-vs-structure step failed because the Overture buildings S3 release path 404'd), so surface_area_acres is 0 and the totals cover ALL parking — surface plus structures — same shape as richmond/newportnews. 329 OSM lots / 58.8 acres / ~$18.3M estimated land value. Gwinnett's PROPCLAS scheme has NO surface-parking class, so unlike Richmond there is no assessor figure to cross-check the OSM undercount against. Re-run without --no-classify once Overture's release path is current to get the surface/structure split."
+  ],
+  "displayName": "Duluth",
+  "state": "ga",
+  "filename": "duluth-ga-parcels.parquet",
+  "pmtilesFilename": "duluth-ga-parcels.pmtiles",
+  "pmtilesVersion": "2026-09-11-h3",
+  "hideRemnants": true,
+  "parkingFilename": "duluth-ga-parking-lots.parquet",
+  "parkingVersion": "2026-09-11-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "duluth-ga",
+    "duluth_ga",
+    "duluthga"
+  ],
+  "coords": [
+    -84.1381,
+    33.9995
+  ]
+}

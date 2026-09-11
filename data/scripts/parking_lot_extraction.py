@@ -88,6 +88,8 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "seattle": "Seattle, Washington, USA",
     "vancouver": "Vancouver, Washington, USA",
     "washington": "Washington, District of Columbia, USA",
+    # The Gwinnett County suburb in metro Atlanta, NOT Duluth, Minnesota.
+    "duluth": "Duluth, Georgia, USA",
     "tallinn": "Tallinn, Estonia",
     "copenhagen": "Copenhagen, Denmark",
 }
