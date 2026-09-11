@@ -23,6 +23,7 @@ ALL_CITIES = [
     'austin','dallas','sanantonio','bcs','detroit','chicago',
     'tulsa','newportnews','lynchburg','olympia','seattle','vancouver','dmv','washington',
     'hartfordmetro',
+    'duluth',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"
