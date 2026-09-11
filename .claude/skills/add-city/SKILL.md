@@ -200,6 +200,31 @@ lots like townhomes — do NOT fill them).
 Olympia result: 806 unit stubs → 94 development parcels (99% onto real common-area land); rendered
 land $/sqft max 14,750 → 155; condos render as proper blocks instead of a forest of pencils.
 
+### 6c. When units have NO polygon at all — look for a county ADDRESS-POINT layer
+
+Olympia's units are tiny *stubs*; the other failure mode is units with **no geometry whatsoever**
+(Gwinnett County GA: 0 of 1,402 condo records mapped). The development's land is a `$0`
+"condo common area" parcel, so a naive build ships acres of $0 holes and loses the value
+entirely. Don't conclude there's no key and document it as unfixable — **check the county's
+address-point layer first.** Gwinnett's (`Address_Points/FeatureServer/16` — note the layer id
+isn't 0) gives every unit a `PIN`, a **`COMMONPIN`** naming its common-area parcel, and a
+coordinate: an exact unit→development key *and* a spatial city test. 749 units → 31
+developments, +$20.3M land. Most county GIS portals publish one; it's usually named
+`Address_Points`/`Site_Addresses` and is worth probing before any address- or PIN-prefix
+heuristic.
+
+Three things that will silently corrupt this merge:
+- **A municipality/city field on the address layer is a POSTAL (MSAG) label, not a jurisdiction** —
+  only 1,170 of 2,294 points labelled 'DULUTH' were inside the city. Clip **spatially**, always.
+- **Exclude units already mapped as their own polygon** (apartment complexes) or you double-count.
+- **Common-area/HOA class records are NOT units.** One stray $0 record won the dominant-class vote
+  for a single-record "development" and silently re-labelled the city's only hotel as Common Area.
+
+Calibrate residential and commercial separately: assessors often give **commercial** condo units a
+token land value (Gwinnett: $1,000 each, all value in the building), so those merge to ~$0.15/sqft
+against a $10 median. That's the assessor's own number — publish it and note it, don't invent a
+replacement (Seattle Westlake Center precedent).
+
 ## 7. Frontend + deploy
 
 - **`upload_city_dev.py <city>` is the consolidated, registry-driven uploader** — it pushes
