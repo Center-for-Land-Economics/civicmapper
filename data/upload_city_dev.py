@@ -34,6 +34,16 @@ from parquet_registry import list_cities, resolve_city  # noqa: E402
 MB = 1024 * 1024
 
 
+def _md5(path: Path) -> bytes:
+    """Content digest for the upload skip-check (and recorded on the blob for the next run)."""
+    import hashlib
+    h = hashlib.md5()  # noqa: S324 - matches Azure's own Content-MD5 header, not a security use
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.digest()
+
+
 def load_env(path: Path) -> None:
     if not path.exists():
         sys.exit(f"Missing {path}\nCreate it with: AZURE_STORAGE_CONNECTION_STRING=...")
@@ -132,7 +142,7 @@ def main() -> int:
     if not conn:
         sys.exit("AZURE_STORAGE_CONNECTION_STRING not found in data/.env")
     try:
-        from azure.storage.blob import BlobServiceClient
+        from azure.storage.blob import BlobServiceClient, ContentSettings
         from azure.core.exceptions import ResourceNotFoundError
     except ImportError:
         sys.exit("Missing dependency. Run:  python -m pip install azure-storage-blob")
@@ -175,15 +185,29 @@ def main() -> int:
             continue
         size = local.stat().st_size
         blob = cc.get_blob_client(name)
+        digest = _md5(local)
         try:
-            if blob.get_blob_properties().size == size:
-                print(f"SKIP  {name}: already in {container} ({size/MB:.1f} MB, same size)")
+            props = blob.get_blob_properties()
+            remote_md5 = (props.content_settings or {}).get("content_md5")
+            # Content hash, NOT size. A size-only check silently skips a file whose contents
+            # changed without changing its length — which is exactly what land-totals JSONs do
+            # (Provo's went $5.26B -> $6.71B at an identical 76 bytes and never left the laptop).
+            # Blobs uploaded before this change carry no content_md5; those fall back to size,
+            # and re-uploading once records a hash so the next run is exact.
+            if remote_md5 is not None:
+                if bytes(remote_md5) == digest:
+                    print(f"SKIP  {name}: already in {container} ({size/MB:.1f} MB, same content)")
+                    continue
+            elif props.size == size:
+                print(f"SKIP  {name}: already in {container} ({size/MB:.1f} MB, same size, "
+                      f"no stored hash — re-upload to record one)")
                 continue
         except ResourceNotFoundError:
             pass
         print(f"UP    {name} ({size/MB:.1f} MB) -> {container} (4 MB blocks)...")
         with local.open("rb") as fh:
-            blob.upload_blob(fh, overwrite=True, max_concurrency=4)
+            blob.upload_blob(fh, overwrite=True, max_concurrency=4,
+                             content_settings=ContentSettings(content_md5=digest))
         print(f"  done -> {container}/{name}")
         uploaded += 1
     print(f"All artifacts processed. ({uploaded} uploaded)")

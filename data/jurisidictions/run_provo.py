@@ -4,64 +4,53 @@ Build the City of Provo, UT canonical parcel parquet.
 
 Provo is the Utah County seat (pop. 115,162) and home to Brigham Young University.
 
-Source (UGRC / Utah Geospatial Resource Center, public, no token):
-- Utah Utah County Parcels LIR:
-  https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/Parcels_Utah_LIR/FeatureServer/0
-  327,655 countywide rows. A ONE-STOP layer in the state's LIR (Land Information Record)
-  standard schema: geometry + LAND_MKT_VALUE + TOTAL_MKT_VALUE + PARCEL_ACRES + PROP_CLASS +
-  BLDG_SQFT/BLDG_SQFT_INFO + BUILT_YR, all in one place. No joins, no manual downloads.
-  CURRENT_ASOF = 2025-10-30, i.e. the 2025 assessment roll.
-- City boundary: Utah Municipal Boundaries (same publisher), NAME='Provo', COUNTYNBR='25'.
+SOURCE — Utah County's own live assessor layer (public, no token):
+  https://maps.utahcounty.gov/arcgis/rest/services/Assessor/TaxParcelAll_NoLabel/MapServer/0
+  285,300 countywide parcels, ONE ROW PER PARCEL, 92 fields: geometry + MKT_LAND_VALUE /
+  MKT_IMP_VALUE / MKT_CUR_VALUE + deed ACREAGE + TAXABLE_CODE + a real use taxonomy
+  (PROP_TYPE_DESCR / SPC_PROP_TYP_DESCR) + building areas. ASMT_YEAR 2027 (the current roll).
+  City boundary: UGRC `UtahMunicipalBoundaries`, NAME='Provo' AND COUNTYNBR='25'.
 
-The county's own GIS host (maps.utahcounty.gov) is a thin viewer shell; the UGRC mirror is
-the authoritative machine-readable copy and is the one the county's open-data page points at.
+DO NOT USE UGRC's statewide LIR layer (`Parcels_Utah_LIR`) for Utah County. It looks like the
+obvious one-stop source — same publisher as the boundary, clean LIR schema — and this ETL was
+first built on it. It is NOT usable here for two reasons:
+
+  1. IT IS MISSING VALUES ON ~20% OF TAXABLE PARCELS, silently. LAND_MKT_VALUE/TOTAL_MKT_VALUE
+     come back NULL on parcels that plainly carry value. Verified against the assessor's own
+     value history: 4095 W CENTER ST (a 15.9-acre mini-warehouse complex) is NULL in LIR and
+     $6.07M land / $14.0M total at the county; 3581 S MOUNTAIN VISTA PKWY is NULL in LIR and
+     $1.27M land / $9.63M total. Because Utah does not assess exempt land at all, "no value"
+     reads as "exempt", so these parcels were being silently DROPPED — the LIR build shipped
+     18,700 parcels / $5.26B of land against the county's 27,273 / $7.26B, i.e. it was missing
+     ~8,500 taxable parcels and 28% of the city's land value, and downtown University Avenue
+     rendered as a hole.
+  2. It carries no exemption flag at all (TAXEXEMPT_TYPE is NULL on every Utah County row),
+     whereas the county layer has an explicit TAXABLE_CODE.
+
+The LIR layer's one genuine advantage — a 152-value building taxonomy in BLDG_SQFT_INFO — is
+superseded by the county's SPC_PROP_TYP_DESCR, which is cleaner and parcel-level. The same
+caution probably applies to LIR sheets for other Utah counties: check value coverage against
+the county assessor before trusting one.
 
 Outputs:
 - data/jurisidictions/data/provo/provo-ut-parcels.parquet
 - data/jurisidictions/data/provo/provo-ut-parcels_YYYY_MM_DD.parquet
 
-Notes / the four traps this ETL had to clear:
-
-1. VALUES ARE FULL MARKET VALUE, not Utah's 55% primary-residential taxable basis.
-   Verified live against the assessor's own value history for two parcels (04:017:0017 and
-   04:002:0034): the LIR numbers match the table headed "Market Value" row-for-row for 2025.
-   So no Georgia-style 40%-of-market correction is needed here. NOTE the assessor has already
-   published 2026 values; LIR is one roll behind (2025). That is the published state dataset,
-   so it is what ships.
-
-2. THE LIR LAYER HAS ONE ROW PER BUILDING, NOT PER PARCEL. 38,687 Provo rows collapse to
-   30,310 parcels; one apartment complex (04:021:0031, 865 N 160 W) is 216 rows carrying the
-   SAME $23.3M total on every one. Summing values across an account's rows would have inflated
-   it 216x (skill §2, the Dallas bug). So the PARCEL_ID dedup takes values as `first`, sums
-   BLDG_SQFT across the buildings, keeps the LARGEST building's type for classification, and
-   unions the geometry.
-
-3. THERE IS NO EXEMPTION FLAG. TAXEXEMPT_TYPE is NULL on every Utah County row and PROP_CLASS
-   ='Tax Exempt' covers only 25 parcels, because exempt land in Utah simply is not assessed:
-   it carries NULL values. So "no land value" IS the exemption signal here, and it is what the
-   exempt filter keys on. The unvalued set is dominated by exactly what you would expect —
-   whole 640-acre PLSS sections of Uinta National Forest in the mountains east of town, the
-   municipal airport (912 S AVIATION DR, 828 acres), BYU, parks and ROW.
-
-4. CONDOS / PUDs ARE MAPPED AS BUILDING-FOOTPRINT STUBS (skill §6a/§6b). 3,220 valued parcels
-   have a sub-1,000 sqft footprint, and PARCEL_ACRES agrees with the polygon (median ratio
-   1.001), so the assessor carries no independent land area for them either — the development's
-   real land is a SEPARATE, UNVALUED common-area parcel in the same plat. Left alone, Provo's
-   student-housing stock renders as thousands of pencils: land $/sqft ran to $351 against a
-   citywide median of $25. So units are MERGED DOWN onto their common-area land (run_olympia.py
-   recipe): see the merge block for the plat-dominance gate that keeps mixed subdivisions out.
-
-Classification: PROP_CLASS is too coarse to use alone — 14,665 Provo rows come back "Unknown"
-(the LIR translation has no mapping for Utah County's condo/townhome/multi-unit codes) and the
-duplex at 534 S 100 W is filed "Commercial" because Utah taxes non-primary residential at the
-full rate. BLDG_SQFT_INFO carries a genuinely rich 152-value building taxonomy instead
-(`int:_two_story` = interior townhouse unit, `12_unit_building`, `fourplex:_two_story`,
-`storage_warehouse`, ...), so categorize() keys on the LARGEST building's type and falls back
-to PROP_CLASS/HOUSE_CNT only for parcels whose only structure is accessory (shed, carport).
-
-~19k shipped parcels, but baked to PMTiles + H3 anyway: Provo's condo/townhome stock means a
-large share of parcels are small, which is exactly the population that drops out below ~z13 on
-the browser GeoParquet path (the Olympia low-zoom sparseness fix, memory geoparquet-lowzoom-sparse).
+Notes:
+- VALUES ARE FULL MARKET VALUE, not Utah's 55% primary-residential taxable basis. Verified
+  live against the assessor's own value history for two parcels: MKT_* matches the table
+  headed "Market Value" row-for-row. (TXBL_CUR_VALUE is the reduced taxable figure — not used.)
+- EXEMPTION is explicit: TAXABLE_CODE 100 = taxable, everything else is an exemption class.
+  The big ones in Provo are 920 (7,433 acres — the Uinta National Forest sections and the lake
+  flats), 959 (3,444 acres — BYU, schools, city land), 600/601 (404 acres — condo/HOA common
+  area, which the condo merge below consumes before the exempt filter runs) and 998 (ROW).
+- OWNER_NAME is deliberately NOT requested from the source at all (issue #12): it never enters
+  the pipeline, rather than being fetched and dropped later.
+- CONDOS/PUDs are mapped as building-footprint stubs and are MERGED down onto their plat's
+  common-area land (skill §6a/§6b, run_olympia.py recipe) — see the merge block.
+- ~19k parcels, but baked to PMTiles + H3 anyway: Provo's condo/townhome stock means small
+  parcels are a large share, and those drop out below ~z13 on the browser GeoParquet path
+  (the Olympia low-zoom sparseness fix).
 """
 from __future__ import annotations
 
@@ -75,6 +64,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import requests
+from shapely import make_valid
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
 
@@ -89,29 +79,51 @@ from parcel_calculations import (  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "provo"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-GEOM_CACHE = DATA_DIR / "provo-ut-geometry.parquet"
+GEOM_CACHE = DATA_DIR / "provo-ut-county-geometry.parquet"
 BOUNDARY_CACHE = DATA_DIR / "provo-boundary.geojson"
 
-UGRC = "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services"
-PARCELS_URL = f"{UGRC}/Parcels_Utah_LIR/FeatureServer/0/query"
-BOUNDARY_URL = f"{UGRC}/UtahMunicipalBoundaries/FeatureServer/0/query"
-# Utah County is COUNTYNBR 25. The NAME filter alone would also match nothing else, but the
-# county number is kept so a future statewide re-point cannot pick up a same-named place.
+PARCELS_URL = ("https://maps.utahcounty.gov/arcgis/rest/services/Assessor/"
+               "TaxParcelAll_NoLabel/MapServer/0/query")
+BOUNDARY_URL = ("https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/"
+                "UtahMunicipalBoundaries/FeatureServer/0/query")
+# Utah County is COUNTYNBR 25; kept so a future statewide re-point can't grab a same-named place.
 BOUNDARY_WHERE = "NAME='Provo' AND COUNTYNBR='25'"
 
+# OWNER_NAME is deliberately absent — see the module docstring.
 OUT_FIELDS = (
-    "OBJECTID,PARCEL_ID,SERIAL_NUM,PARCEL_ADD,PARCEL_CITY,TAXEXEMPT_TYPE,TAX_DISTRICT,"
-    "TOTAL_MKT_VALUE,LAND_MKT_VALUE,PARCEL_ACRES,PROP_CLASS,PRIMARY_RES,HOUSE_CNT,"
-    "SUBDIV_NAME,BLDG_SQFT,BLDG_SQFT_INFO,FLOORS_CNT,BUILT_YR,CURRENT_ASOF"
+    "PARCEL_NO,PARCELID,SITE_FULL_ADDRESS,ACREAGE,TAX_DISTRICT,TAX_CITY,TAXABLE_CODE,"
+    "ACCOUNT_TYPE,PROP_TYPE_DESCR,SPC_PROP_TYP_DESCR,ASMT_CODE_DESCR,NEIGHBORHOOD,"
+    "MKT_LAND_VALUE,MKT_IMP_VALUE,MKT_CUR_VALUE,ASMT_YEAR,TOTAL_UNIT_COUNT,"
+    "TOTAL_ABOVE_GRADE_AREA,GLA_WEIGHTED_YRBLT,TOTAL_IMP_COUNT"
 )
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
 }
-PAGE = 2000
+PAGE = 1000
 SQFT_PER_ACRE = 43560.0
 SQM_TO_SQFT = 10.763910416709722
 UTM = "EPSG:32612"  # UTM 12N — Provo
+TAXABLE_CODE_TAXABLE = 100
+
+
+def _polygonal(g):
+    """Keep only the polygonal part of a geometry.
+
+    make_valid() turns a self-intersecting polygon into a GeometryCollection when the repair
+    sheds a degenerate spur, and a bare LineString/GeometryCollection breaks both the hole
+    diagnostic and the PMTiles bake. Drop the non-areal pieces and keep the polygons.
+    """
+    if g is None or g.is_empty:
+        return g
+    if g.geom_type in ("Polygon", "MultiPolygon"):
+        return g
+    if g.geom_type == "GeometryCollection":
+        polys = [p for p in g.geoms if p.geom_type in ("Polygon", "MultiPolygon") and not p.is_empty]
+        if not polys:
+            return None
+        return polys[0] if len(polys) == 1 else unary_union(polys)
+    return None
 
 
 def log(m):
@@ -136,10 +148,8 @@ def fetch_boundary() -> gpd.GeoDataFrame:
 def fetch_parcels(bounds) -> gpd.GeoDataFrame:
     """Countywide layer filtered to the city's bounding envelope, cached to parquet.
 
-    The envelope (not PARCEL_CITY) is the fetch filter, and the authoritative municipal
-    boundary does the actual clip below — PARCEL_CITY is a situs/postal label and is
-    demonstrably wrong at the edges (119 parcels inside Provo carry a blank city, and one
-    'Orem'-labelled parcel falls inside the Provo boundary). Playbook §4.
+    The envelope (not TAX_CITY) is the fetch filter and the authoritative municipal boundary
+    does the actual clip below — a tax-city/situs label is not a jurisdiction (playbook §4).
     """
     if GEOM_CACHE.exists():
         log(f"Using cached geometry: {GEOM_CACHE.name}")
@@ -164,9 +174,14 @@ def fetch_parcels(bounds) -> gpd.GeoDataFrame:
                     **geom_params, "where": "1=1", "outFields": OUT_FIELDS,
                     "returnGeometry": "true", "resultOffset": off, "resultRecordCount": PAGE,
                     "outSR": 4326, "orderByFields": "OBJECTID", "f": "geojson"},
-                    headers=HEADERS, timeout=240)
+                    headers=HEADERS, timeout=300)
                 r.raise_for_status()
-                feats = json.loads(r.content).get("features", [])
+                body = json.loads(r.content)
+                # A MapServer returns HTTP 200 with an {"error": ...} body on overload; without
+                # this check that parses as "zero features" and silently truncates the pull.
+                if "error" in body:
+                    raise RuntimeError(str(body["error"])[:200])
+                feats = body.get("features", [])
                 gdf = (gpd.GeoDataFrame.from_features(feats, crs="EPSG:4326")
                        if feats else gpd.GeoDataFrame(geometry=[], crs="EPSG:4326"))
                 break
@@ -181,9 +196,7 @@ def fetch_parcels(bounds) -> gpd.GeoDataFrame:
         off += len(gdf)
         if off % 10000 < PAGE:
             log(f"  fetched {off:,}/{total:,}")
-        # maxRecordCount is 2000; a SHORT page means the end (do not break on 0 only —
-        # see the Seattle pagination note in the add-city skill).
-        if len(gdf) < PAGE:
+        if len(gdf) < PAGE:      # a SHORT page means the end — do not break on 0 only
             break
     geom = gpd.GeoDataFrame(pd.concat(pages, ignore_index=True), crs="EPSG:4326")
     geom.to_parquet(GEOM_CACHE, index=False)
@@ -200,73 +213,80 @@ if raw.crs is None:
     raw = raw.set_crs("EPSG:4326")
 elif raw.crs.to_epsg() != 4326:
     raw = raw.to_crs("EPSG:4326")
-raw["geometry"] = raw["geometry"].apply(lambda g: g if g is None or g.is_valid else g.buffer(0))
-raw = raw[raw["geometry"].notnull() & raw["geometry"].apply(
-    lambda g: getattr(g, "is_valid", False) and not g.is_empty)].copy()
+# 109 source polygons are self-intersecting; make_valid (not buffer(0), which can empty a
+# bow-tie) repairs them. Left unrepaired they raise a GEOS side-location-conflict inside the
+# multi-polygon dedup below.
+n_bad = int((~raw.geometry.is_valid).sum())
+raw["geometry"] = raw["geometry"].apply(
+    lambda g: g if (g is not None and g.is_valid) else _polygonal(make_valid(g)))
+raw = raw[raw["geometry"].notna() & ~raw.geometry.is_empty].copy()
+log(f"Repaired {n_bad:,} invalid source geometries")
 city = boundary.geometry.union_all()
 inside = gpd.GeoSeries(raw.geometry.representative_point(), crs="EPSG:4326").within(city)
 raw = raw[inside.values].copy()
 log(f"Inside the Provo municipal boundary: {len(raw):,} rows")
 
-for c in ["TOTAL_MKT_VALUE", "LAND_MKT_VALUE", "PARCEL_ACRES", "BLDG_SQFT", "FLOORS_CNT"]:
+for c in ["MKT_LAND_VALUE", "MKT_IMP_VALUE", "MKT_CUR_VALUE", "ACREAGE", "TAXABLE_CODE",
+          "TOTAL_UNIT_COUNT", "TOTAL_ABOVE_GRADE_AREA"]:
     raw[c] = pd.to_numeric(raw[c], errors="coerce")
-raw["pid"] = raw["PARCEL_ID"].astype(str).str.strip()
-raw = raw[raw["pid"].ne("") & raw["pid"].ne("None") & raw["pid"].ne("nan")].copy()
+raw["pid"] = raw["PARCEL_NO"].astype("Int64").astype(str).str.zfill(9)
+raw = raw[raw["pid"].str.isdigit()].copy()
 
-# ── dedup: ONE ROW PER BUILDING -> one row per parcel ─────────────────────────
-# Values are parcel-level and repeated identically on every building row, so they take
-# `first` and are NEVER summed (skill §2). BLDG_SQFT is per-building and DOES sum. The
-# building TYPE kept is the largest building's, so a house with a tool shed classifies as a
-# house rather than as whatever row the assessor happened to list first.
-nrows, npar = len(raw), raw["pid"].nunique()
-log(f"Building rows -> parcels: {nrows:,} -> {npar:,} "
-    f"(max rows on one parcel: {int(raw['pid'].value_counts().max())})")
-raw = raw.sort_values("BLDG_SQFT", ascending=False, na_position="last")
-first_cols = ["PARCEL_ADD", "PARCEL_CITY", "SERIAL_NUM", "TAX_DISTRICT", "TAXEXEMPT_TYPE",
-              "TOTAL_MKT_VALUE", "LAND_MKT_VALUE", "PARCEL_ACRES", "PROP_CLASS", "PRIMARY_RES",
-              "HOUSE_CNT", "SUBDIV_NAME", "BLDG_SQFT_INFO", "BUILT_YR"]
-agg = {c: "first" for c in first_cols}
-agg["BLDG_SQFT"] = "sum"
-agg["FLOORS_CNT"] = "max"
-parcel = raw.groupby("pid", dropna=False).agg(agg).reset_index()
-parcel["geometry"] = raw.groupby("pid", dropna=False)["geometry"].apply(
-    lambda gs: unary_union([g for g in gs if g is not None])).values
+# ── dedup parcels split across several GIS polygons ──────────────────────────
+# Values are parcel-level and repeat identically on every polygon, so they take `first` and are
+# NEVER summed (skill §2, the Dallas N-x inflation bug); the shapes are unioned.
+log(f"Rows -> parcels: {len(raw):,} -> {raw['pid'].nunique():,}")
+first_cols = ["SITE_FULL_ADDRESS", "ACREAGE", "TAX_DISTRICT", "TAX_CITY", "TAXABLE_CODE",
+              "ACCOUNT_TYPE", "PROP_TYPE_DESCR", "SPC_PROP_TYP_DESCR", "ASMT_CODE_DESCR",
+              "NEIGHBORHOOD", "MKT_LAND_VALUE", "MKT_IMP_VALUE", "MKT_CUR_VALUE", "ASMT_YEAR",
+              "TOTAL_UNIT_COUNT", "TOTAL_ABOVE_GRADE_AREA", "GLA_WEIGHTED_YRBLT"]
+parcel = raw.groupby("pid", dropna=False).agg({c: "first" for c in first_cols}).reset_index()
+
+
+def _union(geoms):
+    gs = [g for g in geoms if g is not None]
+    try:
+        return unary_union(gs)
+    except Exception:  # noqa: BLE001 - last-resort repair for stubborn topology
+        return unary_union([_polygonal(make_valid(g)).buffer(0) for g in gs])
+
+
+parcel["geometry"] = raw.groupby("pid", dropna=False)["geometry"].apply(_union).values
 parcel = gpd.GeoDataFrame(parcel, geometry="geometry", crs="EPSG:4326")
-parcel["geometry"] = parcel["geometry"].apply(lambda g: g if g is None or g.is_valid else g.buffer(0))
-log(f"After PARCEL_ID dedup -> {len(parcel):,}")
+log(f"After PARCEL_NO dedup -> {len(parcel):,}")
 
-parcel["land_val"] = parcel["LAND_MKT_VALUE"]
-parcel["tot_appr_val"] = parcel["TOTAL_MKT_VALUE"]
-parcel["bld_val"] = (parcel["tot_appr_val"] - parcel["land_val"]).clip(lower=0)
+parcel["land_val"] = parcel["MKT_LAND_VALUE"]
+parcel["bld_val"] = parcel["MKT_IMP_VALUE"].fillna(0)
+parcel["tot_appr_val"] = parcel["MKT_CUR_VALUE"].fillna(
+    parcel["land_val"].fillna(0) + parcel["bld_val"])
 parcel["plat"] = parcel["pid"].str[:5]  # Utah County serial MM:PPP:LLLL — MM:PPP is the plat map
+parcel["taxable"] = parcel["TAXABLE_CODE"].eq(TAXABLE_CODE_TAXABLE) & parcel["land_val"].gt(0)
 
 # ── condo / PUD units -> merge DOWN onto their plat's common-area land (§6b) ──
-# Structure, verified across ~300 Provo plats: each unit is mapped as its own building-footprint
-# stub (~550-1,100 sqft) carrying a share of the development's land value ($45k-$300k), and the
-# development's REAL land is one or more UNVALUED parcels in the same plat. Spring Creek
-# (plat 35771) is the canonical case: 49 stubs at $305,500 land each sitting beside two unvalued
-# parcels of 6.90 + 3.79 acres. Summed onto that land the development lands at ~$32/sqft, i.e.
-# right on the citywide median of ~$25 — which is the calibration test skill §6b step 5 asks for.
+# Each unit is mapped as its own building-footprint stub (~550-1,500 sqft) carrying a share of
+# the development's land value, and the development's REAL land is one or more exempt parcels in
+# the same plat (usually TAXABLE_CODE 600/601, "common area"). The county's ACREAGE agrees with
+# the stub polygon (median ratio 1.001), so there is no independent land area to fall back on:
+# left alone, Provo's student-housing stock renders as thousands of pencils — CONDO stubs sit at
+# a median $52/sqft and run past $250 against a citywide median of $24.
 #
-# The gate is PLAT DOMINANCE, not mere adjacency. A plat merges only when its stubs are >=60%
-# of its valued parcels. That is what separates a pure condo/PUD regime (plat 37118: 120 stubs,
-# one 3.9-acre common parcel, 0 ordinary lots) from a MIXED subdivision (plat 36196: 8 stubs
-# among 23 valued parcels, most of them ordinary 4,500 sqft townhouse lots at a perfectly normal
-# $18/sqft, plus a 1.07-acre HOA open space serving all of them). Merging the mixed case would
-# hand the whole HOA open space to 8 units that do not own it — the failure run_lynchburg.py
-# guards against with its "common-area parcels never chain" rule.
-STUB_SQFT = 2000.0      # above this a small parcel is a real lot with a yard, not a unit stub
+# The gate is PLAT DOMINANCE, not adjacency. A plat merges only when its stubs are >=60% of its
+# valued parcels. That separates a pure condo/PUD regime (plat 37118: 120 stubs + one 3.9-acre
+# common parcel, zero ordinary lots) from a MIXED subdivision (plat 36196: 8 stubs among 23
+# valued parcels, the rest ordinary 4,500 sqft townhouse lots at a normal $18/sqft, sharing a
+# 1.07-acre HOA open space). Merging the mixed case would hand the whole HOA open space to 8
+# units that do not own it — the failure run_lynchburg.py guards against with its "common-area
+# parcels never chain" rule. Adjacency alone was tried first and got exactly that wrong.
+STUB_SQFT = 2000.0       # above this a small parcel is a real lot with a yard, not a unit stub
 COMMON_MIN_SQFT = 200.0  # ignore slivers; real common-area parcels run 4k-300k sqft
 STUB_SHARE = 0.60        # stubs must dominate the plat's valued parcels
 
-_utm = parcel.to_crs(UTM)
-parcel["_sqft"] = _utm.geometry.area * SQM_TO_SQFT
-parcel["_valued"] = parcel["land_val"].notna() & parcel["land_val"].gt(0)
-parcel["_is_stub"] = parcel["_valued"] & parcel["_sqft"].lt(STUB_SQFT)
-parcel["_is_common"] = ~parcel["_valued"] & parcel["_sqft"].ge(COMMON_MIN_SQFT)
+parcel["_sqft"] = parcel.to_crs(UTM).geometry.area * SQM_TO_SQFT
+parcel["_is_stub"] = parcel["taxable"] & parcel["_sqft"].lt(STUB_SQFT)
+parcel["_is_common"] = ~parcel["taxable"] & parcel["_sqft"].ge(COMMON_MIN_SQFT)
 
 _g = parcel.groupby("plat")
-_stats = pd.DataFrame({"n_val": _g["_valued"].sum(), "n_stub": _g["_is_stub"].sum(),
+_stats = pd.DataFrame({"n_val": _g["taxable"].sum(), "n_stub": _g["_is_stub"].sum(),
                        "n_com": _g["_is_common"].sum()})
 _stats["share"] = _stats["n_stub"] / _stats["n_val"].replace(0, np.nan)
 merge_plats = set(_stats.index[(_stats["n_stub"] >= 2) & (_stats["n_com"] >= 1)
@@ -275,8 +295,8 @@ log(f"Condo/PUD plats to merge: {len(merge_plats):,}")
 
 
 def _fill_holes(g):
-    """Solid exterior. The common parcel's holes are the punched-out unit footprints, which
-    belong to the development — unlike a fee-simple lot carved out of a parent (skill §6b)."""
+    """Solid exterior. A common parcel's holes are the punched-out unit footprints, which belong
+    to the development — unlike a fee-simple lot carved out of a parent (skill §6b)."""
     if g is None or g.is_empty:
         return g
     if g.geom_type == "Polygon":
@@ -294,21 +314,20 @@ def _dominant(series):
 consumed, dev_rows = set(), []
 for plat in sorted(merge_plats):
     blk = parcel[parcel["plat"].eq(plat)]
-    units = blk[blk["_is_stub"]]
-    commons = blk[blk["_is_common"]]
-    geom = _fill_holes(unary_union(list(units.geometry) + list(commons.geometry)))
+    units, commons = blk[blk["_is_stub"]], blk[blk["_is_common"]]
     row = units.iloc[0].to_dict()
     row.update({
         "pid": units["pid"].iloc[0],          # link to a representative unit's assessor page
-        "geometry": geom,
+        "geometry": _fill_holes(_union(list(units.geometry) + list(commons.geometry))),
         "land_val": units["land_val"].sum(),
-        "tot_appr_val": units["tot_appr_val"].sum(),
         "bld_val": units["bld_val"].sum(),
-        "BLDG_SQFT": units["BLDG_SQFT"].sum(),
-        "BLDG_SQFT_INFO": _dominant(units["BLDG_SQFT_INFO"]),
-        "PROP_CLASS": _dominant(units["PROP_CLASS"]),
-        "HOUSE_CNT": str(int(pd.to_numeric(units["HOUSE_CNT"], errors="coerce").fillna(1).sum())),
-        "PARCEL_ACRES": np.nan,               # per-unit shares; the union polygon is the land
+        "tot_appr_val": units["tot_appr_val"].sum(),
+        "TOTAL_ABOVE_GRADE_AREA": units["TOTAL_ABOVE_GRADE_AREA"].sum(),
+        "TOTAL_UNIT_COUNT": units["TOTAL_UNIT_COUNT"].sum(),
+        "PROP_TYPE_DESCR": _dominant(units["PROP_TYPE_DESCR"]),
+        "SPC_PROP_TYP_DESCR": _dominant(units["SPC_PROP_TYP_DESCR"]),
+        "ACREAGE": np.nan,                    # per-unit shares; the union polygon is the land
+        "taxable": True,
         "_merged_units": len(units),
     })
     dev_rows.append(row)
@@ -321,123 +340,103 @@ if dev_rows:
     parcel["_merged_units"] = 1
     parcel = gpd.GeoDataFrame(pd.concat([parcel, devs], ignore_index=True),
                               geometry="geometry", crs="EPSG:4326")
-    _dev_sqft = devs.to_crs(UTM).geometry.area * SQM_TO_SQFT
-    _psf = devs["land_val"] / _dev_sqft
+    _psf = devs["land_val"] / (devs.to_crs(UTM).geometry.area * SQM_TO_SQFT)
     log(f"Condo merge: {int(devs['_merged_units'].sum()):,} unit stubs -> {len(devs):,} "
         f"development parcels (land $/sqft p50 ${_psf.median():,.0f}, max ${_psf.max():,.0f})")
 else:
     parcel["_merged_units"] = 1
-_left = parcel["_valued"].fillna(True) & parcel["_sqft"].lt(STUB_SQFT) & parcel["_merged_units"].eq(1)
+_left = parcel["_is_stub"].fillna(False) & parcel["_merged_units"].eq(1)
 log(f"Unit-sized parcels left individual (no common-area land mapped in their plat): "
     f"{int(_left.sum()):,}")
-parcel = parcel.drop(columns=["_sqft", "_valued", "_is_stub", "_is_common"], errors="ignore")
 
-# ── exemption flag ───────────────────────────────────────────────────────────
-# Utah County publishes NO exemption field (TAXEXEMPT_TYPE is null on every row), because
-# exempt land is simply not assessed. "No land value" IS the flag. The parcels this drops are
-# the national forest sections east of town, the airport, BYU, schools, parks, ROW and the
-# leftover HOA open space that no condo development claimed above.
-parcel["exemption_flag"] = (~(parcel["land_val"].notna() & parcel["land_val"].gt(0))).astype(int)
-log(f"Unassessed (exempt / common area / ROW) -> excluded: {int(parcel['exemption_flag'].sum()):,}")
+# ── exemption filter ─────────────────────────────────────────────────────────
+# The county's own TAXABLE_CODE is authoritative: 100 = taxable, everything else names an
+# exemption class. Parcels coded taxable but carrying no land value (a handful of pending
+# DEFAULT/CONDO records) are dropped too — they would render as zero-value gp-error parcels.
+parcel["exemption_flag"] = (~parcel["taxable"]).astype(int)
+_by_code = parcel[parcel["exemption_flag"] == 1].groupby(
+    parcel["TAXABLE_CODE"].fillna(-1)).size().sort_values(ascending=False)
+log(f"Excluded (exempt / no land value): {int(parcel['exemption_flag'].sum()):,} "
+    f"— top codes {dict(list(_by_code.items())[:6])}")
 ex = parcel[parcel["exemption_flag"] == 0].copy()
+ex = ex.drop(columns=["_sqft", "_is_stub", "_is_common", "taxable"], errors="ignore")
 log(f"Shipped parcels -> {len(ex):,}")
 
 # ── classification ───────────────────────────────────────────────────────────
-# Keyed on BLDG_SQFT_INFO (the largest building's type) because PROP_CLASS is unusable on its
-# own here: 14,665 Provo rows are "Unknown" and Utah files non-primary residential under
-# "Commercial" (it is taxed at the full rate), so a duplex rented to students reads Commercial.
-SF_TYPES = {
-    "one_story", "two_story", "split_level", "bi-level", "one_and_one_half", "log:_one_story",
-    "a-frame", "cabin", "basement_home", "livable_space", "guest_house",
+# The county publishes a real use taxonomy, so this is a direct mapping rather than a heuristic.
+# SPC_PROP_TYP_DESCR is consulted first because it distinguishes Condo from Townhome from Twin
+# inside the coarser CONDO/PUD buckets, and names parking structures.
+SPC_MAP = {
+    "Single Family Res": "Single Family", "Twin": "Single Family",
+    "Twin - Detached": "Single Family", "Res Adjoining": "Single Family",
+    "Modular Home": "Single Family",
+    "Condo": "Condominium",
+    "Townhome": "Townhome", "Vac Townhome Lot": "Vacant Land",
+    "Manuf Home": "Mobile Home", "Mobile Homes": "Mobile Home",
+    "Mobile Home Park": "Mobile Home",
+    "Parking Structure": "Parking Garage",
+    "Schools": "Commercial", "Community Center": "Commercial",
+    "Group Care-Nrsg-Retire-Res Prim": "Multifamily", "Assisted Living": "Multifamily",
+    "Mixed Use Residential/Retail": "Mixed Use", "Mixed Use ": "Mixed Use",
+    "Dairy": "Agricultural / Rural", "Greenhouses": "Agricultural / Rural",
+    "Detached Imps Only": "Vacant Land", "Undevelopable": "Vacant Land",
+    "Unbuildable Com lot": "Vacant Land", "Unbuildable Com w/Det": "Vacant Land",
 }
-TOWNHOME_TYPES = {
-    "end:_one_story", "end:_two_story", "end:_split_level",
-    "int:_one_story", "int:_two_story", "int:_split_level",
+TYPE_MAP = {
+    "SINGLE FAMILY RES": "Single Family",
+    "CONDO": "Condominium", "IMPROVED CONDOS/PUD": "Condominium",
+    "PUD": "Townhome",
+    "DUPLEX": "Multifamily", "TRIPLEX": "Multifamily", "FOURPLEX": "Multifamily",
+    "APARTMENTS": "Multifamily", "MULTIPLE RES": "Multifamily",
+    "MULTIPLE UNIT MIX": "Multifamily", "RES CONVERSION TO APT": "Multifamily",
+    "STUDENT HOUSING": "Multifamily", "SUBSIDIZE HOUSING": "Multifamily",
+    "MANUF HOME": "Mobile Home", "MOBILE HOMES": "Mobile Home",
+    "MOBILE HOME PARK": "Mobile Home",
+    "COMMERCIAL": "Commercial", "RETAIL": "Commercial", "FOOD": "Commercial",
+    "AUTO": "Commercial", "LODGING": "Commercial",
+    "OFFICE <50,000 sf": "Commercial", "OFFICE >50,000 sf": "Commercial",
+    "COMMERCIAL WITH RES EXEMPTION": "Commercial",
+    "INDUSTRIAL": "Industrial",
+    "VACANT": "Vacant Land", "VACANT COMMERCIAL": "Vacant Land",
+    "VACANT APARTMENT": "Vacant Land",
+    "MIXED USE Com/Apt/Res/HD": "Mixed Use",
+    "AGRICULTURAL": "Agricultural / Rural",
+    "PUBLIC": "Other", "EXEMPT": "Other", "PARTIALLY EXEMPT COUNTY": "Other",
 }
-MF_SMALL_TYPES = {"duplex", "triplex", "fourplex:_one_story", "fourplex:_two_story"}
-MF_TYPES = {
-    "multiple_residence", "apartments_(high-rise)", "dormitory_residence_halls", "rooming_house",
-    "multi_res_-_assisted_living", "multi_res_senior_citizen", "home_for_the_elderly",
-    "group_care_homes", "convalescent_hospital", "office_-_apartment", "mixed_retail_w/_res_units",
-}
-MOBILE_TYPES = {
-    "one-section_12'_wide", "one-section_14'_wide", "one-section_16'_wide",
-    "two-section_20'_wide", "two-section_24'_wide", "two-section_28'_wide",
-    "transient_labor_cabin",
-}
-INDUSTRIAL_TYPES = {
-    "indust_light_mfg", "indust_engineering_(r&d)", "storage_warehouse", "cold_storage_warehouse",
-    "distribution_warehouse", "light_indust_warehouse_shell", "mini_warehouse",
-    "industrial_flex_(mall)", "industrial_flex_(mall)_shell", "material_storage",
-    "material_shelters", "material_storage_shed", "quonset_commercial", "storage_garage",
-    "storage_hangar", "light_commercial_(shop)", "light_commercial_utility",
-    "computer_data_center", "mini_lube_garage", "service_garage",
-}
-AG_PREFIXES = ("farm_", "barn", "greenhouse", "dairy_", "poultry_", "stable", "equestrian_",
-               "concrete_poured", "concrete_stave", "steel:_")
-AG_TYPES = {"loafing_shed", "open_hay_shed", "horse_arena", "kennel", "shed_-_equipment",
-            "arch-rib_(quonset)_implement", "arch-rib_(quonset)_utility"}
-# Structures that never tell you what a parcel IS — a shed, a carport or a detached garage sits
-# next to whatever the real use is. These fall through to the PROP_CLASS/HOUSE_CNT fallback.
-ACCESSORY_TYPES = {
-    "shed_tool", "shed:_wood", "shed:_aluminum", "shed:_steel", "prefab_storage/shed",
-    "secure_storage_modular_shed", "shed_office_structure", "detached", "built-in",
-    "individual_-_open_carport", "individual_-_closed_carport", "multi_-_open_carport",
-    "multi_-_closed_carport", "pavilion", "restroom_bldg", "bath_house", "clubhouse",
-    "recreational_(pool)_enclosure", "mechanical_penthouse",
-}
+# Last resort when both type fields are DEFAULT/blank (196 parcels): the account's own bucket.
+ACCOUNT_MAP = {"RESIDENTIAL": "Single Family", "HGHDENRES": "Multifamily",
+               "APARTMENTS": "Multifamily", "COMMERCIAL": "Commercial"}
 
 
-def categorize(bld_type, prop_class, house_cnt, land, total):
-    """Provo property category. Building type first, assessor class only as the fallback."""
-    t = str(bld_type or "").strip().lower()
-    cls = str(prop_class or "").strip()
-    try:
-        units = int(float(house_cnt))
-    except (TypeError, ValueError):
-        units = 0
-    impr = (total or 0) - (land or 0)
+def _txt(v):
+    """Source strings arrive as NaN floats when the column is empty — normalise before .strip()."""
+    return "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v).strip()
 
-    if cls == "Vacant":
+
+def categorize(spc, ptype, acct, impr):
+    spc = _txt(spc)
+    if spc in SPC_MAP:
+        return SPC_MAP[spc]
+    if spc.startswith("Vac"):                 # Vac Res / Vac Sub Lot / Vac Com Lot / ...
         return "Vacant Land"
-    if t == "parking_structure":
-        return "Parking Garage"
-    if t in TOWNHOME_TYPES:
-        return "Townhome"
-    if t.endswith("_unit_building"):
-        # "12_unit_building" etc. — an apartment/condo building. Which one it is depends on
-        # whether the parcel is the whole building or one stacked unit inside it; after the
-        # merge above a surviving record is the development, so Multifamily is the honest label.
+    ptype = _txt(ptype).upper()
+    if ptype in TYPE_MAP:
+        return TYPE_MAP[ptype]
+    if "Units on Lot" in spc or "-plex on Lot" in spc:
         return "Multifamily"
-    if t in MF_SMALL_TYPES or t in MF_TYPES:
-        return "Multifamily"
-    if t in MOBILE_TYPES:
-        return "Mobile Home"
-    if t in SF_TYPES:
-        return "Multifamily" if units >= 3 else "Single Family"
-    if t in INDUSTRIAL_TYPES:
-        return "Industrial"
-    if t in AG_TYPES or t.startswith(AG_PREFIXES):
-        return "Agricultural / Rural"
-    if t and t not in ACCESSORY_TYPES:
-        return "Commercial"          # the remaining ~90 types are all commercial uses
-    # No building, or an accessory-only one: fall back to the assessor class.
-    if cls == "Residential":
-        return "Multifamily" if units >= 3 else "Single Family"
-    if cls == "Commercial":
-        return "Commercial"
-    if impr <= 0:
-        return "Vacant Land"
-    return "Other"
+    cat = ACCOUNT_MAP.get(_txt(acct).upper())
+    if cat:
+        return cat
+    return "Vacant Land" if (impr or 0) <= 0 else "Other"
 
 
 ex["property_land_use_category"] = [
-    categorize(t, c, h, lv, tv) for t, c, h, lv, tv in zip(
-        ex["BLDG_SQFT_INFO"], ex["PROP_CLASS"], ex["HOUSE_CNT"], ex["land_val"], ex["tot_appr_val"])]
+    categorize(s, p, a, i) for s, p, a, i in zip(
+        ex["SPC_PROP_TYP_DESCR"], ex["PROP_TYPE_DESCR"], ex["ACCOUNT_TYPE"], ex["bld_val"])]
 
 ex["land_value"] = pd.to_numeric(ex["land_val"], errors="coerce")
 ex["improvement_value"] = pd.to_numeric(ex["bld_val"], errors="coerce")
-ex["bld_ar"] = pd.to_numeric(ex["BLDG_SQFT"], errors="coerce").fillna(0)
+ex["bld_ar"] = pd.to_numeric(ex["TOTAL_ABOVE_GRADE_AREA"], errors="coerce").fillna(0)
 ex["property_land_use_refined"] = classify_property_refined(
     ex, sf_cutoff=0.67, other_cutoff=0.50,
     exclude_categories=("Other", "Agricultural / Rural"),
@@ -446,22 +445,23 @@ ex["property_land_use_refined"] = classify_property_refined(
     bld_ar_col="bld_ar",
     fetch_footprints=False)
 
-# ── areas: assessor acreage, guarded, geodesic fallback ──────────────────────
-ex["geometry"] = ex["geometry"].apply(lambda g: g if g is None or g.is_valid else g.buffer(0))
+# ── areas: deed acreage, guarded, geodesic fallback ──────────────────────────
+ex["geometry"] = ex["geometry"].apply(
+    lambda g: g if (g is None or g.is_valid) else _polygonal(make_valid(g)))
 log("Computing geodesic areas...")
 ex["geom_area_sqft"] = ex["geometry"].apply(gis_area_sqft)
 ex.loc[ex["geom_area_sqft"] < 1, "geom_area_sqft"] = np.nan
-check_area_agreement(ex["geom_area_sqft"], ex["PARCEL_ACRES"] * SQFT_PER_ACRE,
-                     label="PARCEL_ACRES", log=log)
+check_area_agreement(ex["geom_area_sqft"], ex["ACREAGE"] * SQFT_PER_ACRE,
+                     label="deed ACREAGE", log=log)
 
-ex["reported_sqft"] = pd.to_numeric(ex["PARCEL_ACRES"], errors="coerce") * SQFT_PER_ACRE
+ex["reported_sqft"] = pd.to_numeric(ex["ACREAGE"], errors="coerce") * SQFT_PER_ACRE
 ex.loc[ex["reported_sqft"] < 1, "reported_sqft"] = np.nan
-# Richmond guard: reported acreage is trusted only when it is in the same ballpark as the
-# polygon. It is set to NaN on merged developments above (per-unit shares would be nonsense
-# against the union footprint), so those always use the polygon.
+# Richmond guard: deed acreage is trusted only when it is in the same ballpark as the polygon.
+# It is NaN on merged developments (per-unit shares would be nonsense against the union
+# footprint), so those always fall through to the polygon.
 ratio = ex["reported_sqft"] / ex["geom_area_sqft"].replace(0, np.nan)
 use_reported = ex["reported_sqft"].gt(0) & (ratio.between(0.5, 2.0) | ex["geom_area_sqft"].isna())
-log(f"Reported acreage rejected as implausible (outside 0.5-2.0x polygon): "
+log(f"Deed acreage rejected as implausible (outside 0.5-2.0x polygon): "
     f"{int((ex['reported_sqft'].gt(0) & ~use_reported).sum()):,}")
 ex["land_area_sqft"] = np.where(use_reported, ex["reported_sqft"], ex["geom_area_sqft"])
 ex["area_source"] = np.where(use_reported, "reported", "gis")
@@ -480,9 +480,6 @@ ex = add_improvement_ratio_fields(ex, land_col="land_value", improvement_col="im
 ex["link"] = "https://www.utahcounty.gov/LandRecords/Property.asp?av_serial=" + ex["pid"].astype(str)
 
 # ── export ───────────────────────────────────────────────────────────────────
-# Canonical column set only. The source also carries the situs address, subdivision and year
-# built, which the app never reads; the LIR schema carries no owner name at all, which is the
-# right side of the issue-#12 rule.
 COLUMNS = ["geometry", "exemption_flag", "property_land_use_category", "property_land_use_refined",
            "full_market_value", "full_market_value_per_sqft", "land_value", "land_value_per_sqft",
            "improvement_value", "improvement_value_per_sqft", "TLLDIMPROV", "IMPR_LAND_RATIO",
@@ -492,7 +489,8 @@ for c in COLUMNS:
     if c not in ex.columns:
         ex[c] = np.nan
 final = ex[COLUMNS].rename(columns={"land_value": "current_full_land_value"})
-final["geometry"] = final["geometry"].apply(lambda g: g if g is None or g.is_valid else g.buffer(0))
+final["geometry"] = final["geometry"].apply(
+    lambda g: g if (g is None or g.is_valid) else _polygonal(make_valid(g)))
 final = gpd.GeoDataFrame(final, geometry="geometry", crs=ex.crs)
 if final.crs is None or final.crs.to_epsg() != 4326:
     final = final.to_crs("EPSG:4326")
