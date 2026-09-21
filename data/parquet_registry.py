@@ -109,6 +109,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     # Duluth GA (Gwinnett County, metro Atlanta) — NOT Duluth MN. A future Duluth MN
     # needs its own key; this one holds the plain `duluth` slug.
     "duluth": CityParquet(city="duluth", state="ga", legacy_filename="duluth-ga-parcels.parquet"),
+    "provo": CityParquet(city="provo", state="ut", legacy_filename="provo-ut-parcels.parquet"),
     "washington": CityParquet(
         city="washington", state="dc", legacy_filename="washington-dc-parcels.parquet"
     ),

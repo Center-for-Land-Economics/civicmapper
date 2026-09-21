@@ -24,6 +24,7 @@ ALL_CITIES = [
     'tulsa','newportnews','lynchburg','olympia','seattle','vancouver','dmv','washington',
     'hartfordmetro',
     'duluth',
+    'provo',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"

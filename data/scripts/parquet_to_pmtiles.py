@@ -936,6 +936,47 @@ def build_pmtiles_h3_native(
     print(f"PMTiles created: {pmtiles_path}")
 
 
+def tighten_pmtiles_header_bounds(pmtiles_path: Path, bounds, pmtiles_bin: str = "pmtiles") -> None:
+    """Rewrite the PMTiles header's geographic extent to the DATA's real bounds.
+
+    tippecanoe/tile-join report an archive's extent by snapping to TILE edges at the
+    coarsest zoom that holds the data, so the header can overshoot the city by a lot —
+    Provo's baked header read a northern limit of 40.9799 (a z5-z8 tile edge) against a
+    true 40.3278, i.e. ~0.65 degrees of empty space. That matters because the web client
+    treats the header as authoritative and fits the initial camera to it (see
+    `[PMTiles] Bounds from header` in viz/src/main.ts), so Provo opened zoomed out over
+    Salt Lake City instead of over Provo. The metadata JSON already carries the exact
+    EPSG:4326 extent, so copy it into the header and re-centre on it.
+
+    Never fatal: a bake that produced good tiles should not fail over camera metadata.
+    """
+    if not bounds or len(bounds) != 4:
+        return
+    minx, miny, maxx, maxy = (float(v) for v in bounds)
+    try:
+        hdr = json.loads(subprocess.run(
+            [pmtiles_bin, "show", "--header-json", str(pmtiles_path)],
+            capture_output=True, text=True, check=True).stdout)
+        before = hdr.get("bounds")
+        # `pmtiles show --header-json` / `pmtiles edit --header-json` speak degrees in a
+        # [minLon, minLat, maxLon, maxLat] `bounds` array and a [lon, lat, zoom] `center`,
+        # not the spec's raw *_e7 integer fields — writing the e7 names is silently ignored.
+        hdr["bounds"] = [minx, miny, maxx, maxy]
+        center_zoom = hdr.get("center", [0, 0, hdr.get("maxzoom", 14)])[2]
+        hdr["center"] = [(minx + maxx) / 2, (miny + maxy) / 2, center_zoom]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(hdr, fh)
+            tmp = fh.name
+        subprocess.run([pmtiles_bin, "edit", str(pmtiles_path), f"--header-json={tmp}"],
+                       capture_output=True, text=True, check=True)
+        os.unlink(tmp)
+        if before != hdr["bounds"]:
+            print(f"  header bounds tightened to data extent: "
+                  f"[{minx:.4f}, {miny:.4f}, {maxx:.4f}, {maxy:.4f}]")
+    except Exception as exc:  # noqa: BLE001 - camera metadata only, never fail the bake
+        print(f"⚠️ Could not tighten PMTiles header bounds: {exc}")
+
+
 def convert_mbtiles_to_pmtiles(
     mbtiles_path: Path, pmtiles_path: Path, pmtiles_bin: str, use_wsl: bool = False
 ) -> None:
@@ -1237,6 +1278,7 @@ def main() -> None:
             convert_mbtiles_to_pmtiles(mbtiles_path, pmtiles_path, args.pmtiles, use_wsl=False)
 
     print(f"✅ PMTiles created: {pmtiles_path}")
+    tighten_pmtiles_header_bounds(pmtiles_path, metadata.get("bounds"), args.pmtiles)
 
     # Upload if requested
     if args.upload:
