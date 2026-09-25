@@ -25,6 +25,7 @@ ALL_CITIES = [
     'hartfordmetro',
     'duluth',
     'provo',
+    'providence',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"

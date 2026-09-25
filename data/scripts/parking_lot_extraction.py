@@ -78,6 +78,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "rockville": "Rockville, Maryland, USA",
     "detroit": "Detroit, Michigan, USA",
     "provo": "Provo, Utah, USA",
+    "providence": "Providence, Rhode Island, USA",
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",
