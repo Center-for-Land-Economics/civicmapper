@@ -10,18 +10,36 @@ Sources (public, no token):
 - Geometry + land/building split — City of Providence AGOL org `wv9mHoqblhTsnqdG` (PVDGIS),
   `Parcel_Zoning_FL/FeatureServer/0` ("Parcels with CAMA"):
   https://services6.arcgis.com/wv9mHoqblhTsnqdG/arcgis/rest/services/Parcel_Zoning_FL/FeatureServer/0
-  44,346 polygons, TaxRollYear = 2025 (FY2025 roll, assessment date 2023-12-31 — the
-  revaluation year), layer last edited 2026-09-11.
+  44,346 polygons, TaxRollYear = 2025 = ASSESSED 2024-12-31 (the 2024 revaluation /
+  statistical update), BILLED FY2026 (July 2025 - June 2026). Layer last edited 2026-09-11.
+
+  VINTAGE — verified 2026-09-25 from the billed taxes, not from dataset labels. The roll's
+  implied rates (total_taxes / net assessment) are exactly the FY2026 ordinance rates in RI
+  Division of Municipal Finance's "FY 2026 Tax Rates by Class of Property, Assessment Date
+  December 31, 2024": 8.40 (1-family owner-occupied), 7.55 (2-5 family OO), 14.60 (1-family
+  non-OO), 14.00 (2-5 family non-OO), 26.00 (6-10 units), 28.50 (11+), 29.20 (commercial) —
+  e.g. 39 Pratt St 933,500 x 8.40/1000 = $7,841.40 billed. The FY2025 table (assessed
+  2023-12-31) has Providence at a single 18.35 residential / 35.10 commercial rate, and those
+  rates are what the Socrata "2024" roll bills. DMF convention: roll year N = assessed
+  12/31/(N-1) = FY(N+1) bills. The Socrata description of the "2025" roll ("calendar year 2024
+  ... billed in FY2025") is off by one fiscal year; trust the rates.
 
   NOTE — the same org publishes FOUR same-schema "Parcels with CAMA" layers. Only this one is
-  current. Verified 2026-09-25 by TaxRollYear and by matching 49 Homer St (059-0291-0000):
-    Parcel_Zoning_FL/0        TaxRollYear 2025  $35.8B total  <- USE (319,500 = the FY2025 roll)
-    Parcels_with_CAMA/0       TaxRollYear 2024  $27.6B total  (pre-revaluation, 230,100)
-    Parcel_Boundaries_v1/0    TaxRollYear 2024  $27.7B total
-    Parcels_wCAMA/0           TaxRollYear 2023  $27.4B total
+  current. Verified 2026-09-25 by TaxRollYear and by matching sample parcels to the Socrata
+  rolls (059-0291-0000 / 009-0559-0000 / 001-0007-0000):
+    Parcel_Zoning_FL/0      TaxRollYear 2025  $35.8B  edited 2026-09-11  <- USE
+                            (319,500 / 933,500 / 507,400 = Socrata "2025" roll; assessed
+                            2024-12-31, FY2026 bills)
+    Parcels_with_CAMA/0     TaxRollYear 2024  $27.6B  edited 2025-05-30  (230,100 / 750,000 /
+                            396,900 = Socrata "2024" roll; assessed 2023-12-31, FY2025 bills
+                            at 18.35/35.10 — pre-revaluation)
+    Parcel_Boundaries_v1/0  TaxRollYear 2024  $27.7B  edited 2024-09-12  (same 2024 roll)
+    Parcels_wCAMA/0         TaxRollYear 2023  $27.4B  edited 2024-09-16  (226,900 for
+                            059-0291-0000 = Socrata "2023" roll; assessed 2022-12-31)
   The names suggest the opposite; the silent ~30% under-valuation is why this comment exists.
 
-- Exemption status — City of Providence Socrata "2025 Property Tax Roll" (6ub4-iebe):
+- Exemption status — City of Providence Socrata "2025 Property Tax Roll" (6ub4-iebe) — the
+  same roll as the layer above (assessed 2024-12-31, FY2026 bills):
   https://data.providenceri.gov/Finance/2025-Property-Tax-Roll/6ub4-iebe
   Total assessment only (no land/building split) but carries the levy code and exempt amount.
   Joined on PROPID == tax_map; where joined, AssessedValueTotal == total_assmt on 100% of rows.
@@ -187,7 +205,7 @@ if ndup:
     parcel = gpd.GeoDataFrame(coll, geometry="geometry", crs="EPSG:4326")
 log(f"After PROPID dedup -> {len(parcel):,}")
 
-# ── join the FY2025 tax roll for levy / exemption ────────────────────────────
+# ── join the roll-year-2025 tax roll (assessed 2024-12-31, FY2026 bills) ──
 roll = fetch_roll().drop_duplicates("p_id").drop_duplicates("tax_map")
 roll["total_assmt"] = pd.to_numeric(roll["total_assmt"], errors="coerce")
 roll["total_exempt"] = pd.to_numeric(roll["total_exempt"], errors="coerce")
