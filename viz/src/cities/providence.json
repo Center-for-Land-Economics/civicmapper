@@ -1,0 +1,29 @@
+{
+  "notes": [
+    "City of Providence, RI. Rhode Island has no county government, so the city is the assessing and taxing unit and the city's own parcel layer is already city-only (no clip).",
+    "~37.6k shipped parcels from PVDGIS AGOL (services6.arcgis.com/wv9mHoqblhTsnqdG) Parcel_Zoning_FL/FeatureServer/0 'Parcels with CAMA', TaxRollYear 2025 = the FY2025 roll, assessment date 2023-12-31 (revaluation year). See run_providence.py. ~38k parcels -> browser GeoParquet path, no PMTiles/H3 (Lynchburg/Newport News size class).",
+    "Do NOT source from the same org's Parcels_with_CAMA, Parcel_Boundaries_v1 or Parcels_wCAMA layers: identical schema, but TaxRollYear 2024/2024/2023 (pre-revaluation, ~30% lower totals). run_providence.py hard-fails if the layer's TaxRollYear is not 2025.",
+    "Exemption comes from the city's Socrata 2025 Property Tax Roll (6ub4-iebe), joined on PROPID: levy code E01 = fully exempt, dropped per record before the condo collapse. 8LAW (RIGL 44-5-13.11) and TSA (RIGL 44-3-9 stabilization) records are abatements on fully assessed property and are kept taxable. Utility (use 10) dropped.",
+    "CONDO LAND IS $0 IN THE SOURCE: every condo unit (use 23/24, 4.1k units) carries AssessedValueLand = 0 with the whole unit value in AssessedValueBuildings; the assessor does not split condo land. Units are mapped as N identical copies of the lot polygon (max stack 503), so they collapse to one parcel per lot (values summed across distinct units). The ~660 merged condo lots (~179 acres, ~$1.8B total value) keep the assessor's $0 land and appear in the gp-error layer. Not imputed.",
+    "169 PROPIDs appear 2-3x with identical geometry and values in the source; deduped with values `first` (never summed).",
+    "Providence's roll has NO parking use code (surface lots sit in Vacant Land 13/14 or Commercial II 06), so the Underused tab's 'Parking Lot' bucket is empty and the Parking tab is the only parking source. Parking is OSM-only (classified: 462 surface / 31 structure / 6 excluded / 2 uncertain; 13 surface lots dropped by the parcel-context filter). OSM-only undercounts; treat it as a floor.",
+    "link is the Tax Assessor landing page, not a per-parcel deep link."
+  ],
+  "displayName": "Providence",
+  "state": "ri",
+  "filename": "providence-ri-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "providence-ri-parking-lots.parquet",
+  "parkingVersion": "2026-09-25-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "providence-ri",
+    "providence_ri",
+    "pvd"
+  ],
+  "coords": [
+    -71.4128,
+    41.824
+  ]
+}

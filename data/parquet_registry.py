@@ -114,6 +114,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "culvercity": CityParquet(
         city="culvercity", state="ca", legacy_filename="culvercity-ca-parcels.parquet"
     ),
+    # City of Providence, RI (RI has no county government; the city is the assessing unit).
+    "providence": CityParquet(
+        city="providence", state="ri", legacy_filename="providence-ri-parcels.parquet"
+    ),
     "washington": CityParquet(
         city="washington", state="dc", legacy_filename="washington-dc-parcels.parquet"
     ),

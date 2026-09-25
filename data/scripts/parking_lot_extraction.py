@@ -85,6 +85,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     # City of St. Louis + St. Louis County (MO side only). Like "bcs"/"boston", the fetch and clip
     # use the parcel-footprint bbox/geometry, so this string is only the gate value.
     "stlouis": "St. Louis, Missouri, USA",
+    "providence": "Providence, Rhode Island, USA",
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",
