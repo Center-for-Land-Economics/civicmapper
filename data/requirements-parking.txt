@@ -30,7 +30,7 @@
 #   rasterio: pre-build naip_imagery.tif with rasterio, drop it in the output dir,
 #   and run without --overwrite so the pipeline skips its own fetch.
 
-transformers==4.46.3
+transformers==5.10.1
 huggingface_hub
 rasterio
 planetary_computer
