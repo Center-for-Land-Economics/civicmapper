@@ -225,6 +225,24 @@ token land value (Gwinnett: $1,000 each, all value in the building), so those me
 against a $10 median. That's the assessor's own number — publish it and note it, don't invent a
 replacement (Seattle Westlake Center precedent).
 
+### 6d. When the assessor never splits condo land at all (New England: MA, RI, CT)
+
+Massachusetts (and Providence RI, and CT CAMA) assess a condo unit's WHOLE value as building:
+unit `LAND = 0`, and the lot area sits on a $0 condo master record (Boston `LU=CM`, Cambridge
+`CONDO-BLDG`). There is no land figure anywhere to merge. Where condos are a small share,
+ship the $0 and let the gp-error layer flag it (Providence, Hartford metro). Where they are a
+large share — Greater Boston: 17k lots, $110B, 32% of taxable value — the land map is
+unreadable without an estimate, so `run_boston.py` estimates it: lot area x median land $/sqft
+of the 15 nearest assessor-valued non-condo parcels in the same town, capped at 70% of the lot's
+value, flagged `condo_land_imputed = 1`, assessor figure kept in `assessor_land_value`,
+`--no-condo-impute` to turn it off. Gate the estimate on a real condo regime (a unit or master
+record on the lot), NOT merely "land = 0": ~300 Boston commercial buildings are $0-land because
+they sit on air rights or ground leases, and a taxable building on EXEMPT land (Massport, BPDA,
+hospital leases) is genuinely $0 land to its owner. **MassGIS's statewide L3 layer
+(`Massachusetts_Property_Tax_Parcels`) is a one-stop geometry+values source for every MA town
+except Boston, whose roll there is stale (FY2023 in 2026)** — use data.boston.gov + Parcels26 for
+Boston.
+
 ## 7. Frontend + deploy
 
 - **`upload_city_dev.py <city>` is the consolidated, registry-driven uploader** — it pushes

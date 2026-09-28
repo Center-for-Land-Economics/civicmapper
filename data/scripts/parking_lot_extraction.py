@@ -79,6 +79,9 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "provo": "Provo, Utah, USA",
     # The independent city in LA County, not the Culver City neighborhood names in LA proper.
     "culvercity": "Culver City, California, USA",
+    # Greater Boston (Boston + Cambridge + Somerville + Brookline). Like "bcs", the fetch and
+    # clip use the parcel-footprint bbox/geometry, so this string is only the gate value.
+    "boston": "Boston, Massachusetts, USA",
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",
