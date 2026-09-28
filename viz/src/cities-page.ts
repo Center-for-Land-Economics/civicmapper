@@ -123,7 +123,7 @@ function byStateGroups(): { st: string; cities: PickerCity[] }[] {
   const groups: Record<string, PickerCity[]> = {};
   for (const c of PICKER_CITIES) (groups[c.state] ||= []).push(c);
   return Object.keys(groups)
-    .sort((a, b) => STATE_NAMES[a].localeCompare(STATE_NAMES[b]))
+    .sort((a, b) => (STATE_NAMES[a] ?? a.toUpperCase()).localeCompare(STATE_NAMES[b] ?? b.toUpperCase()))
     .map((st) => ({ st, cities: groups[st].sort((a, b) => a.name.localeCompare(b.name)) }));
 }
 
@@ -139,13 +139,13 @@ function buildList(): void {
     wrap.className = 'state-group';
     const head = document.createElement('div');
     head.className = 'state-head';
-    head.textContent = STATE_NAMES[st];
+    head.textContent = STATE_NAMES[st] ?? st.toUpperCase();
     wrap.appendChild(head);
     for (const c of cities) {
       const row = document.createElement('button');
       row.className = 'city-row';
       row.dataset.key = c.key;
-      row.dataset.search = normalize(c.name + c.key + c.state + STATE_NAMES[c.state]);
+      row.dataset.search = normalize(c.name + c.key + c.state + (STATE_NAMES[c.state] ?? ''));
       row.innerHTML = `<span class="chip">${initials(c.name)}</span><span class="label">${c.name}</span>`;
       row.addEventListener('click', () => goTo(c.key));
       row.addEventListener('mouseenter', () => highlight(c.key));

@@ -1,0 +1,44 @@
+{
+  "notes": [
+    "Greater Boston, MASSACHUSETTS: ONE city stitched from four municipalities (Boston, Cambridge, Somerville, Brookline), DMV / Hartford-metro pattern. Each parcel carries `jurisdiction`, which drives the region toggle (already in H3_CATEGORICAL_FIELDS, so the bake emits metadata.groups + per-town land totals). See run_boston.py. 124,489 taxable lots shipped (Boston 91,395 / Somerville 12,903 / Cambridge 12,021 / Brookline 8,170).",
+    "Massachusetts assesses at 100% of full and fair cash value, so every figure is full market value (no Georgia-style ratio fix).",
+    "SOURCES. Boston: City of Boston 'Property Assessment FY2026' CSV (data.boston.gov, assessed 1/1/2025, FY2026 bills; 184,552 records) joined on GIS_ID to Parcels26 (gisportal.boston.gov/arcgis/rest/services/Parcels/Parcels26/MapServer/0, MAP_PAR_ID) at 99.998%. MassGIS still carries Boston's FY2023 roll, so Boston does NOT come from MassGIS. Cambridge FY2026, Somerville FY2025 (one roll behind the others), Brookline FY2027: MassGIS standardized Level 3 Property Tax Parcels (services1.arcgis.com/hGdibHYSPO59RG1h/.../Massachusetts_Property_Tax_Parcels/FeatureServer/0, TOWN_ID 49/274/46). run_boston.py hard-fails if a town's FY changes, so a new roll is noticed. The FY ships per parcel (fiscal_year) and shows in the popup.",
+    "CONDO LAND IS ESTIMATED, NOT ASSESSED. All four towns assess condominium units with $0 land (the unit's whole value sits in building); the lot area lives on a $0 condo master record (Boston LU=CM, Cambridge CONDO-BLDG). That is 16,991 lots, $110.4B of value (32% of the taxable total), and most of the densest housing in the region (Back Bay, South End, Beacon Hill, Somerville, Brookline). Units are summed onto their lot, and the lot's land is estimated as lot area x the median land $/sqft of the 15 nearest assessor-valued, non-condo taxable parcels in the same town, capped at 70% of the lot's total value (improvement = total - land). This adds $13.4B (Boston), $4.7B (Cambridge), $3.1B (Brookline), $1.6B (Somerville). These parcels carry condo_land_imputed = 1 and keep the assessor's own figure in assessor_land_value; they are never labelled Underdeveloped. This deliberately departs from Providence/Hartford (which ship $0 condo land flagged as erroneous) because here condos are ~30% of taxable value; `run_boston.py --no-condo-impute` rebuilds the $0 version.",
+    "Not estimated: a taxable building whose lot also carries EXEMPT land (a ground lease on Massport/BPDA/hospital land) keeps the assessor's $0, as do ~300 non-condo Boston commercial buildings assessed at $0 land (air rights / ground leases, e.g. 700 Atlantic Ave, 10 Huntington Ave). Those show in the gp-error layer.",
+    "EXEMPT (dropped per record before the lot roll-up): Boston LU E and EA (Ch.121A properties pay an excise in lieu of tax, GROSS_TAX = 0); MassGIS towns DOR class 9xx. Assessor land value of exempt property: Boston $26.7B (37.4% of all assessed land; fully-exempt lots are 50.5% of parcel acreage incl. parks, Logan, harbor islands), Cambridge $8.2B (30.9%; 36.8% of acreage — Harvard, MIT, government), Brookline $2.0B (16.3%), Somerville $0.8B (9.9%). Utility classes (42x/43x) excluded.",
+    "Use codes are MA DOR classes with town extensions (Cambridge 1014/1021/0112, Somerville 1040/112C/920V): class = first three digits except a leading-0 four-char code. Boston's LUC is DOR-like with its own extensions (995 condo main, 907 121A, 387 pay parking lot).",
+    "Boston parcels deep-link to properties.boston.gov (hash route #/details or #/master-parcel ?parcelId=, from github.com/CityOfBoston/boston-property-lookup). The other towns link to their assessor's lookup landing page.",
+    "PMTiles + H3 (124k parcels), baked with --drop-remnants to match hideRemnants (579 sub-500-sqft slivers)."
+  ],
+  "displayName": "Greater Boston",
+  "state": "ma",
+  "filename": "boston-ma-parcels.parquet",
+  "pmtilesFilename": "boston-ma-parcels.pmtiles",
+  "pmtilesVersion": "2026-09-28c",
+  "hideRemnants": true,
+  "parkingFilename": "boston-ma-parking-lots.parquet",
+  "parkingVersion": "2026-09-28-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Municipality",
+      "defaultMode": "all",
+      "overlayUrl": "boston-jurisdiction-overlay.geojson"
+    }
+  ],
+  "aliases": [
+    "boston-ma",
+    "boston_ma",
+    "greaterboston",
+    "cambridge",
+    "cambridge-ma",
+    "somerville",
+    "brookline"
+  ],
+  "coords": [
+    -71.0892,
+    42.3601
+  ]
+}

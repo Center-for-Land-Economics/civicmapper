@@ -1,0 +1,30 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "boston-ma-parcels.pmtiles",
+    "pmtilesMetadataUrl": "boston-ma-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12,
+    "hasParkingData": true
+  },
+  "jurisdiction": "Municipality",
+  "address": "Address",
+  "use_desc": "Assessor Land Use",
+  "fiscal_year": "Assessment Fiscal Year",
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Total Assessed Value",
+  "full_market_value_per_sqft": "Assessed value/land ft²",
+  "current_full_land_value": "Land Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "assessor_land_value": "Land Value as Assessed (condos: $0, not split by the assessor)",
+  "condo_land_imputed": "Condo Land Estimated from Neighbors (1 = yes)",
+  "n_condo_units": "Condo Units on Lot",
+  "land_area_acres": "Land Area (acres)",
+  "link": "Parcel Link"
+}

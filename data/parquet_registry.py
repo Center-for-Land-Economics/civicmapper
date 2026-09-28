@@ -129,6 +129,9 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "washington": CityParquet(
         city="washington", state="dc", legacy_filename="washington-dc-parcels.parquet"
     ),
+    # Greater Boston, MA: Boston + Cambridge + Somerville + Brookline stitched into one city
+    # (run_boston.py; `jurisdiction` column drives the region toggle).
+    "boston": CityParquet(city="boston", state="ma", legacy_filename="boston-ma-parcels.parquet"),
     "hartfordmetro": CityParquet(
         city="hartfordmetro", state="ct", legacy_filename="hartfordmetro-ct-parcels.parquet"
     ),
