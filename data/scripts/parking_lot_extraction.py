@@ -77,6 +77,8 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "rockville": "Rockville, Maryland, USA",
     "detroit": "Detroit, Michigan, USA",
     "provo": "Provo, Utah, USA",
+    # The independent city in LA County, not the Culver City neighborhood names in LA proper.
+    "culvercity": "Culver City, California, USA",
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",

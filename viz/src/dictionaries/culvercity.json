@@ -1,0 +1,28 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "culvercity-ca-parcels.pmtiles",
+    "pmtilesMetadataUrl": "culvercity-ca-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "address": "Address",
+  "ain": "Assessor ID (AIN)",
+  "use_description": "Assessor Use",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "land_base_year": "Land Base Year (Prop 13)",
+  "assessor_records": "Assessor Records (condo units)",
+  "full_market_value": "Total Assessed Value",
+  "full_market_value_per_sqft": "Total value/land ft²",
+  "current_full_land_value": "Land Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Assessed Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "land_area_acres": "Land Area (acres)",
+  "link": "Parcel Link"
+}
