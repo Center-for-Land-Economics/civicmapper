@@ -79,6 +79,9 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "detroit": "Detroit, Michigan, USA",
     "provo": "Provo, Utah, USA",
     "providence": "Providence, Rhode Island, USA",
+    # Greater Boston (Boston + Cambridge + Somerville + Brookline). Like "bcs", the fetch and
+    # clip use the parcel-footprint bbox/geometry, so this string is only the gate value.
+    "boston": "Boston, Massachusetts, USA",
     "chicago": "Chicago, Illinois, USA",
     "tulsa": "Tulsa, Oklahoma, USA",
     "newportnews": "Newport News, Virginia, USA",
