@@ -1,0 +1,33 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "stlouis-mo-parcels.pmtiles",
+    "pmtilesMetadataUrl": "stlouis-mo-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12,
+    "hasParkingData": true
+  },
+  "jurisdiction": "Jurisdiction",
+  "municipality": "Municipality",
+  "address": "Address",
+  "parcel_id": "Parcel ID / Locator",
+  "tax_year": "Tax Year",
+  "use_desc": "Assessor Land Use (County)",
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Total Appraised (Market) Value",
+  "full_market_value_per_sqft": "Appraised value/land ft²",
+  "current_full_land_value": "Land Value (appraised)",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Value (appraised)",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "assessor_land_value": "Land Value as Appraised (City condos: $0, not split by the assessor)",
+  "condo_land_imputed": "Condo Land Estimated from Neighbors (1 = yes)",
+  "n_condo_units": "Condo Units on Lot",
+  "tax_abated": "Tax-Abated (value = assessed ÷ ratio, not a market estimate; 1 = yes)",
+  "land_area_acres": "Land Area (acres)",
+  "link": "Parcel Link"
+}

@@ -465,7 +465,9 @@ H3_CATEGORICAL_FIELDS = ["jurisdiction", "council_district", "super_neighborhood
                          # Seattle (King County): NMA district / neighborhood region toggles.
                          # NYC: borough / neighborhood (NTA) region toggles.
                          # Only present on cities whose ETL/augment adds them; skipped otherwise.
-                         "neighborhood_district", "neighborhood", "borough"]
+                         "neighborhood_district", "neighborhood", "borough",
+                         # St. Louis (City + County): 88 county municipalities + the City.
+                         "municipality"]
 
 
 def plan_h3_ladder(gdf: gpd.GeoDataFrame) -> dict:

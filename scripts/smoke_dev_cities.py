@@ -27,6 +27,7 @@ ALL_CITIES = [
     'provo',
     'culvercity',
     'boston',
+    'stlouis',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"

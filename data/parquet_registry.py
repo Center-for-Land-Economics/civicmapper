@@ -120,6 +120,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     # Greater Boston, MA: Boston + Cambridge + Somerville + Brookline stitched into one city
     # (run_boston.py; `jurisdiction` column drives the region toggle).
     "boston": CityParquet(city="boston", state="ma", legacy_filename="boston-ma-parcels.parquet"),
+    # St. Louis, MO: the independent City of St. Louis (FIPS 29510, own assessor) + St. Louis
+    # County (29189) stitched into one city (run_stlouis.py; `jurisdiction` + `municipality`
+    # columns drive the region toggles). Missouri side only.
+    "stlouis": CityParquet(city="stlouis", state="mo", legacy_filename="stlouis-mo-parcels.parquet"),
     "hartfordmetro": CityParquet(
         city="hartfordmetro", state="ct", legacy_filename="hartfordmetro-ct-parcels.parquet"
     ),
