@@ -33,6 +33,21 @@ export function fileToAsyncBuffer(file: File): AsyncBuffer {
   return { byteLength: file.size, async slice(start, end) { return await file.slice(start, end ?? file.size).arrayBuffer(); } };
 }
 
+/**
+ * Download a whole file with ONE plain GET and expose it as an in-memory AsyncBuffer.
+ *
+ * Use this when the caller is going to read (nearly) the entire file anyway — e.g. the parcel
+ * GeoParquet, which is decoded in full (all columns, single row group). urlToAsyncBuffer would
+ * spend three SEQUENTIAL round trips (1-byte probe → footer → body) before the data even starts
+ * flowing, and its 206 range responses are cached far less reliably by browsers than a plain 200.
+ */
+export async function urlToFullAsyncBuffer(url: string, signal?: AbortSignal): Promise<AsyncBuffer> {
+  const resp = await fetch(url, { mode: 'cors', signal });
+  if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status} ${resp.statusText}`);
+  const buf = await resp.arrayBuffer();
+  return { byteLength: buf.byteLength, async slice(start, end) { return buf.slice(start, end ?? buf.byteLength); } };
+}
+
 export async function urlToAsyncBuffer(
   url: string,
   extraHeaders: Record<string, string> = {},
