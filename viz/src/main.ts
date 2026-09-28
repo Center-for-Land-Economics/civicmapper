@@ -5,10 +5,12 @@ import './components.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibregl from 'maplibre-gl';
 import type { Expression } from 'maplibre-gl';
-import { toGeoJson } from 'geoparquet';
-import { compressors } from 'hyparquet-compressors';
+// NOTE: the GeoParquet decoder (geoparquet + hyparquet-compressors, ~150 KB) is NOT imported
+// statically — 34 of 44 cities render from PMTiles and never touch it. It's loaded on demand by
+// loadGeoParquetLibs() (see the GeoParquet prefetch below) and by parking.ts.
 import { Protocol, PMTiles } from 'pmtiles';
-import { formatCityLabel } from './cities';
+import { PerRangeUrlSource } from './pmtiles-source';
+import { formatCityLabel, CITY_COORDS } from './cities';
 
 // Local imports
 import { BASEMAP_STYLES, SOURCE_ID, LAYER_ID, LAYER_ID_LOW, ERROR_LAYER_ID, HEIGHT_CAP_METERS, HEIGHT_PCTL, COLOR_RAMPS, DEFAULT_RAMP_KEY, LEGACY_DEFAULT_RAMP_KEY, UNIT_TO_METERS, DEV_CATEGORY_FIELD, UNDERUTILIZED_DEFAULTS, ORIG_CATEGORY_FIELD, DEFAULT_DATASET_URL, LOCAL_DATASET_PATH, resolveLocalFirst, HEIGHT_CAPS, getPmtilesUrl, SELECTED_CITY, PARKING_ENABLED, REPORT_ENABLED, PARKING_BASEMAP_STYLE, UNDERUTILIZED_ENABLED, HIDE_REMNANTS, TRANSIT_OVERLAY, METRIC_UNITS } from './config';
@@ -18,7 +20,7 @@ import { CITIES } from './cities';
 import { initPerf } from './perf';
 import * as jurisdiction from './jurisdiction';
 import { init3DPrint, type Print3DContext } from './print3d';
-import { sanitizeFeaturesInPlace, urlToAsyncBuffer, type AsyncBuffer } from './utils.sanitize';
+import { sanitizeFeaturesInPlace, urlToFullAsyncBuffer } from './utils.sanitize';
 import { roundGeometryInPlace, trimPropertiesInPlace, bbox, normalizeWindingInPlace } from './utils.geo';
 import { numOrNull, fmt, percentile, quantileBreaks } from './utils.number';
 
@@ -42,6 +44,21 @@ const vlog: (...a: any[]) => void = VERBOSE ? console.log.bind(console) : () => 
 const pmtilesProtocol = new Protocol();
 maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 
+/** The ONE PMTiles instance for a URL, shared with the maplibre protocol handler. Reading the
+ *  header through this instance (for initial bounds) means the header + root directory are
+ *  fetched once and reused by the tile source, instead of a second independent instance
+ *  re-fetching them serially before the first tile can load. Registering it up front also means
+ *  the tile source uses PerRangeUrlSource (browser-cacheable tile ranges — see pmtiles-source.ts)
+ *  rather than the protocol's default FetchSource. */
+function getSharedPmtiles(url: string): PMTiles {
+  let p = pmtilesProtocol.get(url);
+  if (!p) {
+    p = new PMTiles(new PerRangeUrlSource(url));
+    pmtilesProtocol.add(p);
+  }
+  return p;
+}
+
 /* ---------------- Map Bootstrap ----------------- */
 
 
@@ -57,14 +74,24 @@ const ratioContainer = document.getElementById('map-ratio') as HTMLElement | nul
 // share link, so the automatic fit-to-data / cross-map camera syncs must not
 // stomp that camera for the rest of the session.
 //
-// Exception: a hash camera at the hardcoded init center (Houston,
-// 29.7604/-95.3698) isn't a real share target — MapLibre writes the default
-// camera into the hash on the first resize/moveend, so a reload during the
-// initial data load would otherwise pin the map to Houston forever.
+// Exception: a hash camera at the init center isn't a real share target — MapLibre
+// writes the default camera into the hash on the first resize/moveend, so a reload
+// during the initial data load would otherwise pin the map to that spot forever.
+// The init center is the selected city's own center (so the basemap tiles fetched
+// while the data loads are the right ones); older builds used a hardcoded Houston
+// center (29.7604/-95.3698), which is still treated as a non-share camera.
+const INIT_CENTER: [number, number] = CITY_COORDS[SELECTED_CITY] ?? [-95.3698, 29.7604];
+const INIT_ZOOM = 10;
 function hasRealHashCamera(name: string): boolean {
   const m = window.location.hash.match(new RegExp(`(?:^#|&)${name}=([^&]*)`));
   if (!m) return false;
-  return !m[1].includes('29.7604/-95.3698');
+  if (m[1].includes('29.7604/-95.3698')) return false;
+  // Only the exact init camera (init zoom AND init center) is ignored — a real share link can
+  // sit at the city center, but not at zoom 10 unless it's the untouched default view.
+  const [zoom, lat, lng] = m[1].split('/').map(Number);
+  const isInitCamera = zoom === INIT_ZOOM &&
+    Math.abs(lat - INIT_CENTER[1]) < 1e-3 && Math.abs(lng - INIT_CENTER[0]) < 1e-3;
+  return !isInitCamera;
 }
 const restoredCameras = {
   map: hasRealHashCamera('map'),
@@ -75,8 +102,8 @@ const map = new maplibregl.Map({
   container: 'map',
   // Default to OpenStreetMap; fallback style handled elsewhere
   style: BASEMAP_STYLES['OpenStreetMap'],
-  center: [-95.3698, 29.7604],
-  zoom: 10,
+  center: INIT_CENTER,
+  zoom: INIT_ZOOM,
   pitch: 45,
   bearing: -20,
   // Named hash so the Underused map can carry its own camera in the same URL
@@ -103,8 +130,8 @@ if (import.meta.env.DEV) {
 const mapUnder = new maplibregl.Map({
   container: 'map-under',
   style: PARKING_BASEMAP_STYLE,
-  center: [-95.3698, 29.7604],
-  zoom: 10,
+  center: INIT_CENTER,
+  zoom: INIT_ZOOM,
   pitch: 0,
   bearing: 0,
   hash: 'umap',
@@ -141,8 +168,8 @@ if (ratioContainer) {
   mapRatio = new maplibregl.Map({
     container: ratioContainer,
     style: BASEMAP_STYLES['OpenStreetMap'],
-    center: [-95.3698, 29.7604],
-    zoom: 10,
+    center: INIT_CENTER,
+    zoom: INIT_ZOOM,
     pitch: 45,
     bearing: -20,
     hash: false,
@@ -962,7 +989,6 @@ function getLowZoomFadeConfig() {
 }
 
 // staged loading
-let lastAsyncBuffer: AsyncBuffer | null = null;
 let cancelRequested = false;
 
 // size identification
@@ -1162,12 +1188,40 @@ function hideLoadingAfterRender(msg = 'Rendering parcels…') {
 };
 
 /* ---------------- Load selected columns (+ geometry) ---------------- */
+// The GeoParquet decoder is loaded on demand (PMTiles cities never need it).
+let _geoParquetLibs: Promise<[typeof import('geoparquet'), typeof import('hyparquet-compressors')]> | null = null;
+function loadGeoParquetLibs() {
+  return (_geoParquetLibs ??= Promise.all([import('geoparquet'), import('hyparquet-compressors')]));
+}
+
+// Download + decode of the city's GeoParquet. init() starts this as soon as the city dictionary
+// says this is a GeoParquet city, i.e. IN PARALLEL with MapLibre loading its style and first
+// basemap tiles. It used to start only after the map's 'load' event, which put ~1–1.5 s of map
+// startup in front of the download, and the download itself was three sequential round trips.
+let geoParquetPrefetch: Promise<any> | null = null;
+function startGeoParquetPrefetch(): Promise<any> {
+  if (!geoParquetPrefetch) {
+    geoParquetPrefetch = (async () => {
+      // Dev: prefer a local copy in viz/public/ for the current city if present, else the remote URL.
+      const url = await resolveLocalFirst(LOCAL_DATASET_PATH, DEFAULT_DATASET_URL);
+      const [buf, [{ toGeoJson }, { compressors }]] = await Promise.all([
+        urlToFullAsyncBuffer(url),
+        loadGeoParquetLibs(),
+      ]);
+      console.log('[GeoParquet] Fetched dataset:', { url, byteLength: buf.byteLength });
+      return toGeoJson({ file: buf, compressors });
+    })();
+    // Errors surface where loadSelectedColumns awaits it; don't also report an unhandled rejection.
+    geoParquetPrefetch.catch(() => {});
+  }
+  return geoParquetPrefetch;
+}
+
 async function loadSelectedColumns() {
-  if (!lastAsyncBuffer) return;
   showLoading('Reading geometry + fields…');
 
   try {
-    const result: any = await toGeoJson({ file: lastAsyncBuffer, compressors });
+    const result: any = await startGeoParquetPrefetch();
     if (cancelRequested) return;
 
     const fc: GeoJSON.FeatureCollection | undefined =
@@ -1404,7 +1458,7 @@ async function loadSelectedColumns() {
     }
 
     addOrUpdateSourceFor(map, /*withClick*/ true);
-    addOrUpdateSourceWhenReady(mapUnder, /*withClick*/ true);
+    whenUnderTabShown(() => addOrUpdateSourceWhenReady(mapUnder, /*withClick*/ true));
     if (mapRatio) addOrUpdateSourceWhenReady(mapRatio, /*withClick*/ true);
 
     // PROTOTYPE: the de-emph layer + jurisdiction filter split are established by applyExtrusion
@@ -1971,6 +2025,26 @@ function renderMapFor(
     }
   }
 }
+// The Underused map sits hidden behind the Value tab. Attaching the parcel data to it at load made
+// MapLibre download + decode every PMTiles tile twice (once per map — measured: every tile range
+// fetched twice on Seattle/Houston/NYC), and on GeoParquet cities clone + index the entire parcel
+// GeoJSON a second time — all for a map nobody is looking at yet. So the attach is deferred until
+// the tab is first opened (immediately, if the page loads straight onto it).
+let _pendingUnderAttach: (() => void) | null = null;
+function whenUnderTabShown(attach: () => void) {
+  if (currentTab === 'under') {
+    _pendingUnderAttach = null;
+    attach();
+  } else {
+    _pendingUnderAttach = attach;
+  }
+}
+function flushPendingUnderAttach() {
+  const attach = _pendingUnderAttach;
+  _pendingUnderAttach = null;
+  attach?.();
+}
+
 function setTab(tab: TabKey) {
   if (tab !== 'parking') {
     cancelParkingWorkspaceIfNeeded();
@@ -1994,6 +2068,10 @@ function setTab(tab: TabKey) {
     analysisShellMain?.classList.remove('sidebar-open');
     map.resize();
   } else if (tab === 'under') {
+    // First open: attach the parcel source/layers that were deferred at load (see
+    // whenUnderTabShown). Must run BEFORE the camera sync + pitch/bearing reset below, because
+    // the PMTiles attach syncs the camera from the (pitched) main map itself.
+    flushPendingUnderAttach();
     if (!restoredCameras.umap) {
       syncMapView(map, mapUnder);
       mapUnder.setPitch(0);
@@ -3893,6 +3971,23 @@ function dedupeFieldListByLabel(fields: string[]): string[] {
   return result;
 }
 
+// Started from init() in parallel with MapLibre's style/basemap load (previously these requests
+// only began after the map's 'load' event, then ran one after another: metadata → header → tiles).
+// Memoized so loadPmtilesDataset() just awaits whatever is already in flight.
+let _pmtilesMetadataPromise: Promise<PmtilesMetadata | null> | null = null;
+function prefetchPmtiles(): Promise<PmtilesMetadata | null> {
+  if (!_pmtilesMetadataPromise) {
+    const config = getCityConfig();
+    // Header + root directory, through the instance the tile source will reuse.
+    if (config?.pmtilesUrl) {
+      getSharedPmtiles(getPmtilesUrl(config.pmtilesUrl)).getHeader().catch(() => { /* retried by the tile source */ });
+    }
+    _pmtilesMetadataPromise = loadPmtilesMetadata();
+    _pmtilesMetadataPromise.catch(() => { /* reported by loadPmtilesDataset */ });
+  }
+  return _pmtilesMetadataPromise;
+}
+
 async function loadPmtilesMetadata(): Promise<PmtilesMetadata | null> {
   const config = getCityConfig();
   if (!config?.pmtilesMetadataUrl) {
@@ -3929,7 +4024,9 @@ async function loadPmtilesMetadata(): Promise<PmtilesMetadata | null> {
     if (Number.isFinite(bakedPmz) && config) {
       config.parcelMinZoom = bakedPmz;
     }
-    pmtilesMetadata = metadata;
+    // NOTE: the module-level `pmtilesMetadata` is assigned by loadPmtilesDataset, not here — this
+    // can now run (prefetch) before the map has loaded, and scheduleUpdate() treats a non-null
+    // pmtilesMetadata as "data is ready to render".
     console.log('[PMTiles] Loaded metadata:', {
       fieldCount: Object.keys(metadata.statistics).length,
       refinedCategories: metadata.categories.refined.length,
@@ -3952,11 +4049,12 @@ async function loadPmtilesDataset() {
   showLoading('Loading PMTiles dataset…');
 
   try {
-    // Load metadata first
-    const metadata = await loadPmtilesMetadata();
+    // Load metadata first (usually already in flight — see prefetchPmtiles)
+    const metadata = await prefetchPmtiles();
     if (!metadata) {
       throw new Error('Failed to load PMTiles metadata');
     }
+    pmtilesMetadata = metadata;
 
     // Construct PMTiles URL (use API proxy URL for the pmtiles:// protocol)
     const pmtilesFileUrl = getPmtilesUrl(config.pmtilesUrl);
@@ -3982,7 +4080,7 @@ async function loadPmtilesDataset() {
 
     // 1) Authoritative: the PMTiles header carries the dataset's geographic extent.
     try {
-      const header = await new PMTiles(pmtilesFileUrl).getHeader();
+      const header = await getSharedPmtiles(pmtilesFileUrl).getHeader();
       bounds = boundsFromExtent([header.minLon, header.minLat, header.maxLon, header.maxLat]);
       if (bounds) console.log('[PMTiles] Bounds from header:', bounds);
     } catch (e) {
@@ -3990,6 +4088,17 @@ async function loadPmtilesDataset() {
     }
     // 2) Fallback: bounds baked into the metadata JSON.
     if (!bounds) bounds = boundsFromExtent(metadata.bounds);
+
+    // Jump straight to the city's extent BEFORE the tile source is attached, so the first tiles
+    // requested are the final view's, and colours can be applied as soon as they're queryable.
+    // (The old path attached the source at the init view, flew to the bounds over 800 ms and then
+    // waited a further 900 ms before applying extrusions — ~1.7 s of dead time on every load.)
+    const boundsPreFitted = !!bounds;
+    if (bounds) {
+      if (!restoredCameras.map) map.fitBounds(bounds, { padding: 40, duration: 0 });
+      if (!restoredCameras.umap) syncMapView(map, mapUnder);
+      if (mapRatio) syncMapView(map, mapRatio);
+    }
 
     // Add PMTiles as vector source to all maps
     const addPmtilesSource = (m: maplibregl.Map) => {
@@ -4029,7 +4138,7 @@ async function loadPmtilesDataset() {
 
         // Wait for source to load, then fit bounds and apply extrusions
         if (isMainMap) {
-          let boundsFitted = false;
+          let boundsFitted = boundsPreFitted;
           let extrusionsApplied = false;
           let applyInFlight = false;
           // Verbose per-retry/per-tile load logs are a real CPU drag (Chrome serializes each arg)
@@ -4096,8 +4205,13 @@ async function loadPmtilesDataset() {
             // diagnostic queries that used to run here every retry (querySourceFeatures + a
             // vectorLayers scan) were dropped — they're expensive and ran on every chain.
             if (currentField && currentStats) {
+              // Query the low-zoom hex layer too: the initial citywide view sits BELOW
+              // parcelMinZoom, where the parcel layer never has queryable features — querying it
+              // alone made every load burn the full 20×200 ms retry budget (the "No features
+              // queryable after retries" warning) before heights + legend were applied.
               let queryResult: any[] = [];
-              try { queryResult = m.queryRenderedFeatures({ layers: [LAYER_ID] }); } catch { /* tiles not ready */ }
+              const queryLayers = [LAYER_ID, LAYER_ID_LOW].filter(id => m.getLayer(id));
+              try { queryResult = m.queryRenderedFeatures({ layers: queryLayers }); } catch { /* tiles not ready */ }
               dlog('[PMTiles] queryable features:', queryResult.length, 'retry:', retryCount);
 
               // Not ready yet → keep polling within THIS chain (single-flight; see requestApply).
@@ -4181,7 +4295,7 @@ async function loadPmtilesDataset() {
     };
 
     addSourceWhenReady(map, true, true);
-    addSourceWhenReady(mapUnder, true, false);
+    whenUnderTabShown(() => addSourceWhenReady(mapUnder, true, false));
     if (mapRatio) addSourceWhenReady(mapRatio, true, false);
 
     // Use metadata for statistics and categories
@@ -4452,20 +4566,12 @@ async function loadDefaultDataset() {
 
   // Fall back to parquet loading (only if PMTiles is not configured)
   console.log('[Dataset] Falling back to Parquet loading');
-  // Dev: prefer a local copy in viz/public/ for the current city if present, else the remote URL.
-  const url = await resolveLocalFirst(LOCAL_DATASET_PATH, DEFAULT_DATASET_URL);
   try {
-    lastAsyncBuffer = await urlToAsyncBuffer(url);
-    try {
-      console.log('[GeoParquet] Fetched dataset:', {
-        url,
-        byteLength: lastAsyncBuffer?.byteLength ?? null
-      });
-    } catch {}
+    // The download + decode was already started by init() (startGeoParquetPrefetch).
     await loadSelectedColumns();
     return;
   } catch (err) {
-    console.warn('Dataset load failed for', url, err);
+    console.warn('Dataset load failed for', DEFAULT_DATASET_URL, err);
     if (!cancelRequested) alert(getDatasetLoadErrorMessage(err, 'parquet'));
     return;
   }
@@ -4522,6 +4628,11 @@ async function init() {
   initPdfReportButton();
 
   await loadDataDictionary();
+  // Start fetching the city's data NOW, while MapLibre is still loading its style + basemap —
+  // the map-mutating steps below still wait for the map's 'load' event, but the network (and,
+  // for GeoParquet, the decode) no longer does.
+  if (cityUsesPmtiles()) void prefetchPmtiles();
+  else void startGeoParquetPrefetch();
   // Debug: Log the loaded config
   const config = getCityConfig();
   smoothLandField = config?.smoothLandField ?? null;
