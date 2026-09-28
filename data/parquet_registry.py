@@ -122,6 +122,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "providence": CityParquet(
         city="providence", state="ri", legacy_filename="providence-ri-parcels.parquet"
     ),
+    # City of Culver City, CA (Los Angeles County Assessor roll, clipped to the city boundary).
+    "culvercity": CityParquet(
+        city="culvercity", state="ca", legacy_filename="culvercity-ca-parcels.parquet"
+    ),
     "washington": CityParquet(
         city="washington", state="dc", legacy_filename="washington-dc-parcels.parquet"
     ),
