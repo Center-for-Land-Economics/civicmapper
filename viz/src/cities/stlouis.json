@@ -1,0 +1,50 @@
+{
+  "notes": [
+    "St. Louis, MISSOURI: ONE city stitched from the two Missouri assessing jurisdictions of the metro core (DMV / Greater Boston pattern): the independent City of St. Louis (FIPS 29510, its own assessor, in no county) and St. Louis County (29189). The Illinois side is out of scope. Each parcel carries `jurisdiction` (City / County) and `municipality` (the City, the county's 88 municipalities, or Unincorporated St. Louis County); both drive region toggles and are in H3_CATEGORICAL_FIELDS. See run_stlouis.py. 466,820 taxable parcels shipped (City 110,227 / County 356,593), tax year 2026.",
+    "Missouri assesses at 19% (residential) / 32% (commercial) / 12% (agricultural) of market. Every figure shipped is the assessor's APPRAISED (market) value, not assessed: City AprLand + CostAprImprove (= the 'Appraised total' on the city's property search page), County APPLANDVAL + APPIMPVAL (= TOTAPVAL). run_stlouis.py asserts the 19% / 32% ratios.",
+    "SOURCES. City: maps6.stlouis-mo.gov/arcgis/rest/services/St_Louis_Parcels/MapServer/0 (Assessor 'Prcl' schema, 134,358 records). County: maps.stlouisco.com/hosting/rest/services/OpenData/OpenData/FeatureServer/7 (Tax Parcels, 401,481 records). Municipal boundaries: same county service layer 6; City/County outline: Census TIGERweb State_County/13.",
+    "EXEMPT (dropped): City PropertyClassCode 17 or an exempt-entity AsrClassCode (1-99 except 0/50/55/81/99): 16,520 accounts, $0.51B appraised land, fully-exempt lots = 37% of city parcel acreage (Forest Park and the parks alone are 2,868 acres). Of those, the Land Reutilization Authority (AsrClassCode 49) holds 9,637 lots / 1,033 acres (3.4% of city parcel acreage) appraised at only $17.3M. County: TAXCODE other than 'A' (the county's own tax-exempt code; it appraises exempt property too, so land-use class alone would leave Washington University and the county government center in): 19,379 accounts, $6.54B land.",
+    "CONDOS. County: units are stacked on the development's plat polygon (PARENT_LOC 'PL...') and each unit carries its own appraised land, so units are summed onto one footprint per development (27,474 units -> 2,286 developments). City: units are stacked on the lot polygon (shared HANDLE) and the city appraises condo units at ~$0 land, so units are summed onto the lot and the lot's land is ESTIMATED from the 15 nearest assessor-valued non-condo City parcels (capped at 70% of value; run_boston.py method), flagged condo_land_imputed = 1 with the assessor's figure in assessor_land_value: 490 lots, +$58.3M. `run_stlouis.py --no-condo-impute` ships the $0 instead.",
+    "QUIRK worth knowing: the City appraises land far lower than the County. Single-family lots within 800 m of the City/County line: City median $1.18/sqft (land = ~10% of value) vs County $5.38/sqft (~26%). That step at the border is mostly assessment practice, not the land market.",
+    "City tax-abated parcels (1,172; Chapter 99/353 redevelopment + IsAbatedProperty) are kept but flagged tax_abated = 1: for these the assessor does not estimate market value, and 'appraised' is just assessed / ratio.",
+    "Parcel links: City -> stlouis-mo.gov Address & Property Search (?parcelid=); County -> revenue.stlouisco.com MapsPropertyInfo.aspx?LocatorNum= (condo developments link to their most valuable unit). PMTiles + H3, baked with --drop-remnants to match hideRemnants.",
+    "PARKING: OSM-only and UNCLASSIFIED (--osm-only --no-classify): 3,759 lots / 3,847 acres / $1.54B est. land value (City 1,705 lots / 946 ac; County 2,054 / 2,901 ac), tagged with jurisdiction + municipality (augment_parking_regions.py; county lots outside every municipality polygon set to Unincorporated St. Louis County). Built 2026-09-28 while overpass-api.de was unreachable, via OSMNX_OVERPASS_URL=https://maps.mail.ru/osm/tools/overpass/api; the surface-vs-structure classifier's 20-cell grid fetch was too slow on that mirror, so re-run without --no-classify once overpass-api.de is back. OSM undercounts parking outside well-mapped areas."
+  ],
+  "displayName": "St. Louis",
+  "state": "mo",
+  "filename": "stlouis-mo-parcels.parquet",
+  "pmtilesFilename": "stlouis-mo-parcels.pmtiles",
+  "pmtilesVersion": "2026-09-28a",
+  "hideRemnants": true,
+  "parkingFilename": "stlouis-mo-parking-lots.parquet",
+  "parkingVersion": "2026-09-28-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Jurisdiction",
+      "defaultMode": "all",
+      "overlayUrl": "stlouis-jurisdiction-overlay.geojson"
+    },
+    {
+      "field": "municipality",
+      "label": "Municipality",
+      "defaultMode": "all",
+      "overlayUrl": "stlouis-municipality-overlay.geojson"
+    }
+  ],
+  "aliases": [
+    "stlouis-mo",
+    "stlouis_mo",
+    "st-louis",
+    "saintlouis",
+    "stl",
+    "stlouiscounty",
+    "st-louis-county"
+  ],
+  "coords": [
+    -90.1994,
+    38.627
+  ]
+}

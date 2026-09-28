@@ -104,6 +104,11 @@ them in the ETL: `likely_remnant = (land_area_sqft < 500)`. Two-layer fix:
   starting `EX-`). Where there's no flag, fall back to state-class `X*` + an owner-keyword
   heuristic (city/county/state/ISD/university). Exclude `Utility`, `Mineral`, and
   `Personal Property/Inventory` categories from the shipped set.
+- **Some assessors APPRAISE exempt property too** (St. Louis County MO: Washington University
+  and the county government center carry full appraised + assessed values, coded "Commercial").
+  A class/land-use exempt test leaves them in. Look for a separate tax-status code — St. Louis
+  County's is `TAXCODE` (A = taxable, everything else an exemption type; lookup table item
+  `d71ee5cf9cef4137b9781042abae20a9`). See `run_stlouis.py`.
 
 ## 6. Condos & multi-record parcels (a documented trap)
 
@@ -292,6 +297,8 @@ Boston.
   timeouts × retries × cells → can spin 70+ min). It's transient — kill and re-run usually
   clears it first try. Set a Monitor on the log for `fuel features|Done!|Bailing|Traceback`
   to catch the outcome fast instead of waiting.
+  If `overpass-api.de` is DOWN outright (curl to `/api/status` times out on both IPs — seen
+  2026-09-28), point osmnx at a mirror: `OSMNX_OVERPASS_URL=https://maps.mail.ru/osm/tools/overpass/api`.
 - **PMTiles bake on Windows uses WSL**: `--wsl` (tippecanoe + pmtiles live in WSL). Verify a
   city's PMTiles contains all three expected layers with
   `wsl bash -c "pmtiles show --metadata <file>"` (expect `parcels` z13-14, `parcels_low` z0-12,

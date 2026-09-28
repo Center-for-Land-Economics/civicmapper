@@ -44,7 +44,7 @@ from parquet_registry import list_cities, resolve_city  # noqa: E402
 
 # Same set the PMTiles bake tags as categorical region groups (H3_CATEGORICAL_FIELDS).
 REGION_FIELDS = ["jurisdiction", "council_district", "super_neighborhood", "civic_club",
-                 "neighborhood_district", "neighborhood", "borough"]
+                 "neighborhood_district", "neighborhood", "borough", "municipality"]
 
 
 def resolve_parcel_path(city_key: str, meta) -> Path:
