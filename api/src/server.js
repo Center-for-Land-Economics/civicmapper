@@ -123,7 +123,10 @@ app.use(
     },
     methods: ["GET", "HEAD", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Range"],
-    exposedHeaders: ["Content-Range", "Content-Length", "Content-Type"],
+    // ETag is exposed so the pmtiles client can detect a file that changed mid-session (it
+    // compares each range response's ETag with the header's and re-fetches on mismatch) instead
+    // of silently mixing byte ranges from two different uploads.
+    exposedHeaders: ["Content-Range", "Content-Length", "Content-Type", "ETag"],
     optionsSuccessStatus: 204
   })
 );
@@ -361,6 +364,13 @@ function handleDatasetProxy(req, res, subfolder = "") {
     if (typeof rangeHeader === "string" && rangeHeader) {
       headers.Range = rangeHeader;
     }
+    // Forward the browser's revalidation headers so an unchanged file answers 304 (no body)
+    // instead of re-sending every byte. Blob storage evaluates these against the blob's ETag /
+    // Last-Modified, including on range requests.
+    for (const [incoming, outgoing] of CONDITIONAL_REQUEST_HEADERS) {
+      const value = req.headers?.[incoming];
+      if (typeof value === "string" && value) headers[outgoing] = value;
+    }
 
     let bytesStreamed = 0;
     const proxyRequest = httpsRequestImpl(
@@ -388,6 +398,9 @@ function handleDatasetProxy(req, res, subfolder = "") {
         copyHeader(proxyResponse.headers, res, "etag", "ETag");
         copyHeader(proxyResponse.headers, res, "last-modified", "Last-Modified");
         copyHeader(proxyResponse.headers, res, "cache-control", "Cache-Control");
+        if (proxyResponse.headers?.["cache-control"] === undefined && (status < 300 || status === 304)) {
+          res.setHeader("Cache-Control", dataCacheControl(req));
+        }
 
         if (req.method === "HEAD") {
           proxyResponse.resume();
@@ -483,6 +496,33 @@ function handleDatasetProxy(req, res, subfolder = "") {
     tagRequestOutcome(res, "data_proxy_unexpected");
     res.status(500).json({ ok: false, error: "Dataset proxy error" });
   }
+}
+
+// [incoming (lower-case, as Node exposes it), outgoing] revalidation headers passed to blob storage.
+const CONDITIONAL_REQUEST_HEADERS = [
+  ["if-none-match", "If-None-Match"],
+  ["if-modified-since", "If-Modified-Since"],
+  ["if-range", "If-Range"]
+];
+
+// Browser cache policy for data files (the blobs carry no Cache-Control of their own).
+//
+// Before this, data responses had NO Cache-Control, so browsers fell back to heuristic caching
+// (freshness = 10% of the file's age): a months-old parquet could be served from cache for weeks
+// after being overwritten, while PMTiles range responses were mostly re-downloaded on every visit
+// (measured: Seattle re-downloaded 12.9 MB on a repeat visit, NYC 5.8 MB).
+//
+// - Versioned URLs (?v=<pmtilesVersion|parkingVersion>, bumped on every re-bake): cache for an hour
+//   with no revalidation. Short on purpose — data-only fixes are sometimes uploaded without bumping
+//   the token, and an hour bounds how long a returning visitor can see the old file.
+// - Everything else: cache, but revalidate on every use ("no-cache"). An unchanged file costs one
+//   304 round trip and zero bytes; a changed file is picked up immediately.
+const VERSIONED_DATA_CACHE_CONTROL = "public, max-age=3600";
+const UNVERSIONED_DATA_CACHE_CONTROL = "public, no-cache";
+
+function dataCacheControl(req) {
+  const v = req.query?.v;
+  return typeof v === "string" && v ? VERSIONED_DATA_CACHE_CONTROL : UNVERSIONED_DATA_CACHE_CONTROL;
 }
 
 function isSafeFilename(name) {
