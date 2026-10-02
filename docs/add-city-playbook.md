@@ -128,8 +128,8 @@ Typical fix:
 - assert the final output has one row per key
 
 See `.claude/skills/add-city/SKILL.md` §2 and §2a. Reference implementation: the `ndup` block in
-`run_seattle.py`. (`run_baltimore.py` and `run_austin.py` predate this rule and sum
-broadcast values. Don't copy them.)
+`run_seattle.py`, or `run_baltimore.py` §3 (asserts the values really are broadcast before
+taking `first`). (`run_austin.py` predates this rule and sums broadcast values. Don't copy it.)
 
 Fort Collins lesson for future cities:
 

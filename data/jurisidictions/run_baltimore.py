@@ -42,24 +42,25 @@ print(parcel_gdf["USEGROUP"].value_counts(dropna=False).to_string())
 print("\nVACIND counts:")
 print(parcel_gdf["VACIND"].value_counts(dropna=False).to_string())
 
-# ── 3. Condo cure ──────────────────────────────────────────────────────────────
+# ── 3. Multi-polygon BLOCKLOTs ─────────────────────────────────────────────────
+# Some BLOCKLOTs come as several rows: pieces of one parcel plus exact duplicate rows (993 keys /
+# 2,367 rows in the 2026-03-13 pull). Every attribute (CURRLAND, CURRIMPR, owner, SDATCODE, PIN) is
+# BROADCAST identically onto each row; only OBJECTID and geometry differ. So values take `first`
+# and geometry is the union. Summing them (what this block used to do) multiplied the value by the
+# piece count, ~$133M of land. Shipping the rows uncollapsed put the full value on every piece
+# (add-city skill §2/§2a). The assert below fails loudly if a future pull ever carries distinct
+# per-row values, in which case they are separate records and need a different rule.
 n_dupes = parcel_gdf.duplicated(subset=["BLOCKLOT"], keep=False).sum()
-print(f"\nDuplicate rows by BLOCKLOT: {n_dupes}")
+print(f"\nDuplicate rows by BLOCKLOT: {n_dupes} "
+      f"({parcel_gdf.loc[parcel_gdf['BLOCKLOT'].duplicated(keep=False), 'BLOCKLOT'].nunique():,} keys)")
 if n_dupes > 0:
-    numeric_sum_candidates = [
-        "CURRLAND","CURRIMPR","BFCVLAND","BFCVIMPR","TAXBASE","FULLCASH",
-        "LANDEXMP","IMPREXMP","Shape__Area","Shape__Length",
-    ]
-    numeric_sum_cols = [
-        c for c in numeric_sum_candidates
-        if c in parcel_gdf.columns and np.issubdtype(parcel_gdf[c].dtype, np.number)
-    ]
-    categorical_cols = [
-        c for c in parcel_gdf.columns
-        if c not in set(numeric_sum_cols + ["geometry","BLOCKLOT"])
-    ]
-    agg_dict = {c: "sum" for c in numeric_sum_cols}
-    agg_dict.update({c: "first" for c in categorical_cols})
+    VALUE_COLS = [c for c in ["CURRLAND", "CURRIMPR", "FULLCASH", "TAXBASE"] if c in parcel_gdf.columns]
+    varying = (parcel_gdf.groupby("BLOCKLOT", dropna=False)[VALUE_COLS]
+               .nunique(dropna=False).gt(1).any(axis=1))
+    assert not varying.any(), (
+        f"{int(varying.sum())} BLOCKLOTs carry DIFFERENT values across rows — not a broadcast; "
+        f"e.g. {varying[varying].index[:5].tolist()}")
+    agg_dict = {c: "first" for c in parcel_gdf.columns if c not in ("geometry", "BLOCKLOT")}
     collapsed = parcel_gdf.groupby("BLOCKLOT", dropna=False).agg(agg_dict).reset_index()
     geom_union = parcel_gdf.groupby("BLOCKLOT", dropna=False)["geometry"].apply(
         lambda geoms: unary_union([g for g in geoms if g is not None])
@@ -67,7 +68,8 @@ if n_dupes > 0:
     )
     collapsed["geometry"] = geom_union.values
     parcel_gdf = gpd.GeoDataFrame(collapsed, geometry="geometry", crs=parcel_gdf.crs)
-    print(f"✅ Rows after condo-cure collapse: {len(parcel_gdf):,}")
+    print(f"✅ Rows after BLOCKLOT collapse: {len(parcel_gdf):,}")
+assert not parcel_gdf["BLOCKLOT"].duplicated().any(), "BLOCKLOT must be unique after collapse"
 
 # ── 4. Categorise ──────────────────────────────────────────────────────────────
 def categorize_property_type(row):
@@ -159,6 +161,12 @@ print("Computing geodesic areas...")
 export_gdf["area_sqft"] = export_gdf["geometry"].apply(geodesic_area_sqft)
 export_gdf.loc[export_gdf["area_sqft"] < 1, "area_sqft"] = np.nan
 
+export_gdf["land_area_acres"] = export_gdf["area_sqft"] / 43560.0
+# Remnant = a sub-500-sqft sliver carrying an implausible rate. Baltimore rowhouse lots are
+# legitimately tiny (2.5k+ parcels under 500 sqft), so area alone would hide real homes; the
+# $1,500/sqft gate matches the flag_remnants.py --remnant-ppsf pass the shipped file carried.
+_lpsf = pd.to_numeric(export_gdf["land_value"], errors="coerce") / export_gdf["area_sqft"]
+export_gdf["likely_remnant"] = ((export_gdf["area_sqft"] < 500) & (_lpsf > 1500)).astype(int)
 export_gdf["full_market_value_per_sqft"]  = export_gdf["full_market_value"]  / export_gdf["area_sqft"]
 export_gdf["land_value_per_sqft"]         = export_gdf["land_value"]         / export_gdf["area_sqft"]
 export_gdf["improvement_value_per_sqft"]  = export_gdf["improvement_value"]  / export_gdf["area_sqft"]
@@ -178,7 +186,7 @@ columns_to_export = [
     "geometry","exemption_flag","property_land_use_category","property_land_use_refined",
     "full_market_value","full_market_value_per_sqft","land_value","land_value_per_sqft",
     "improvement_value","improvement_value_per_sqft","TLLDIMPROV","IMPR_LAND_RATIO",
-    "IMPR_LAND_PCT","IMPR_PCT_TOTAL","link",
+    "IMPR_LAND_PCT","IMPR_PCT_TOTAL","link","land_area_acres","likely_remnant",
 ]
 for col in columns_to_export:
     if col not in export_gdf.columns:
@@ -202,30 +210,9 @@ print(f"   Total rows: {len(export_final):,}")
 print("\nRefined category counts:")
 print(export_final["property_land_use_refined"].value_counts(dropna=False).to_string())
 
-# ── 8. Upload to dev blob ──────────────────────────────────────────────────────
-from azure.storage.blob import BlobServiceClient
-
-conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-if not conn_str:
-    print("⚠️  AZURE_STORAGE_CONNECTION_STRING not set — skipping upload")
-    sys.exit(0)
-
-container  = os.getenv("AZURE_DEV_CONTAINER", "parquets-dev")
-blob_name  = "baltimore-md-parcels.parquet"
-local_path = os.path.join(DATA_DIR, blob_name)
-
-blob_service    = BlobServiceClient.from_connection_string(conn_str)
-container_client = blob_service.get_container_client(container)
-with open(local_path, "rb") as fh:
-    container_client.upload_blob(name=blob_name, data=fh, overwrite=True)
-print(f"\n✅ Uploaded → {container}/{blob_name}")
-
-# ── 9. Promote to prod ─────────────────────────────────────────────────────────
-dev_container  = os.getenv("AZURE_DEV_CONTAINER",  "parquets-dev")
-prod_container = os.getenv("AZURE_PROD_CONTAINER", "parquets-prod")
-dev_blob  = blob_service.get_blob_client(dev_container,  blob_name)
-prod_blob = blob_service.get_blob_client(prod_container, blob_name)
-if prod_blob.exists():
-    prod_blob.delete_blob()
-prod_blob.start_copy_from_url(dev_blob.url)
-print(f"✅ Promoted → {prod_container}/{blob_name}")
+# ── 8. Upload / promote ────────────────────────────────────────────────────────
+# Deliberately NOT done here (this script used to upload to dev AND promote straight to prod on
+# every run). Bake + upload + promote are separate, reviewed steps:
+#   python data/scripts/parquet_to_pmtiles.py --city baltimore --h3 --drop-remnants
+#   python data/upload_city_dev.py baltimore      # then verify on dev.civicmapper.org
+#   python data/promote_to_prod.py baltimore-md-parcels

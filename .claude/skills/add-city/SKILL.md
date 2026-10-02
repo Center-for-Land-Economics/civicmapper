@@ -91,11 +91,15 @@ print("keys with >1 geometry row:", d[key].nunique())   # nonzero -> you must un
 per unique account must equal the roll's land total for the same accounts. A gap in either
 direction means fragment or broadcast.
 
-As of 2026-10, the repo audit found the same bug class still live in **Baltimore**
-(`run_baltimore.py` sums a broadcast value: 596 IDs, ~$116M land double-counted) and
-**Austin** (`run_austin.py`: one-to-many join then sum, up to ~$390M land overstated). It also
-found **Charlottesville** (`run_charlottesville.py:270` keeps one piece; 5 IDs). Don't copy
-those patterns.
+The 2026-10 repo audit also found this bug class in **Baltimore**. Fixed 2026-10-02: 993
+BLOCKLOTs were broadcast across 2–6 rows each. The shipped file put the full value on every
+piece (~$132M land double-counted), and the script would have summed it instead. Removing the
+duplicates also cleared Baltimore's only two `likely_remnant` slivers. Both were stray pieces of
+multi-polygon lots, meaning **the remnant filter was masking this bug**. `run_baltimore.py`
+asserts that values are identical across a key's rows before taking `first`, which is the
+pattern to copy. Still open: **Austin** (`run_austin.py`: one-to-many join then sum, up to
+~$390M land overstated) and **Charlottesville** (`run_charlottesville.py:270` keeps one piece;
+5 IDs). Don't copy those.
 
 ## 3. Sliver remnants → meaningless $/sqft spikes
 
@@ -162,7 +166,7 @@ Handling already in the repo:
 - `run_fort_collins.py` — the sophisticated version: common-area/association detection,
   `CONDO_PARENT_MIN_RATIO`, condo-category merge. Copy from here for condo-heavy assessor feeds.
 - Account dedup reference: the `ndup` block in `run_seattle.py` / `run_duluth.py`
-  (first-value, union-geometry). **Not** `run_baltimore.py`: it SUMS a broadcast value (see §2a).
+  (first-value, union-geometry), or `run_baltimore.py` §3, which also asserts the broadcast first (see §2a).
 
 **Account-level dedup alone does NOT handle condos** — condo units have *separate* accounts,
 so `groupby(account)` won't merge them. Whether you need explicit condo logic depends on the

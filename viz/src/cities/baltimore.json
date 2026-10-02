@@ -3,7 +3,7 @@
   "state": "md",
   "filename": "baltimore-md-parcels.parquet",
   "pmtilesFilename": "baltimore-md-parcels.pmtiles",
-  "pmtilesVersion": "2026-06-24-finehex",
+  "pmtilesVersion": "2026-10-02-multipart",
   "hideRemnants": true,
   "parkingFilename": "baltimore-md-parking-lots.parquet",
   "parkingVersion": "2026-06-02-dedup",
