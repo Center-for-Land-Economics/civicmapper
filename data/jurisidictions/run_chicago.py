@@ -297,14 +297,42 @@ def categorize_refined(row):
 
 
 # ── 4. Geometry helpers ────────────────────────────────────────────────────────
+def dissolve_by_pin10(geom):
+    """One footprint per pin10 = the UNION of every row carrying that pin10.
+
+    Values are summed to pin10 (coalesce_values), so the footprint must be the whole pin10 too.
+    77tz-riq7 stores some PINs as several rows: pinu>0 air-rights/leasehold rows, but ALSO
+    several pinu=0 pieces of one parcel split by a rail line or road (e.g. 25-13-400-008 in South
+    Deering: a 64-acre piece + a 1.3-acre triangle). The old drop_duplicates("pin10") kept ONE
+    arbitrary piece, which put the PIN's full $8M on 1.3 acres (~$145/sqft vs ~$4 next door) and
+    left the 64 acres undrawn (Cook County Assessor's Office, GitHub issue #22). Unioning is safe
+    for the air-rights rows too: overlapping pieces add no area, disjoint ones belong to the PIN.
+    """
+    geom = geom.copy()
+    geom["pinu_n"] = pd.to_numeric(geom["pinu"], errors="coerce").fillna(0)
+    geom = geom.sort_values(["pin10", "pinu_n"], kind="stable")   # attrs come from the base row
+    dup = geom["pin10"].duplicated(keep=False)
+    base_rows = geom.loc[dup & (geom["pinu_n"] == 0), "pin10"].value_counts()
+    log(f"pin10s with >1 geometry row: {geom.loc[dup, 'pin10'].nunique():,} "
+        f"({int((base_rows > 1).sum()):,} with several pinu=0 pieces)")
+    single = geom[~dup]
+    multi = geom[dup]
+    if not len(multi):
+        return single
+    attrs = multi.drop_duplicates("pin10", keep="first").set_index("pin10")
+    valid = multi.geometry.apply(lambda g: g if g is None or g.is_valid else g.buffer(0))
+    unioned = valid.groupby(multi["pin10"]).agg(lambda s: unary_union([g for g in s if g is not None]))
+    attrs["geometry"] = unioned.reindex(attrs.index)
+    merged = gpd.GeoDataFrame(attrs.reset_index(), geometry="geometry", crs=geom.crs)
+    return gpd.GeoDataFrame(pd.concat([single, merged[single.columns]], ignore_index=True),
+                            geometry="geometry", crs=geom.crs)
+
+
 def main():
     geom = fetch_geometry()
     geom["pin"] = pin14_from_parts(geom)
     geom["pin10"] = geom["pin10"].astype(str).str.zfill(10)
-    # One footprint per pin10 (keep the base parcel, pinu=0); the ~2k pinu>0 rows are
-    # air-rights/leasehold duplicates that would otherwise broadcast a pin10 total twice.
-    geom["pinu_n"] = pd.to_numeric(geom["pinu"], errors="coerce").fillna(0)
-    geom = geom.sort_values("pinu_n").drop_duplicates("pin10", keep="first")
+    geom = dissolve_by_pin10(geom)
     log(f"Geometry footprints (unique pin10): {len(geom):,}")
 
     av10 = coalesce_values(fetch_values())

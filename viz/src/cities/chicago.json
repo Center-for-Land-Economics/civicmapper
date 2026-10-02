@@ -3,7 +3,7 @@
   "state": "il",
   "filename": "chicago-il-parcels.parquet",
   "pmtilesFilename": "chicago-il-parcels.pmtiles",
-  "pmtilesVersion": "2026-07-13-hexprune",
+  "pmtilesVersion": "2026-10-02-multipart",
   "hideRemnants": true,
   "parkingFilename": "chicago-il-parking-lots.parquet",
   "parkingVersion": "2026-06-11",
