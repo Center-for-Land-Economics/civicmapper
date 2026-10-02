@@ -116,12 +116,20 @@ Common patterns:
 
 Typical fix:
 
-- detect duplicates on the parcel key
-- aggregate numeric fields by sum where appropriate
+- detect duplicates on the parcel key, in BOTH the raw geometry layer and the value table
+- **values:** sum only when the rows are distinct value records (condo units, sub-PINs). When
+  one account's value is broadcast to several polygons (multi-part parcels), take `first`.
+  Summing multiplies the value. Check `groupby(key)[value].nunique()`.
 - keep categorical fields with a deterministic rule such as `first`
-- union geometries when duplicate rows represent the same parcel footprint
+- **geometry: always `unary_union` every row with the key, before computing area.** Never
+  `drop_duplicates` or keep-largest. That puts the whole value on one fragment and drops the rest
+  of the footprint (Chicago, issue #22: a 64-acre PIN drawn as its 1.3-acre piece at 36× its
+  neighbors' $/sqft).
+- assert the final output has one row per key
 
-Baltimore uses this pattern in [run_baltimore.py](../data/jurisidictions/run_baltimore.py).
+See `.claude/skills/add-city/SKILL.md` §2 and §2a. Reference implementation: the `ndup` block in
+`run_seattle.py`. (`run_baltimore.py` and `run_austin.py` predate this rule and sum
+broadcast values. Don't copy them.)
 
 Fort Collins lesson for future cities:
 

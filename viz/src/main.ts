@@ -3470,7 +3470,34 @@ function normalizeParcelLink(link: string): string {
   return link;
 }
 
-function buildPopupHTML(props: Record<string, any>): string {
+// Core alias -> the canonical ETL column it duplicates. The bake copies current_full_land_value
+// into REALLANDVA (etc.) so the app has its required keys, but the core label for the alias says
+// "Assessed" — so a city whose dictionary labels the canonical column showed the SAME number twice,
+// once mislabelled (Cook County issue #22: market land value shown as "Land Assessed Value").
+const POPUP_ALIAS_OF: Record<string, string[]> = {
+  REALLANDVA: ['current_full_land_value', 'land_value'],
+  REALIMPROV: ['improvement_value'],
+  REALLANDVA_per_sqft: ['land_value_per_sqft'],
+  REALIMPROV_per_sqft: ['improvement_value_per_sqft'],
+  TLLDIMPROV_per_sqft: ['full_market_value_per_sqft'],
+};
+
+function buildPopupHTML(rawProps: Record<string, any>): string {
+  // Per-sqft rates aren't baked into PMTiles any more (computed client-side for the extrusion), so
+  // the popup rows for them read a missing key and printed "—". Derive them the same way the map
+  // does — value ÷ (land_area_acres·43560) — so the popup shows the rate that drives the height.
+  const props: Record<string, any> = { ...rawProps };
+  const acres = numOrNull(props.land_area_acres);
+  if (acres != null && acres > 0) {
+    for (const [field, src] of Object.entries(PER_SQFT_SRC)) {
+      const v = numOrNull(props[src]);
+      if (numOrNull(props[field]) == null && v != null) props[field] = v / (acres * 43560);
+    }
+  }
+  // LAND_PCT_TOTAL is a client-side metric too (never baked) — same story as the rates above.
+  const popLand = numOrNull(props.REALLANDVA), popImpr = numOrNull(props.REALIMPROV);
+  if (numOrNull(props.LAND_PCT_TOTAL) == null && popLand != null && popImpr != null && popLand + popImpr > 0)
+    props.LAND_PCT_TOTAL = (popLand / (popLand + popImpr)) * 100;
   const title = props.name ?? props.NAME ?? props.id ?? props.ID ?? '';
   const metric = computeDisplayedMetricFromProps(props);
   const heightM = metric != null ? computeExtrusionHeightMeters(metric) : null;
@@ -3481,7 +3508,14 @@ function buildPopupHTML(props: Record<string, any>): string {
   const unitKey = unitsSelect.value as keyof typeof UNIT_TO_METERS;
   const unitText = (unitsSelect.options[unitsSelect.selectedIndex]?.text || unitKey);
 
-  const fieldsToShow = ALL_FIELDS;
+  const hasLabelledValue = (k: string) => {
+    const v = props[k];
+    return ALL_FIELDS.includes(k) && !isCoreField(k) && v !== undefined && v !== null && v !== '';
+  };
+  // Generic core keys the city doesn't carry (e.g. land_value_per_sqm outside metric cities) are
+  // noise, not data — skip them when empty. City-dictionary fields still show "—" when missing.
+  const fieldsToShow = ALL_FIELDS.filter(k => !(POPUP_ALIAS_OF[k] || []).some(hasLabelledValue)
+    && !(isCoreField(k) && k !== DEV_CATEGORY_FIELD && (props[k] ?? '') === ''));
   const fieldKeysByLabel = new Map<string, string>();
 
   for (const k of fieldsToShow) {

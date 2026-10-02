@@ -57,6 +57,46 @@ Dallas accounts. Symptom: a few parcels with absurd values/$-per-sqft.
 - per-polygon GIS area → **`sum`**; reported account-level area → **`first`**.
 - geometry → `unary_union`.
 
+### 2a. The fragment twin: `drop_duplicates` on GEOMETRY (Chicago, 2026-10, issue #22)
+
+The mirror image of §2, and just as visible. The geometry layer stores one PIN as several
+rows, here pieces of one parcel split by a rail line or road. The script collapses them with
+`drop_duplicates(pin)`, or keeps the largest piece, so **the PIN's whole value lands on one
+fragment** and the rest of the footprint isn't drawn. Chicago PIN 25-13-400-008: a 64-acre
+piece plus a 1.3-acre triangle. The $8M went on the triangle, giving **$145/sqft against $4
+next door** (reported by a Cook County Assessor's Office GIS analyst). Citywide, 4,092 PINs
+were affected, 3,810 acres were missing, and 245 parcels' $/sqft fell more than 10× after
+the fix. A sort before `drop_duplicates` doesn't help, because the pieces often tie on the
+sort key (here both had `pinu=0`), so the piece that survives is arbitrary.
+
+**Rule:** the geometry footprint must exist at the **same grain as the value it is divided
+by**. If values are aggregated to a key, `unary_union` every geometry row with that key
+before computing area. **Never use `drop_duplicates`, `keep="first"` or keep-largest on
+geometry rows.** Keep-largest is less wrong but still loses area. (Unioning overlapping
+duplicates is harmless: they add no area.)
+
+**Sum vs. first: decide by what is duplicated, not by habit.**
+- Several *value records* with distinct values for one footprint (condo units, Chicago's
+  per-unit 14-digit PINs rolling up to the 10-digit PIN) → **sum** the values.
+- One account's value broadcast to several *polygons* (multi-part parcels) → **first**, as in §2.
+- Check before choosing: `df.groupby(key)[value].nunique().gt(1).sum()`. 0 means it's a
+  broadcast, so take first; summing would multiply the value.
+
+**Preflight on the RAW geometry (log it on every run):**
+```python
+d = raw[raw[key].duplicated(keep=False)]
+print("keys with >1 geometry row:", d[key].nunique())   # nonzero -> you must union
+```
+**Post-flight on the FINAL output:** `final[key].duplicated().sum() == 0`, and the land total
+per unique account must equal the roll's land total for the same accounts. A gap in either
+direction means fragment or broadcast.
+
+As of 2026-10, the repo audit found the same bug class still live in **Baltimore**
+(`run_baltimore.py` sums a broadcast value: 596 IDs, ~$116M land double-counted) and
+**Austin** (`run_austin.py`: one-to-many join then sum, up to ~$390M land overstated). It also
+found **Charlottesville** (`run_charlottesville.py:270` keeps one piece; 5 IDs). Don't copy
+those patterns.
+
 ## 3. Sliver remnants → meaningless $/sqft spikes
 
 Tiny fragment polygons (<500 sqft) carry a real account value → astronomical $/sqft. Flag
@@ -121,7 +161,8 @@ Condos are the classic parcel-data landmine — see `docs/add-city-playbook.md` 
 Handling already in the repo:
 - `run_fort_collins.py` — the sophisticated version: common-area/association detection,
   `CONDO_PARENT_MIN_RATIO`, condo-category merge. Copy from here for condo-heavy assessor feeds.
-- `run_baltimore.py` — the reference sum-values / first-categoricals / union-geometry dedup.
+- Account dedup reference: the `ndup` block in `run_seattle.py` / `run_duluth.py`
+  (first-value, union-geometry). **Not** `run_baltimore.py`: it SUMS a broadcast value (see §2a).
 
 **Account-level dedup alone does NOT handle condos** — condo units have *separate* accounts,
 so `groupby(account)` won't merge them. Whether you need explicit condo logic depends on the
@@ -323,6 +364,13 @@ Boston.
 
 ## 9. Popups: derive, don't bake
 
-Land size / building size in the popup are **derived on demand** as `value ÷ value-per-sqft`
-(see `buildPopupHTML` in `main.ts`) — both are already in the tile props for every city. Don't
-add data columns or re-bake for values you can compute client-side.
+Land size in the popup is **derived on demand** (see `buildPopupHTML` in `main.ts`). Since the
+2026-07-13 bake, **per-sqft rates are NOT in PMTiles tile props.** The bake drops
+`*_per_sqft` and the map computes `value ÷ (land_area_acres·43560)`. Anything that reads a
+`*_per_sqft` prop directly from a tile feature gets `undefined`. Use `PER_SQFT_SRC` /
+`perSqftExpr`, or the popup's derive step, instead. (The popup printed "—" for every per-sqft row
+on every PMTiles city until 2026-10; issue #22.) The bake also aliases
+`current_full_land_value` → `REALLANDVA`. The popup hides that alias when the city dictionary
+labels the canonical column. Otherwise the core label "Land *Assessed* Value" would show a
+*market* value, which is wrong in fractional-assessment states (Cook County 10/25%, GA 40%).
+Don't add data columns or re-bake for values you can compute client-side.
