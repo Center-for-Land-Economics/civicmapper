@@ -97,9 +97,15 @@ piece (~$132M land double-counted), and the script would have summed it instead.
 duplicates also cleared Baltimore's only two `likely_remnant` slivers. Both were stray pieces of
 multi-polygon lots, meaning **the remnant filter was masking this bug**. `run_baltimore.py`
 asserts that values are identical across a key's rows before taking `first`, which is the
-pattern to copy. Still open: **Austin** (`run_austin.py`: one-to-many join then sum, up to
-~$390M land overstated) and **Charlottesville** (`run_charlottesville.py:270` keeps one piece;
-5 IDs). Don't copy those.
+pattern to copy. **Austin** was fixed the same day. `run_austin.py` left-joined the one PROP.TXT row
+onto every taxmaps piece and then SUMMED it: 177 accounts, $389M land / $1.02B market
+overstated (PROP_ID 197006 showed $2,400/sqft). The TCAD export is a manual Cloudflare-gated
+download and wasn't on disk, so the shipped parquet was corrected in place by dividing by N.
+N = the account's pieces inside the city. Every value divided by N exactly, and value/N matched
+the taxmaps layer's own `market_value` (median ratio 1.00, vs 2.00/3.00 before). **Trick worth
+reusing:** values summed N× from whole-dollar rolls are exactly divisible by N, and the
+taxmaps/ArcGIS layer often carries its own value fields to check against. Still open:
+**Charlottesville** (`run_charlottesville.py:270` keeps one piece; 5 IDs).
 
 ## 3. Sliver remnants → meaningless $/sqft spikes
 

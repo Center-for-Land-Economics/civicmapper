@@ -160,16 +160,22 @@ parcel = parcel[inside].copy()
 log(f"City-limits filter -> {len(parcel):,}")
 
 # ── 4. dedup, categorize, exempt, refined ───────────────────────────────────
+# Travis taxmaps draws some accounts as several polygons (970 PROP_IDs county-wide, ~220 inside
+# Austin). The left join above copies the ONE PROP.TXT row onto every piece, so values are a
+# broadcast: take `first` and union the geometry. Summing them (what this block used to do)
+# multiplied each account's value by its piece count: PROP_ID 197006 showed $2,400/sqft, and
+# ~$388M land / ~$1.0B market was overstated across 177 accounts (add-city skill §2/§2a).
 ndup = parcel.duplicated(subset=["acct"], keep=False).sum()
+log(f"Rows sharing a PROP_ID (multi-polygon): {ndup:,} "
+    f"({parcel.loc[parcel['acct'].duplicated(keep=False), 'acct'].nunique():,} accounts)")
 if ndup:
-    sum_cols = [c for c in ["tot_appr_val", "land_val", "bld_val"] if c in parcel.columns]
-    cat_cols = [c for c in parcel.columns if c not in set(sum_cols + ["geometry", "acct"])]
-    agg = {c: "sum" for c in sum_cols}; agg.update({c: "first" for c in cat_cols})
-    coll = parcel.groupby("acct", dropna=False).agg(agg).reset_index()
+    cat_cols = [c for c in parcel.columns if c not in ("geometry", "acct")]
+    coll = parcel.groupby("acct", dropna=False).agg({c: "first" for c in cat_cols}).reset_index()
     gu = parcel.groupby("acct", dropna=False)["geometry"].apply(
         lambda gs: unary_union([x for x in gs if x is not None]) if any(x is not None for x in gs) else None)
     coll["geometry"] = gu.values
     parcel = gpd.GeoDataFrame(coll, geometry="geometry", crs=parcel.crs)
+assert not parcel["acct"].duplicated().any(), "acct must be unique after dedup"
 log(f"After dedup -> {len(parcel):,}")
 
 

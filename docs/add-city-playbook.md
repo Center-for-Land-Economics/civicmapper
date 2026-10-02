@@ -129,7 +129,7 @@ Typical fix:
 
 See `.claude/skills/add-city/SKILL.md` §2 and §2a. Reference implementation: the `ndup` block in
 `run_seattle.py`, or `run_baltimore.py` §3 (asserts the values really are broadcast before
-taking `first`). (`run_austin.py` predates this rule and sums broadcast values. Don't copy it.)
+taking `first`). (`run_austin.py` used to sum broadcast values; fixed 2026-10-02.)
 
 Fort Collins lesson for future cities:
 
