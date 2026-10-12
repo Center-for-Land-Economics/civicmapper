@@ -39,6 +39,15 @@ the non-obvious things that cost real time. Pair them. Recent worked examples to
   - *Values not in open data at all*: Kentucky PVAs (Louisville) — the public parcel layer
     has zero value fields and values need a PVA records request. **Surface this to the user
     as a blocker; don't scrape.** (See memory: louisville-blocked-on-pva-values.)
+- **A county layer with an EMPTY land field is not a dead end — check the STATE's parcel
+  layer.** Lincoln NE's TaxParcels has `LNDVALUE` NULL on all 122k rows, but Nebraska's OCIO
+  publishes a statewide parcel layer built from every county's CAMA export
+  (`giscat.ne.gov/enterprise/rest/services/StatewideParcelsExternal/FeatureServer/0`, keyed by
+  `County_ID` FIPS) with Land/Improvements/Ag-land values. Other states have the same thing
+  (MassGIS L3, UGRC LIR — but see Provo for LIR's gaps). Verify its roll YEAR against one
+  assessor value-history page; Nebraska's was a year behind the county's own total. And a state
+  "Ownership_Type = Exempt" can mean ANY exemption, incl. the partial homestead exemption —
+  never use it as a full-exemption flag without checking (see `run_lincoln.py`).
 - **Pull geometry with `f=geojson`** (clean CRS + multipolygon/holes) paginated at 2000/page,
   retry per page, and **cache to `<city>-<state>-geometry.parquet`** so re-runs skip the
   multi-minute download.
