@@ -1,0 +1,32 @@
+{
+  "notes": [
+    "Lincoln, NEBRASKA \u2014 state capital and Lancaster County seat, pop. 291,082 (2020), home to the University of Nebraska-Lincoln. 96,000 shipped parcels, $8.49B land value / $38.32B total assessed (= market) value on the 2025 roll. Clipped (centroid-within) to the city's own 2026 Lincoln City Limits polygon (gis.lincoln.ne.gov CityCounty/CityLimits/MapServer/5, 105.1 sq mi). Requested by Josh Duff. See run_lincoln.py.",
+    "TWO SOURCES, JOINED ON THE 13-DIGIT PARCEL ID. Geometry + use taxonomy come from the joint City/County Assessor TaxParcels layer (gis.lincoln.ne.gov/public/rest/services/Assessor/TaxParcels/FeatureServer/0) \u2014 but its LNDVALUE field is NULL on all 122,699 rows (as are every taxable-value and taxes-owed field), and no other service on the city's ArcGIS server carries a land/improvement split. The split comes from the STATE OF NEBRASKA's statewide parcel layer, compiled by the OCIO from each county's CAMA export (giscat.ne.gov/enterprise/rest/services/StatewideParcelsExternal/FeatureServer/0, County_ID '109'): Land_Value + Ag_Land_Value = land, Improvements_Value + Other_Impr_Value = improvements, Total_Assessed_Value = total (the components sum to the total on 99.99% of rows).",
+    "VINTAGE IS THE 2025 ROLL, deliberately. Verified against the Assessor's own value history for 4100 NW 57TH ST (0412201001000): 2025 land $52,000 / building $127,600 / total $179,600, exactly the statewide row. The city layer's CNTASSDVAL is the newer 2026 total (median ~3.3% higher) but 2026 has no public land split yet, so the map uses one consistent roll. Exception: 945 lots platted after the 2025 roll ($70.2M) are UNIMPROVED (R2/C2/A2 \u2014 99.9% of which carry $0 improvements in the roll), so their 2026 county total is used as their land value. 335 newer parcels with no 2025 record that are improved or unclassed cannot be split and are left off (70 commercial, 30 residential, 209 unclassed; $70.2M 2026 total).",
+    "NEBRASKA ASSESSES AT 100% OF ACTUAL VALUE for residential and commercial property (Neb. Rev. Stat. 77-201), so values are market value \u2014 except agricultural land, assessed at 75% (49 parcels, $7.1M, inside the city). Single-family land is a lot-rate table: 975 distinct land values across ~70,000 homes (e.g. every lot in a subdivision at $52,000), but it is NOT a fixed share of total value (only 11% of homes sit within 0.5 pt of the median 20% land share), so it is genuinely appraised land, not a formula split.",
+    "EXEMPTION IS COMPOSED, because Lancaster APPRAISES exempt property at full value (churches $2-5M, Bryan Medical Center $321M) and neither source has a usable tax-status flag. The statewide Ownership_Type='Exempt' is NOT full exemption: it marks the partial HOMESTEAD exemption too (4100 NW 57TH ST is 'Exempt' and the Assessor shows 'Homestead Exemption'; 6,956 single-family homes carry it) and TIF-district apartment towers, so using it would delete ~15,600 taxable parcels. Exempt = PRIMEUSE Public Use / Church / School / Central Assessed (railroad + utility) OR a County/State/Federal owner OR an institutional owner keyword (City of Lincoln, Board of Regents, Lincoln Housing Authority, school district, church, nonprofit hospital...; residential parcels only on GOVERNMENT keywords, since a church- or hospital-owned house is often a taxable rental). 2,543 parcels excluded, $1.24B of land. The owner name is matched at fetch time and never stored or shipped (issue #12).",
+    "CONDOS \u2014 two patterns, both merged (units are distinct value records, so their values are SUMMED). (A) A $0 'Condo Base Account' parcel (PARCELID ending 000) carries the regime's land polygon, and its units (same first 10 digits) are drawn as footprint stubs inside it or as stacked full-lot copies: 2,671 units -> 224 developments on the base polygon, holes filled. (B) 56 stacked copies with no base account -> 3 parcels. Smoke alarms after the merge: 0 stacked footprints, 5 sub-500 sqft parcels (hidden as remnants), 0 zero-land parcels.",
+    "CONDO LAND IS RE-SPLIT WHERE THE ASSESSOR'S PER-UNIT SITE VALUE IS IMPLAUSIBLE. Lancaster gives each condo unit a FIXED site value set by the building (Georgian Place: $90,000 on each of 48 units), not a share of the lot, so summed onto the lot it read $786-836/sqft against the assessor's own uniform $64.80/sqft downtown land rate on every non-condo parcel within 500 m (12x). Where a merged regime runs > 3x the median land $/sqft of its 15 nearest non-condo neighbours (37 of 226: 12 downtown towers plus suburban regimes like Briarwood and Van Dorn Villa), its land is re-split at the neighbour rate x lot area and the rest moves to improvements \u2014 the assessor's TOTAL is unchanged, $67.5M of $8.56B moves from land to improvements, and the assessor's own figure stays in assessor_land_value (condo_land_reallocated = 1). Boston precedent. --no-condo-cap ships the summed site values unchanged.",
+    "Classification is a direct mapping of the Assessor's own PRIMEUSE taxonomy, with CLASSCD R2/C2 (unimproved) -> Vacant Land. 'Vacant land with IOLL/Common Area/Assemblage' (median $0.30/sqft \u2014 mostly HOA common areas) is labelled 'Common Area / IOLL' and kept OUT of the Vacant tab. 994 taxable records with $0 land (HOA outlots at a nominal $100, condo garages) are left off, so Lincoln has no gp-error layer.",
+    "Baked to PMTiles + H3 with --drop-remnants to match hideRemnants. Parking is OSM-only AND unclassified (--no-classify): 1,620 lots / 847.5 acres / ~$325M of underlying land. The surface-vs-structure step hung on Overpass's fuel/parking grid fetch on both overpass-api.de and the maps.mail.ru mirror, so decks are not separated from surface lots, and OSM-only undercounts outside well-mapped areas (the NAIP+ML path was not run)."
+  ],
+  "displayName": "Lincoln",
+  "state": "ne",
+  "filename": "lincoln-ne-parcels.parquet",
+  "pmtilesFilename": "lincoln-ne-parcels.pmtiles",
+  "pmtilesVersion": "2026-10-12a",
+  "hideRemnants": true,
+  "parkingFilename": "lincoln-ne-parking-lots.parquet",
+  "parkingVersion": "2026-10-12a-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "lincoln-ne",
+    "lincoln_ne",
+    "lincolnne"
+  ],
+  "coords": [
+    -96.6852,
+    40.8136
+  ]
+}
