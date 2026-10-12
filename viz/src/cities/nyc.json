@@ -1,14 +1,15 @@
 {
   "notes": [
-    "Borough + NTA neighborhood region show/hide toggles (Land Value 3D tab + Parking tab). Columns added by augment_nyc_regions.py (parcels) / augment_parking_regions.py (parking) from NYC DCP's 2020 NTA layer; the bake emits metadata.groups (H3_CATEGORICAL_FIELDS)."
+    "Borough + NTA neighborhood region show/hide toggles (Land Value 3D tab + Parking tab). Columns added by augment_nyc_regions.py (parcels) / augment_parking_regions.py (parking) from NYC DCP's 2020 NTA layer; the bake emits metadata.groups (H3_CATEGORICAL_FIELDS).",
+    "2026-10: values switched from MapPLUTO AssessLand/AssessTot (fractional ASSESSED: class 1 at 6% of market, classes 2/4 at 45%) to DOF MARKET values (NYC Open Data 8y4t-faws, FY2027 final roll = year 2027 period 3, curmktland/curmkttot) via data/jurisidictions/run_nyc_market.py. Condo unit values summed onto the PLUTO billing lot by (boro, condo_number, block). Assessed values kept as assessed_land_value/assessed_total_value. Caveat: DOF values class 2 (rental/co-op/condo) land via the income approach, often far below class 1 land next door."
   ],
   "displayName": "New York City",
   "state": "ny",
   "filename": "nyc-ny-parcels.parquet",
   "pmtilesFilename": "nyc-ny-parcels.pmtiles",
-  "pmtilesVersion": "2026-06-30-regions",
+  "pmtilesVersion": "2026-10-12-dofmarket",
   "parkingFilename": "nyc-ny-parking-lots.parquet",
-  "parkingVersion": "2026-06-30-regions",
+  "parkingVersion": "2026-10-12-dofmarket",
   "hideUnderutilized": true,
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
