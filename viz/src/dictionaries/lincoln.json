@@ -1,0 +1,25 @@
+{
+  "_config": {
+    "usePmtiles": true,
+    "pmtilesUrl": "lincoln-ne-parcels.pmtiles",
+    "pmtilesMetadataUrl": "lincoln-ne-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Total Assessed Value (2025, = market)",
+  "full_market_value_per_sqft": "Assessed value/land ft\u00b2",
+  "current_full_land_value": "Land Value",
+  "land_value_per_sqft": "Land value/land ft\u00b2",
+  "improvement_value": "Improvements Value",
+  "improvement_value_per_sqft": "Improvements value/land ft\u00b2",
+  "assessor_land_value": "Land Value as Assessed (2025 roll; condos = sum of units)",
+  "condo_land_reallocated": "Condo Land Re-split at Neighbors' Rate (1 = yes)",
+  "land_area_acres": "Land Area (acres)",
+  "link": "Parcel Link"
+}

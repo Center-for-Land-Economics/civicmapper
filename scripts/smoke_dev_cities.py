@@ -25,6 +25,7 @@ ALL_CITIES = [
     'hartfordmetro',
     'duluth',
     'provo',
+    'lincoln',
     'culvercity',
     'boston',
     'stlouis',
