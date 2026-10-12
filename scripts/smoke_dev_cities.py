@@ -29,6 +29,7 @@ ALL_CITIES = [
     'culvercity',
     'boston',
     'stlouis',
+    'omaha',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"

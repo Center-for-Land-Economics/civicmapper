@@ -1,0 +1,35 @@
+{
+  "notes": [
+    "Omaha, NEBRASKA — Douglas County seat, the state's largest city (pop. ~486k, 148.9 sq mi). 152,255 shipped parcels, $7.77B land value / $58.51B total assessed value. Source: Douglas County / City of Omaha GIS (DOGIS) parcel layer dcgis.org/server/rest/services/vector/Cityworks_Parcels_DCHD/FeatureServer/0 (217,384 countywide rows: geometry + the Assessor's LAND_VALUE / IMPROVEMEN / TOTAL_VALU + CLASS + DCAACCTYPE + CONDO flag + BLDG_DESC + SQ_FEET), clipped by representative point to the City Limits layer (Hosted/City_Limits_(source)_view, town='Omaha'). See run_omaha.py.",
+    "WHY THAT LAYER: dcgis.org's `vector/Parcels_public` is the same 217,384 polygons with NO value fields at all, and `vector/Parcels` needs a token. The 'Cityworks' parcel layers (CCSM / DCHD / PRPP / EQC — one layer republished under four names for the City's work-order system) are the ones carrying the Assessor's values. Owner-name fields are never requested.",
+    "VALUES ARE 100% OF ACTUAL VALUE. Nebraska assesses residential and commercial property at 100% of actual (market) value (Neb. Rev. Stat. 77-201(1)); the median Omaha house is $247k total, land $22.9k. Agricultural land is assessed at 75% (77-201(2)), but only 72 shipped parcels are agricultural, so it is documented rather than grossed up. TOTAL = LAND + IMPROVEMENT on every parcel.",
+    "EXEMPT (dropped): CLASS E (Ex Government / Religious / Charitable / Educational / Cemetery) and CLASS U / 'State Assd' railroad, pipeline and public-utility property (valued centrally by the State; the county carries it at $0). 5,629 footprints dropped; their combined county land value is $37,200, i.e. Douglas County zeroes exempt property, so nothing taxable is lost. 'Par Ex' (partially exempt) and 'Govt Lse' (taxable leasehold) accounts carry assessed value and ship.",
+    "STACKED FOOTPRINTS ARE SUMMED (playbook §5, skill §2a). Douglas County draws every CONDO UNIT as the whole development's lot polygon — up to 405 identical polygons on one tower — each carrying that unit's land + improvement value; and every Omaha TIF ('OMAHA REDEVELOPMENT') parcel is split into a base PIN and a TIF-excess PIN on one identical polygon with different values. Both are distinct value records on one footprint, so identical (and >=95%-overlapping) footprints collapse to one parcel with the values SUMMED: 9,611 records -> 1,988 footprints (254 condo developments, 1,772 TIF parcels). The 5 multi-polygon PINs are the opposite case (one value broadcast) and take first + union. Post-flight asserts shipped land == the taxable roll's land to the dollar. `value_records` and `tif_parcel` are in the popup.",
+    "CONDO LAND IS THE ASSESSOR'S OWN SPLIT: condo units carry ~3% of their value as land (vs ~10% for houses), so summed condo developments read somewhat low on land (median $3.80/sqft, about the citywide median). Published as-is, not imputed.",
+    "TOWNHOME FOOTPRINT LOTS (skill §6a/§6b): 7 newer subdivisions (e.g. Villages on Sprague: 129 lots of 528 sqft at $10,000 land each, plus $100 HOA outlots) plat each townhouse as a building-footprint lot. Those merge down onto their subdivision's outlots under a plat-dominance gate (footprint lots >= 60% of the subdivision's valued parcels): 250 lots + 10 outlots -> 7 developments, land $/sqft p50 $18.95 -> $7.12. Rowhouse subdivisions with NO outlot (Rows at SoMa, Dahlman Rows, 31 Mason ...) are genuine fee-simple lots and stay individual, as do ~530 other footprint-sized lots; they render hot but bounded (p99 $12/sqft citywide).",
+    "One assessor anomaly ships as-is: PIN 1021740129, a 1,605 sqft lot carrying $342,200 of land ($213/sqft, the city max) in a small-lot subdivision — the assessor's own number (Seattle Westlake / Hartford '0 OLIVE ST' precedent).",
+    "LAND IS CHEAP IN THE ASSESSOR'S BOOKS: citywide median $2.87/sqft (single-family lot median 8,125 sqft, land ~10% of value). Downtown (within ~600 m of 16th & Farnam) runs ~$27/sqft area-weighted and the Old Market ~$24, vs ~$5-6.5 in Dundee / Aksarben / Midtown, ~$3 in Millard and ~$1.3 in North Omaha around 30th & Ames.",
+    "PARKING: OSM-only and UNCLASSIFIED (--osm-only --no-classify): 2,129 lots / 1,530 acres / ~$460M estimated land value, 5.9% of the city's taxable land value. Within ~1 km of 16th & Farnam, 117 lots cover ~50 acres (~19% of taxable parcel acreage downtown). The surface-vs-structure classifier's Overpass grid fetch hung twice (overpass-api.de and the maps.mail.ru mirror, 2026-10-12, while the Lincoln run was hitting Overpass concurrently); re-run without --no-classify when Overpass is quiet. Lots on exempt land (UNMC, Creighton, Eppley Airfield, schools, churches) are clipped out with the exempt parcels. The assessor itself codes only 4 parcels as 'Parking Lot', so OSM is the only parking signal; OSM undercounts outside well-mapped areas.",
+    "Baked to PMTiles + H3 (152k parcels; H3 ladder r7/r8/r10/r11, hexes z0-11, parcels z12+) with --drop-remnants to match hideRemnants (115 sub-500-sqft slivers)."
+  ],
+  "displayName": "Omaha",
+  "state": "ne",
+  "filename": "omaha-ne-parcels.parquet",
+  "pmtilesFilename": "omaha-ne-parcels.pmtiles",
+  "pmtilesVersion": "2026-10-12-h3",
+  "hideRemnants": true,
+  "parkingFilename": "omaha-ne-parking-lots.parquet",
+  "parkingVersion": "2026-10-12-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "omaha-ne",
+    "omaha_ne",
+    "omahane",
+    "douglascounty-ne"
+  ],
+  "coords": [
+    -96.0419,
+    41.2620
+  ]
+}

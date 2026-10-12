@@ -118,6 +118,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     # needs its own key; this one holds the plain `duluth` slug.
     "duluth": CityParquet(city="duluth", state="ga", legacy_filename="duluth-ga-parcels.parquet"),
     "provo": CityParquet(city="provo", state="ut", legacy_filename="provo-ut-parcels.parquet"),
+    "omaha": CityParquet(city="omaha", state="ne", legacy_filename="omaha-ne-parcels.parquet"),
     # City of Providence, RI (RI has no county government; the city is the assessing unit).
     "providence": CityParquet(
         city="providence", state="ri", legacy_filename="providence-ri-parcels.parquet"
