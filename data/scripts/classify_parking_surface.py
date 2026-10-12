@@ -436,6 +436,12 @@ def parcel_context(parking: gpd.GeoDataFrame, parcels: gpd.GeoDataFrame) -> gpd.
     if refined in parcels.columns:
         keep.append(refined)
     pc = parcels.to_crs(area_crs)[keep].copy()
+    # Cities whose current valuation omits building value for some parcels (Copenhagen's
+    # preliminary commercial/rental valuations) ship an older building value as
+    # `improvement_value_legacy`; use it so those built parcels don't read as bare lots.
+    if "improvement_value_legacy" in parcels.columns:
+        pc["improvement_value"] = pc["improvement_value"].fillna(
+            parcels.to_crs(area_crs)["improvement_value_legacy"])
 
     ov = gpd.overlay(pk[["_pid", "geometry"]], pc, how="intersection", keep_geom_type=True)
     ov["_isect"] = ov.geometry.area

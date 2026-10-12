@@ -1,6 +1,10 @@
 {
   "notes": [
-    "Danish cadastre (DAWA jordstykker) + Vurderingsstyrelsen VUR assessed values — grundværdi (land value) + ejendomsværdi (property value), joined by BFE. Newest assessment per property. ~38k parcels → raw GeoParquet path, no PMTiles. Region grouping by parish (sogn). `district` (= sognenavn) is a parcel property, so the region list derives from the loaded parcels; no boundary-overlay geojson yet."
+    "Copenhagen + Frederiksberg kommuner (Frederiksberg is the enclave inside Copenhagen; added 2026-10). Each property carries `jurisdiction` (municipality) and `district` (parish/sogn; all of Frederiksberg is one region because its parish source, DAWA, closed in 2025). Raw GeoParquet path (~40k features), no PMTiles.",
+    "SOURCE (rebuilt 2026-10, run_copenhagen.py): Vurderingsstyrelsen's public valuation map Vurderingsportalen, whose three national FlatGeobufs (vurddb / vurddb_moderej / vurddb_ejl at vurderingsportalen.dk/kort/data/) are bbox-read over HTTP. One feature per valued property, newest published grundværdi: owner-occupied homes 2024 preliminary, rental/co-op/commercial (erhverv) 2025 preliminary. Land in parks/exempt public land comes from the last DAWA jordstykker pull (cached), with 0 or no value.",
+    "CONDO BUILDINGS: the master property (moderejendom) carries no land value; each condo unit's grundværdi is summed onto the building (113k units, 4,529 buildings). The July build shipped 3,441 of 3,568 Copenhagen condo buildings at 0 kr and valued rental/co-op/commercial buildings at the frozen pre-2020 (legacy) grundværdi, ~10x below the current figure; together that made rowhouses look far pricier than the apartment city (Victor Mayland Nielsen, Utrecht University, 2026-10).",
+    "Erhverv preliminary valuations publish land value only, so full_market_value / improvement_value are null for them; their Underdeveloped test uses the legacy ejendomsværdi:grundværdi ratio (building_share_basis). Copenhagen land use comes from the VUR benyttelseskode; Frederiksberg erhverv land use is estimated from Overture building types (category_source).",
+    "Parking Lot category uses the standard apply_parking_category rule (>=50% surface-parking coverage, land-dominant). The July rule tagged any parcel hosting a lot and painted Fælledparken, Kastellet and Botanisk Have as parking."
   ],
   "displayName": "Copenhagen",
   "state": "dk",
@@ -9,16 +13,22 @@
   "unitSystem": "metric",
   "filename": "copenhagen-hovedstaden-dk-parcels.parquet",
   "parkingFilename": "copenhagen-hovedstaden-dk-parking-lots.parquet",
-  "parkingVersion": "2026-07-08",
+  "parkingVersion": "2026-10-12b-frb",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [
-    "københavn",
-    "kobenhavn",
     "cph",
-    "denmark"
+    "denmark",
+    "frederiksberg",
+    "kobenhavn",
+    "københavn"
   ],
   "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Municipality",
+      "defaultMode": "all"
+    },
     {
       "field": "district",
       "label": "Parish (sogn)",
