@@ -48,6 +48,11 @@ PARCEL_PATHS: dict[str, Path] = {
 
 # Base columns produced by ML step that must be preserved across the rejoin
 BASE_COLS = ["geometry", "source", "confidence", "parking_area_sqft", "parking_area_acres"]
+# Columns spatial_join_to_parcels() (re)writes. With --keep-columns everything EXCEPT these is
+# preserved, so surface/structure classification (parking_type, surface_area_sqft, ...) and
+# region tags (borough, neighborhood, ...) survive a re-link to re-valued parcels.
+JOIN_COLS = ["parcel_id", "parcel_land_value", "parcel_area_sqft", "parcel_category", "is_exempt",
+             "land_value_per_sqft", "estimated_parking_land_value"]
 
 
 def upload_parking_files(
@@ -86,7 +91,8 @@ def upload_parking_files(
               + (f"  Cache-Control: {cache_control}" if cache_control else ""))
 
 
-def rejoin_city(city_key: str, upload: bool = False, container: str = "parquets-dev", connection_string: str = "") -> None:
+def rejoin_city(city_key: str, upload: bool = False, container: str = "parquets-dev", connection_string: str = "",
+                keep_columns: bool = False) -> None:
     parking_dir = PROJECT_ROOT / "data" / "parking" / city_key
     city_meta   = CITY_PARQUETS.get(city_key)
     if city_meta is None:
@@ -114,8 +120,11 @@ def rejoin_city(city_key: str, upload: bool = False, container: str = "parquets-
 
     # ── Load existing parking polygons (base columns only) ────────────────
     parking = gpd.read_parquet(parquet_path)
-    present_base = [c for c in BASE_COLS if c in parking.columns]
-    parking = parking[present_base].copy()
+    if keep_columns:
+        parking = parking.drop(columns=[c for c in JOIN_COLS if c in parking.columns])
+    else:
+        present_base = [c for c in BASE_COLS if c in parking.columns]
+        parking = parking[present_base].copy()
     print(f"  Loaded {len(parking):,} parking polygons.")
 
     # ── Load city parcels ─────────────────────────────────────────────────
@@ -129,6 +138,10 @@ def rejoin_city(city_key: str, upload: bool = False, container: str = "parquets-
 
     # ── Re-run spatial join (new is_exempt logic) ─────────────────────────
     parking = spatial_join_to_parcels(parking, parcels)
+    if keep_columns and "surface_area_sqft" in parking.columns:
+        # classify_parking_surface's headline value, re-priced at the new land $/sqft.
+        parking["effective_surface_land_value"] = (
+            parking["land_value_per_sqft"].fillna(0) * parking["surface_area_sqft"])
     parking["city"]  = city_key
     parking["state"] = state
 
@@ -204,6 +217,12 @@ def main() -> None:
         default=os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""),
         help="Azure Storage connection string (default: AZURE_STORAGE_CONNECTION_STRING env var).",
     )
+    parser.add_argument(
+        "--keep-columns",
+        action="store_true",
+        help=("Keep every existing column except the parcel-join outputs (classification, region "
+              "tags, ...) and re-price effective_surface_land_value. Use after re-valuing parcels."),
+    )
     args = parser.parse_args()
 
     if args.city:
@@ -223,6 +242,7 @@ def main() -> None:
                 upload=args.upload,
                 container=args.container,
                 connection_string=args.connection_string,
+                keep_columns=args.keep_columns,
             )
         except Exception as e:
             print(f"\n  ✗ ERROR processing '{city}': {e}")
