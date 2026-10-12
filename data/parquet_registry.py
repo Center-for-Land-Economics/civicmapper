@@ -148,7 +148,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
         legacy_filename="tallinn-harju-ee-parcels.parquet",
     ),
     # Second non-US city. state = Region Hovedstaden, country = dk (Denmark).
-    # Geometry via DAWA (open); land value (grundværdi) pending Datafordeler VUR access.
+    # København + Frederiksberg; values + geometry from Vurderingsportalen (see run_copenhagen.py).
     "copenhagen": CityParquet(
         city="copenhagen", state="hovedstaden", country="dk",
         legacy_filename="copenhagen-hovedstaden-dk-parcels.parquet",
