@@ -42,6 +42,38 @@ Register the canonical naming in [parquet_registry.py](../data/parquet_registry.
 
 ## 2. Find The Source Data
 
+### Picking a candidate in the first place
+
+If you are choosing *which* city to add rather than working from a request, the
+cheapest wins share six properties. [prospect_cities.py](../data/scripts/prospect_cities.py)
+probes candidates live and scores them against exactly these:
+
+| Property | Why it matters |
+|---|---|
+| city == county | §4 (the city clip) disappears — the easiest place to silently ship bad data |
+| values ON the geometry layer | no join, so no N× value-inflation risk (see the skill's field notes) |
+| land-use class with readable labels | §7 refined categories without inventing heuristics |
+| explicit exemption field | §6 without owner-name guessing |
+| under ~100k parcels | §10 PMTiles/H3/tippecanoe bake skipped entirely |
+| endpoint reachable | appraisal-district GIS is frequently firewalled from CI/dev machines |
+
+```bash
+python data/scripts/prospect_cities.py --only va      # score a group
+python data/scripts/prospect_cities.py --json out.json
+```
+
+Two structural classes score well because of the first row: **Virginia independent
+cities** (legally outside any county) and **consolidated city-counties** (Nashville,
+Anchorage, Broomfield, New Orleans…). Charlottesville, Newport News, Richmond and
+Lynchburg all came from the first group.
+
+Expect roughly one excellent candidate per ten probed, and treat the score as a
+shortlist, not a verdict — **always verify the top pick by hand.** Known blind spots:
+the search only sees ArcGIS Online items, so cities self-hosting their GIS are missed;
+and a plausible-looking layer can still be a subset of the roll.
+
+### What to find for a chosen city
+
 For each city, find:
 
 - parcel geometry source
