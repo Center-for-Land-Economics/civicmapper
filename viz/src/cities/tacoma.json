@@ -1,0 +1,15 @@
+{
+  "notes": [
+    "~64.7k Tacoma parcels. Source: Pierce County GIS Tax Parcels (one-stop geometry + Land_Value/Improvement_Value/Use_Code/Exemption_Code), clipped to the City of Tacoma (see run_tacoma.py). Condo units (stacked per-unit polygons) are merged down onto their $0 'EXR' common-element ground parcel. GeoParquet path for now; bake PMTiles + H3 hexes before shipping (Olympia lesson: small residential parcels drop out below ~z13 without hexes)."
+  ],
+  "displayName": "Tacoma",
+  "state": "wa",
+  "filename": "tacoma-wa-parcels.parquet",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -122.4443,
+    47.2529
+  ]
+}

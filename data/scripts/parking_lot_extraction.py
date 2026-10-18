@@ -98,6 +98,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "lynchburg": "Lynchburg, Virginia, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
+    "tacoma": "Tacoma, Washington, USA",
     "vancouver": "Vancouver, Washington, USA",
     "washington": "Washington, District of Columbia, USA",
     # The Gwinnett County suburb in metro Atlanta, NOT Duluth, Minnesota.

@@ -113,6 +113,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "vancouver": CityParquet(
         city="vancouver", state="wa", legacy_filename="vancouver-wa-parcels.parquet"
     ),
+    # City of Tacoma, WA (Pierce County) -- NOT Tacoma Township or unincorporated Pierce.
+    "tacoma": CityParquet(
+        city="tacoma", state="wa", legacy_filename="tacoma-wa-parcels.parquet"
+    ),
     "dmv": CityParquet(city="dmv", state="dc", legacy_filename="dmv-dc-parcels.parquet"),
     # Duluth GA (Gwinnett County, metro Atlanta) — NOT Duluth MN. A future Duluth MN
     # needs its own key; this one holds the plain `duluth` slug.
