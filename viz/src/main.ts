@@ -3480,40 +3480,67 @@ function normalizeParcelLink(link: string): string {
   return link;
 }
 
-// Core alias -> the canonical ETL column it duplicates. The bake copies current_full_land_value
-// into REALLANDVA (etc.) so the app has its required keys, but the core label for the alias says
-// "Assessed" — so a city whose dictionary labels the canonical column showed the SAME number twice,
-// once mislabelled (Cook County issue #22: market land value shown as "Land Assessed Value").
-const POPUP_ALIAS_OF: Record<string, string[]> = {
-  REALLANDVA: ['current_full_land_value', 'land_value'],
-  REALIMPROV: ['improvement_value'],
-  REALLANDVA_per_sqft: ['land_value_per_sqft'],
-  REALIMPROV_per_sqft: ['improvement_value_per_sqft'],
-  TLLDIMPROV_per_sqft: ['full_market_value_per_sqft'],
-};
+// Keys that name the SAME quantity (canonical vs legacy names). The popup shows one row per group
+// whatever each key's label says — deduping by label alone showed e.g. both "Land Assessed Value"
+// and "Land Market Value" (and two "Land Size" rows) when a city relabelled only one of the pair.
+const POPUP_ALIAS_GROUPS: string[][] = [
+  ['current_full_land_value', 'REALLANDVA', 'land_value'],
+  ['improvement_value', 'REALIMPROV'],
+  ['land_value_per_sqft', 'REALLANDVA_per_sqft'],
+  ['improvement_value_per_sqft', 'REALIMPROV_per_sqft'],
+  ['full_market_value_per_sqft', 'TLLDIMPROV_per_sqft'],
+];
+const POPUP_ALIAS_OF = new Map<string, string>(
+  POPUP_ALIAS_GROUPS.flatMap((g, i) => g.map((k) => [k, `alias:${i}`] as [string, string])));
+// A key followed by its aliases, e.g. REALLANDVA_per_sqft -> [REALLANDVA_per_sqft, land_value_per_sqft].
+const withAliases = (k: string): string[] =>
+  [k, ...(POPUP_ALIAS_GROUPS.find((g) => g.includes(k)) ?? []).filter((a) => a !== k)];
+
+// numOrNull() reads null, '' and '  ' as 0 (Number(null) === 0), which showed missing values as a
+// false $0. The popup treats them as missing; a genuine 0 (or '0') is still 0.
+function popupNum(v: unknown): number | null {
+  if (v == null || (typeof v === 'string' && v.trim() === '')) return null;
+  return numOrNull(v);
+}
+
+// The first of `keys` that holds a number.
+function numFromKeys(props: Record<string, any>, keys: string[]): number | null {
+  for (const k of keys) { const v = popupNum(props[k]); if (v != null) return v; }
+  return null;
+}
+
+// PMTiles don't carry the canonical per-sqft rates (they're computed client-side as value ÷ lot
+// area, see PER_SQFT_SRC), so derive them for the popup too instead of showing "—". A rate the
+// feature already has under any alias (a genuine 0 included) is kept, and a missing value derives
+// no rate (not a false $0). GeoParquet cities ship their own rates, sometimes over a different area
+// on purpose (Copenhagen divides by the assessed, not the geometry, area), so they're left as-is.
+function withDerivedRates(props: Record<string, any>): Record<string, any> {
+  const acres = popupNum(props.land_area_acres);
+  if (!cityUsesPmtiles() || acres == null || acres <= 0) return props;
+  const out = { ...props };
+  for (const [rate, src] of Object.entries(PER_SQFT_SRC)) {
+    if (numFromKeys(props, withAliases(rate)) != null) continue;
+    const v = numFromKeys(props, withAliases(src));
+    if (v != null) out[rate] = v / (acres * 43560);
+  }
+  return out;
+}
 
 function buildPopupHTML(rawProps: Record<string, any>): string {
-  // Per-sqft rates aren't baked into PMTiles any more (computed client-side for the extrusion), so
-  // the popup rows for them read a missing key and printed "—". Derive them the same way the map
-  // does — value ÷ (land_area_acres·43560) — so the popup shows the rate that drives the height.
-  const props: Record<string, any> = { ...rawProps };
-  const acres = numOrNull(props.land_area_acres);
-  if (acres != null && acres > 0) {
-    for (const [field, src] of Object.entries(PER_SQFT_SRC)) {
-      const v = numOrNull(props[src]);
-      if (numOrNull(props[field]) == null && v != null) props[field] = v / (acres * 43560);
-    }
-  }
-  // LAND_PCT_TOTAL is a client-side metric too (never baked) — same story as the rates above.
-  const popLand = numOrNull(props.REALLANDVA), popImpr = numOrNull(props.REALIMPROV);
-  if (numOrNull(props.LAND_PCT_TOTAL) == null && popLand != null && popImpr != null && popLand + popImpr > 0)
+  const props: Record<string, any> = { ...withDerivedRates(rawProps) };
+  // LAND_PCT_TOTAL is a client-side metric too (never baked), like the per-sqft rates.
+  const popLand = popupNum(props.REALLANDVA), popImpr = popupNum(props.REALIMPROV);
+  if (popupNum(props.LAND_PCT_TOTAL) == null && popLand != null && popImpr != null && popLand + popImpr > 0)
     props.LAND_PCT_TOTAL = (popLand / (popLand + popImpr)) * 100;
   const title = props.name ?? props.NAME ?? props.id ?? props.ID ?? '';
   const metric = computeDisplayedMetricFromProps(props);
   const heightM = metric != null ? computeExtrusionHeightMeters(metric) : null;
   const parcelLink = normalizeParcelLink(typeof props.link === 'string' ? props.link.trim() : '');
   const opportunityType = String(props?.[DEV_CATEGORY_FIELD] ?? '').trim();
-  const landValuePerSqft = preferredLandValuePpsfField ? numOrNull(props?.[preferredLandValuePpsfField]) : null;
+  // Read through the aliases so the summary shows the same rate as the table and Land Size, and
+  // no rate (not $0) when it's missing.
+  const landValuePerSqft = preferredLandValuePpsfField
+    ? numFromKeys(props, withAliases(preferredLandValuePpsfField)) : null;
 
   const unitKey = unitsSelect.value as keyof typeof UNIT_TO_METERS;
   const unitText = (unitsSelect.options[unitsSelect.selectedIndex]?.text || unitKey);
@@ -3524,18 +3551,24 @@ function buildPopupHTML(rawProps: Record<string, any>): string {
   };
   // Generic core keys the city doesn't carry (e.g. land_value_per_sqm outside metric cities) are
   // noise, not data — skip them when empty. City-dictionary fields still show "—" when missing.
-  const fieldsToShow = ALL_FIELDS.filter(k => !(POPUP_ALIAS_OF[k] || []).some(hasLabelledValue)
+  // A core alias is hidden outright when the city dictionary labels another key of its group (Cook
+  // County issue #22: market land value shown a second time as "Land Assessed Value").
+  const fieldsToShow = ALL_FIELDS.filter(k => !(isCoreField(k) && withAliases(k).slice(1).some(hasLabelledValue))
     && !(isCoreField(k) && k !== DEV_CATEGORY_FIELD && (props[k] ?? '') === ''));
   const fieldKeysByLabel = new Map<string, string>();
 
   for (const k of fieldsToShow) {
+    // A field this dataset doesn't carry at all (core fields are listed for every city) is a
+    // column of "—" rows, not information — skip it. Present-but-null still shows "—".
+    if (!(k in props)) continue;
     const label = FIELD_LABELS[k] || k;
+    const identity = POPUP_ALIAS_OF.get(k) ?? label;
     const value = (props as any)[k];
     const hasValue = value !== undefined && value !== null && value !== '';
-    const existing = fieldKeysByLabel.get(label);
+    const existing = fieldKeysByLabel.get(identity);
 
     if (!existing) {
-      fieldKeysByLabel.set(label, k);
+      fieldKeysByLabel.set(identity, k);
       continue;
     }
 
@@ -3543,13 +3576,20 @@ function buildPopupHTML(rawProps: Record<string, any>): string {
     const existingHasValue = existingValue !== undefined && existingValue !== null && existingValue !== '';
     if (existingHasValue && !hasValue) continue;
     if (!existingHasValue && hasValue) {
-      fieldKeysByLabel.set(label, k);
+      fieldKeysByLabel.set(identity, k);
       continue;
     }
 
     if (existingHasValue && hasValue && isCoreField(existing) && !isCoreField(k)) {
-      fieldKeysByLabel.set(label, k);
+      fieldKeysByLabel.set(identity, k);
     }
+  }
+  // Then one row per label, as before: an alias-group key and an unrelated key that a city labels
+  // identically still collapse to the first key chosen above.
+  const keysByLabel = new Map<string, string>();
+  for (const k of fieldKeysByLabel.values()) {
+    const label = FIELD_LABELS[k] || k;
+    if (!keysByLabel.has(label)) keysByLabel.set(label, k);
   }
 
   const rowHtml = (label: string, printable: string) => `
@@ -3568,12 +3608,8 @@ function buildPopupHTML(rawProps: Record<string, any>): string {
   // Building floor area is NOT derivable here: every per-sqft metric divides by LAND area, so
   // improvement_value ÷ its per-sqft would just yield land area again. Shown after the land row.
   const LAND_VALUE_KEYS = ['current_full_land_value', 'REALLANDVA', 'land_value'];
-  const numFromKeys = (keys: string[]): number | null => {
-    for (const k of keys) { const v = numOrNull((props as any)[k]); if (v != null) return v; }
-    return null;
-  };
-  const landVal = numFromKeys(LAND_VALUE_KEYS);
-  const landPpsf = numFromKeys(['land_value_per_sqft', 'REALLANDVA_per_sqft']);
+  const landVal = numFromKeys(props, LAND_VALUE_KEYS);
+  const landPpsf = numFromKeys(props, ['land_value_per_sqft', 'REALLANDVA_per_sqft']);
   const landSize = (landVal != null && landPpsf != null && landPpsf > 0) ? landVal / landPpsf : null;
 
   // Combined-value cities have no land/building split, so the improvement/ratio/share fields are
@@ -3581,7 +3617,7 @@ function buildPopupHTML(rawProps: Record<string, any>): string {
   const HIDE_FOR_COMBINED = new Set(['REALIMPROV', 'REALIMPROV_per_sqft', 'improvement_value_per_sqft',
     'TLLDIMPROV', 'TLLDIMPROV_per_sqft', 'full_market_value_per_sqft',
     'IMPR_LAND_RATIO', 'IMPR_LAND_PCT', 'IMPR_PCT_TOTAL', 'LAND_PCT_TOTAL']);
-  const rows = Array.from(fieldKeysByLabel.entries()).filter(([, k]) =>
+  const rows = Array.from(keysByLabel.entries()).filter(([, k]) =>
     !(COMBINED_VALUE_ONLY && HIDE_FOR_COMBINED.has(k))).map(([label, k]) => {
     const v = (props as any)[k];
     // Jurisdiction group fields ship int-encoded in PMTiles (id, not name) — decode to the
