@@ -2190,6 +2190,15 @@ function fmtCurrencyPerSqft(n: number | null | undefined): string {
   return fmtPerArea(value, 'sqft');
 }
 
+// Metric cities pick land_value_per_sqm as preferredLandValuePpsfField. It is already per m², so
+// it must not go through fmtCurrencyPerSqft, which would convert it from sqft to m² a second time.
+function preferredLandValueIsPerSqm(): boolean {
+  return !!preferredLandValuePpsfField?.endsWith('_per_sqm');
+}
+function fmtPreferredLandValue(n: number | null | undefined): string {
+  return preferredLandValueIsPerSqm() ? fmtCurrencyPerSqm(n) : fmtCurrencyPerSqft(n);
+}
+
 // ---- Land-value headline blurb -------------------------------------------------------------
 // Totals for the selected metric over the visible region scope. PMTiles cities read per-region
 // {acres,land,impr,total} from the bake metadata (groups[field].totals); GeoParquet cities sum
@@ -2427,7 +2436,8 @@ function updateUnderTotals(fc: GeoJSON.FeatureCollection, selectedCategories?: s
       } else {
         const ppsf = preferredLandValuePpsfField ? Number(p?.[preferredLandValuePpsfField]) : NaN;
         if (Number.isFinite(ppsf)) {
-          ppsfSums[cat] += ppsf;
+          // avgPpsf is per sqft (as is the Parking Lot footprint avg), so convert a per-m² field.
+          ppsfSums[cat] += preferredLandValueIsPerSqm() ? ppsf / SQFT_PER_SQM : ppsf;
           ppsfCounts[cat] += 1;
         }
       }
@@ -3618,7 +3628,7 @@ function buildPopupHTML(rawProps: Record<string, any>): string {
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; color:#64748b;">Opportunity parcel</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           ${opportunityType ? `<span style="display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#1e3a8a; font-weight:700;">${opportunityType}</span>` : ''}
-          ${landValuePerSqft != null ? `<span style="font-weight:700; color:#0f172a;">${fmtCurrencyPerSqft(landValuePerSqft)}</span>` : ''}
+          ${landValuePerSqft != null ? `<span style="font-weight:700; color:#0f172a;">${fmtPreferredLandValue(landValuePerSqft)}</span>` : ''}
         </div>
       </div>`
     : '';
