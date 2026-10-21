@@ -9,7 +9,7 @@
  * landeconomics.org, and the Substack.
  */
 
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 export type ReportContext = {
   map: maplibregl.Map;

@@ -23,7 +23,7 @@
  * its methods are re-exported as the historical named exports, so `import * as jurisdiction` in
  * main.ts keeps working unchanged.
  */
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import eyeOpenUrl from './svg/eye.svg';
 import eyeClosedUrl from './svg/eye_closed.svg';
 

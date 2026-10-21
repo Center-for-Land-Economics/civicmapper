@@ -40,7 +40,7 @@ Playwright, so it's optional for contributors.
 
 ## Pull requests
 
-- Open PRs against `main`.
+- Open PRs against `develop` (it deploys to dev.civicmapper.org; maintainers promote to `main`/prod).
 - Keep PRs focused — one fix or feature per PR.
 - Make sure `npm test` (api) and `npm run typecheck` + `npm run build` (viz)
   pass.

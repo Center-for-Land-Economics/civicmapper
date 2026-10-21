@@ -14,7 +14,8 @@ import './analytics';
 import './design-system.css';
 import './components.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import './maplibre-worker';
 import { toGeoJson } from 'geoparquet';
 import { compressors } from 'hyparquet-compressors';
 

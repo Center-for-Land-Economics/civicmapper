@@ -6,7 +6,8 @@
  * City metadata (names, states, coords) all comes from the registry in cities.ts.
  */
 import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import './maplibre-worker';
 import { CITIES, CITY_KEYS, CITY_COORDS, STATE_NAMES, type CityKey } from './cities';
 
 // The IBX dataset is an alternate NYC layer that overlaps the nyc dot — keep it out of the picker.
