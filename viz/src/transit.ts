@@ -7,7 +7,7 @@
  * Lines GeoJSON: one LineString feature per color, property NAME ∈ {red,orange,blue,silver,green,yellow}.
  * Stations GeoJSON: Point features with NAME (station) + LINE (", "-joined color list).
  */
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 export interface TransitOverlayConfig {
   /** viz/public filename of the line-network GeoJSON (LineStrings, one per route color). */

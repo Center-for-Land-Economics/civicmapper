@@ -10,7 +10,7 @@
  * Live HUD signals: fps / worst / avg frame, blocked ms/s (main-thread blocking), paints/s,
  * in-flight tiles, and feature density of the active layer.
  */
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 
 interface PerfOpts {
   map: maplibregl.Map;
