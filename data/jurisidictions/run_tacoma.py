@@ -49,6 +49,7 @@ Outputs
 
 Run from the repo root:
     python data/jurisidictions/run_tacoma.py --src ~/Dropbox/andy/data/base/Cadastral/WA/Pierce_Parcels.shp
+    python data/jurisidictions/run_tacoma.py --live      # no local export needed
 """
 from __future__ import annotations
 
@@ -79,6 +80,8 @@ DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / "tacoma"
 DEFAULT_SRC = Path.home() / "Dropbox/andy/data/base/Cadastral/WA/Pierce_Parcels.shp"
 CITIES_SERVICE = ("https://services2.arcgis.com/1UvBaQ5y1ubjUPmd/ArcGIS/rest/services/"
                   "Cities_in_Pierce_County/FeatureServer")
+PARCELS_SERVICE = ("https://services2.arcgis.com/1UvBaQ5y1ubjUPmd/ArcGIS/rest/services/"
+                   "Tax_Parcels/FeatureServer/0")
 # Pierce tax-area codes inside the City of Tacoma (005 is the city proper; the rest are small
 # special-district overlays). 515/195 (Parkland/Midland), 752/751 (University Place), 760
 # (Lakewood), 070/071 (Fircrest), 066/067 (Fife), 105 (Ruston) are NOT Tacoma.
@@ -130,10 +133,64 @@ def fetch_boundary():
 
 
 # ── load ──────────────────────────────────────────────────────────────────────
-def load_parcels(src: Path) -> gpd.GeoDataFrame:
-    window = gpd.GeoSeries([box(*READ_BBOX)], crs=4326)
-    log(f"Reading {src} (Tacoma window)...")
-    g = gpd.read_file(src, bbox=window)
+LIVE_FIELDS = ["TaxParcelNumber", "TaxParcelType", "TaxParcelUnitType", "RetiredDate",
+               "Land_Acres", "Land_Value", "Improvement_Value", "Taxable_Value", "Use_Code",
+               "Tax_Area_Code", "Landuse_Description", "Exemption_Code"]
+
+
+def fetch_live(cache: Path) -> gpd.GeoDataFrame:
+    """Page the READ_BBOX window out of the live Tax Parcels service (f=geojson, 2000/page),
+    caching to `cache` so re-runs skip the download. Only the fields the ETL uses are pulled
+    (the layer also carries taxpayer name/mailing address, which we never want on disk)."""
+    import requests
+    if cache.exists():
+        log(f"Using cached live pull {cache}")
+        return gpd.read_parquet(cache)
+    q = {"where": "1=1", "geometry": ",".join(map(str, READ_BBOX)),
+         "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+         "spatialRel": "esriSpatialRelIntersects", "outFields": ",".join(LIVE_FIELDS),
+         "outSR": 4326, "orderByFields": "OBJECTID", "f": "geojson"}
+    total = requests.get(f"{PARCELS_SERVICE}/query", timeout=120,
+                         params={**q, "returnCountOnly": "true", "f": "json"}).json()["count"]
+    parts, offset = [], 0
+    while offset < total:
+        for attempt in range(5):
+            try:
+                r = requests.get(f"{PARCELS_SERVICE}/query", timeout=180,
+                                 params={**q, "resultOffset": offset, "resultRecordCount": 2000})
+                r.raise_for_status()
+                page = gpd.read_file(io.BytesIO(r.content))
+                break
+            except Exception as e:  # noqa: BLE001 — transient AGOL errors; retry the page
+                log(f"  page @{offset} failed ({e}); retry {attempt + 1}")
+                time.sleep(5 * (attempt + 1))
+        else:
+            raise RuntimeError(f"page @{offset} failed 5 times")
+        if page.empty:
+            break
+        parts.append(page)
+        offset += 2000
+        if (offset // 2000) % 10 == 0:
+            log(f"  {min(offset, total):,} / {total:,}")
+    g = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=4326)
+    # geojson dates arrive as epoch milliseconds; make them datetimes so the retired test works.
+    if pd.api.types.is_numeric_dtype(g["RetiredDate"]):
+        g["RetiredDate"] = pd.to_datetime(g["RetiredDate"], unit="ms", errors="coerce")
+    # Same planar CRS as the shapefile export (WA South ftUS), so downstream logic is identical.
+    g = g.to_crs(2927)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    g.to_parquet(cache, index=False)
+    log(f"  cached {len(g):,} polygons -> {cache}")
+    return g
+
+
+def load_parcels(src: Path | None, cache: Path) -> gpd.GeoDataFrame:
+    if src is None:
+        g = fetch_live(cache)
+    else:
+        window = gpd.GeoSeries([box(*READ_BBOX)], crs=4326)
+        log(f"Reading {src} (Tacoma window)...")
+        g = gpd.read_file(src, bbox=window)
     g = g.rename(columns=RENAME)
     log(f"  {len(g):,} polygons in window; CRS {g.crs}")
     for c in ["Land_Acres", "Land_Value", "Improvement_Value", "Taxable_Value"]:
@@ -211,6 +268,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", type=Path, default=DEFAULT_SRC,
                     help="Pierce Tax Parcels shapefile / gpkg / geojson")
+    ap.add_argument("--live", action="store_true",
+                    help="pull parcels from the live Pierce County Tax Parcels service instead "
+                         "of --src (cached to <out-dir>/tacoma-wa-geometry.parquet)")
     ap.add_argument("--tac-clip", action="store_true",
                     help="clip on Tacoma tax-area codes instead of the city boundary "
                          "(offline fallback; boundary clip is preferred)")
@@ -218,7 +278,8 @@ def main():
     args = ap.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = load_parcels(args.src.expanduser())
+    raw = load_parcels(None if args.live else args.src.expanduser(),
+                       args.out_dir / "tacoma-wa-geometry.parquet")
     work_crs = raw.crs                        # WA South state plane, US feet
     rep = raw.geometry.representative_point()
 
