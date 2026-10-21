@@ -3,8 +3,9 @@ import './analytics';
 import './design-system.css';
 import './components.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibregl from 'maplibre-gl';
-import type { Expression } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import './maplibre-worker';
+import type { ExpressionSpecification as Expression } from 'maplibre-gl';
 // NOTE: the GeoParquet decoder (geoparquet + hyparquet-compressors, ~150 KB) is NOT imported
 // statically — 34 of 44 cities render from PMTiles and never touch it. It's loaded on demand by
 // loadGeoParquetLibs() (see the GeoParquet prefetch below) and by parking.ts.
