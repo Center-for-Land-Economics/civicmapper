@@ -1,6 +1,13 @@
 {
   "_config": {
-    "hasParkingData": false
+    "usePmtiles": true,
+    "pmtilesUrl": "tacoma-wa-parcels.pmtiles",
+    "pmtilesMetadataUrl": "tacoma-wa-parcels-metadata.json",
+    "lowZoomOpacityMultiplier": 1.0,
+    "lowZoomFadeStart": 11.5,
+    "lowZoomFadeEnd": 12,
+    "parcelMinZoom": 12,
+    "hasParkingData": true
   },
   "parcel_number": "Parcel Number",
   "exemption_flag": "Exemption Flag",
