@@ -1,0 +1,19 @@
+{
+  "notes": [
+    "~64.7k Tacoma parcels -> PMTiles + H3 hexes. Source: Pierce County GIS Tax Parcels (one-stop geometry + Land_Value/Improvement_Value/Use_Code/Exemption_Code), clipped to the City of Tacoma boundary (see run_tacoma.py; `--live` pulls the service directly). Condo units (stacked per-unit polygons) are merged down onto their $0 'EXR' common-element ground parcel. The H3 ladder prunes r12 (median parcel 603 m²), so parcels start at z12 (parcelMinZoom 12, hartfordmetro/richmond precedent). Parking is OSM-only (undercounts outside well-mapped areas)."
+  ],
+  "displayName": "Tacoma",
+  "state": "wa",
+  "filename": "tacoma-wa-parcels.parquet",
+  "pmtilesFilename": "tacoma-wa-parcels.pmtiles",
+  "pmtilesVersion": "2026-10-21-h3",
+  "hideRemnants": true,
+  "parkingFilename": "tacoma-wa-parking-lots.parquet",
+  "parkingVersion": "2026-10-21-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [
+    -122.4443,
+    47.2529
+  ]
+}
