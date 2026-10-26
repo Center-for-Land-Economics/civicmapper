@@ -15,6 +15,7 @@ import { formatCityLabel, CITY_COORDS } from './cities';
 // Local imports
 import { BASEMAP_STYLES, SOURCE_ID, LAYER_ID, LAYER_ID_LOW, ERROR_LAYER_ID, HEIGHT_CAP_METERS, HEIGHT_PCTL, COLOR_RAMPS, DEFAULT_RAMP_KEY, LEGACY_DEFAULT_RAMP_KEY, UNIT_TO_METERS, DEV_CATEGORY_FIELD, UNDERUTILIZED_DEFAULTS, ORIG_CATEGORY_FIELD, DEFAULT_DATASET_URL, LOCAL_DATASET_PATH, resolveLocalFirst, HEIGHT_CAPS, getPmtilesUrl, SELECTED_CITY, PARKING_ENABLED, REPORT_ENABLED, PARKING_BASEMAP_STYLE, UNDERUTILIZED_ENABLED, HIDE_REMNANTS, TRANSIT_OVERLAY, METRIC_UNITS } from './config';
 import { setupTransitOverlay } from './transit';
+import { enableFirefoxCtrlDrag } from './ctrl-drag-firefox';
 import { FIELD_LABELS, FIELD_TOOLTIPS, ALL_FIELDS, DROPDOWN_FIELDS, loadDataDictionary, getCityConfig, cityUsesPmtiles, isCoreField } from './utils.dictionary';
 import { CITIES } from './cities';
 import { initPerf } from './perf';
@@ -117,6 +118,7 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+enableFirefoxCtrlDrag(map);
 
 // Dev-only: expose the map + a goto helper for console debugging (e.g. flying to a
 // specific parcel). Stripped from production builds.
