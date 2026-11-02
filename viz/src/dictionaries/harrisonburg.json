@@ -1,0 +1,17 @@
+{
+  "_config": {
+    "usePmtiles": false,
+    "hasParkingData": true
+  },
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "full_market_value": "Total Assessed Value",
+  "full_market_value_per_sqft": "Total value/land ft²",
+  "current_full_land_value": "Land Assessed Value",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Assessed Value",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "land_area_acres": "Land Area (acres)",
+  "link": "Parcel Link"
+}
