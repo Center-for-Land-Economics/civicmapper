@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "City of Harrisonburg, VA — the Virginia INDEPENDENT CITY (FIPS 51660), not the surrounding Rockingham County. Both sources are city-only, so no county clip. See run_harrisonburg.py.",
+    "Geometry and values come from different places. Geometry: the city GIS layer CityServices/MyParcelTaxData/FeatureServer/0 (~13.6k polygons, no dollar values). Values: the City Real Estate Office's published '2026 Reassessment Book (proposed)' PDF (1,273 pages, sworn 2025-10-27), parsed with pdftotext and joined 1:1 on the tax-map number. The parser reconciles to the book's own DISTRICT TOTALS to the dollar (12,714 records, land $1,561,980,600, improvements $4,852,215,700) or the run aborts. Values are the 2026 general reassessment at 100% fair market value, PROPOSED (pre-appeal).",
+    "Exempt land never enters: the book is the taxable REGULAR roll only, so JMU, EMU, city/county/state, churches and schools are simply absent (~890 GIS polygons have no roll record). No owner-name heuristic. 13 taxable LEASEHOLDS on exempt land (map numbers ending in T, e.g. a $27M building on JMU land) have no polygon of their own and are left off; 5 more roll records are recent splits/combos with no matching polygon.",
+    "Condos are MERGED (skill §6b): units are mapped as building slices (e.g. twelve ~474 sqft slices of one building) or as identical stacked per-floor polygons, punched out of an off-roll common-area polygon. 708 unit records + 33 common-area polygons -> 34 development parcels with values summed and holes filled; merged land lands at $3-19/sqft, in line with neighbours. Includes ~100 office/retail condo units in holes of off-roll office-park common areas, and Madison Manor (116 garden-condo units in holes of its nominally-valued association parcel 031 B 1). One building (1360 Hunters Rd, 12 units) has no common area and renders on its footprint at ~$85/sqft.",
+    "Classification: the book's class code is coarse (1 single family / 3 multiple-unit residential / 4 commercial & industrial) with no vacancy or parking code. Improvement value 0 -> Vacant Land; class 4 zoned M1/M1C -> Industrial; 33 land-use-deferral parcels use fair-market land, not the deferred value.",
+    "Parking is OSM-only AND unclassified: 133 polygons, 81.3 acres, $32.3M est. land value (2026-11-02). The surface-vs-structure step failed because the pinned Overture release (2026-08-19.0) is no longer on S3, so totals cover all OSM parking. 244 of 377 OSM lots in the bbox fall outside the shipped (taxable) parcel footprint (JMU and other exempt land, plus county land in the bbox) and are dropped. Undercounts like every OSM-only city. apply_parking_category.py then tagged 12 parking-dominant parcels 'Parking Lot'; re-running run_harrisonburg.py resets that, so re-run apply_parking_category.py after it.",
+    "link is the parcel's own Vision (VGSI) page, the city's Real Estate Info System."
+  ],
+  "displayName": "Harrisonburg",
+  "state": "va",
+  "filename": "harrisonburg-va-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "harrisonburg-va-parking-lots.parquet",
+  "parkingVersion": "2026-11-02-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "harrisonburg-va",
+    "harrisonburg_va"
+  ],
+  "coords": [
+    -78.8689,
+    38.4496
+  ]
+}

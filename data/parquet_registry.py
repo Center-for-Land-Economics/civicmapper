@@ -104,6 +104,11 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "lynchburg": CityParquet(
         city="lynchburg", state="va", legacy_filename="lynchburg-va-parcels.parquet"
     ),
+    # City of Harrisonburg, VA — the independent city (FIPS 51660), NOT the surrounding
+    # Rockingham County.
+    "harrisonburg": CityParquet(
+        city="harrisonburg", state="va", legacy_filename="harrisonburg-va-parcels.parquet"
+    ),
     "olympia": CityParquet(
         city="olympia", state="wa", legacy_filename="olympia-wa-parcels.parquet"
     ),
