@@ -96,6 +96,8 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "richmond": "Richmond, Virginia, USA",
     # The independent city (FIPS 51680), not Lynchburg TN / Moore County.
     "lynchburg": "Lynchburg, Virginia, USA",
+    # The independent city (FIPS 51660), not the surrounding Rockingham County.
+    "harrisonburg": "Harrisonburg, Virginia, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",
