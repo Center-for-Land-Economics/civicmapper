@@ -17,7 +17,7 @@ on:
         default: true
         type: boolean
       include_parking:
-        description: "Promote parking parquet and metadata when present"
+        description: "Promote parking parquet, metadata, and land totals when present"
         required: true
         default: true
         type: boolean
@@ -69,6 +69,7 @@ jobs:
           print(f"PMTILES_METADATA_BLOB={meta.canonical_filename.replace('.parquet', '-metadata.json')}")
           print(f"PARKING_BLOB=parking/{meta.parking_filename}")
           print(f"PARKING_METADATA_BLOB=parking/{meta.parking_metadata_filename}")
+          print(f"LAND_TOTALS_BLOB={meta.land_totals_filename}")
           PY
 
       - name: Promote selected city artifacts to prod
@@ -170,4 +171,6 @@ jobs:
           if [[ "$INCLUDE_PARKING" == "true" ]]; then
             promote_blob "$PARKING_BLOB" "$PARKING_BLOB" false
             promote_blob "$PARKING_METADATA_BLOB" "$PARKING_METADATA_BLOB" false
+            # Land-totals JSON feeds the parking panel's "% of taxable land" line.
+            promote_blob "$LAND_TOTALS_BLOB" "$LAND_TOTALS_BLOB" false
           fi
