@@ -408,9 +408,23 @@ Don't add data columns or re-bake for values you can compute client-side.
 - **Stacked records on one polygon are partial values → SUM them** (`merge_stacked_footprints`):
   condo units all mapped onto the complex (491 on one polygon), undivided-interest owners each
   carrying a share, school/TIF boundary splits. Denominator = footprint area, not the unit's acres.
-- **Condo units drawn as tiny per-unit polygons** with no common-area parcel: `merge_condo_stubs`
-  (nominal-value parent if one contains them, else the unit hull minus other parcels). Gate on condo
-  wording in the legal description so fee-simple townhomes keep their real small lots.
+- **Condo / townhome developments → merge onto their land (`merge_condo_stubs`).** Texas Tax
+  Code §23.18 values an association's common area at a nominal $1 ("COMMON AREA SECTION 23.18
+  NOMINAL VALUE") because its value sits in the units, so the units' land value IS the whole
+  development's land. Match the common-area parcel(s) by development NAME (legal prefix) within
+  200 m: they SURROUND the units (holes), so a containment test misses them. Without one, grow
+  the unit hull into unparcelled ground, never into another parcel or public road right-of-way
+  (Overture roads buffered by class, `road_row_polygons`). A development qualifies by unit stubs,
+  by having a common-area parcel, or as footprint-sized fee-simple townhome lots (median
+  < 1,500 sqft) with one; then EVERY unit merges (selecting by size split a building in two).
+  Condo = condo wording or a FRACTIONAL common-element share; "& PART OF COMMON AREA" on a real
+  0.2-acre lot is a planned-development lot, leave it. Drop leftover nominal common areas.
+- **Singularity policy (any city): `parcel_calculations.land_value_singularities`** flags land
+  $/sqft >= 4x the 300 m neighbourhood median AND in the city's top 10%. Fix artifacts at the
+  source (denominator, stacking, condo land), hide slivers, publish genuine appraiser values
+  (commercial frontage, small fee-simple lots), and write the classified list to
+  `<city>-<state>-singularities.csv` every run so the residue is reviewable. Relative to the
+  neighbours is the point: downtown at 10x the suburbs is normal; a needle at 5x its block is not.
 - **LAND_ACRE can hold square feet or junk fractions**: trust it only within 25% of the polygon.
 - **Parking without Overpass: `parking_lot_extraction.py --overture-only`.** OSM parking comes from
   Overture (`base/infrastructure` class=parking, OSM tags in `source_tags`), gas stations from

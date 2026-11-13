@@ -363,3 +363,50 @@ def classify_property_refined(
     out[is_parking_cat] = "Parking Lot"
     out[is_vacant_cat] = "Vacant"
     return pd.Series(out, index=gdf.index)
+
+
+def land_value_singularities(
+    gdf,
+    *,
+    land_col: str = "current_full_land_value",
+    per_sqft_col: str = "land_value_per_sqft",
+    radius_m: float = 300.0,
+    min_ratio: float = 4.0,
+    min_city_quantile: float = 0.90,
+    min_neighbours: int = 5,
+):
+    """Sweep for land-$/sqft singularities: parcels far above their own neighbourhood.
+
+    A parcel is flagged when its land $/sqft is >= `min_ratio` x the median of the parcels whose
+    centroids lie within `radius_m` of its centroid AND it is in the city's top
+    (1 - `min_city_quantile`) of land $/sqft. Relative-to-neighbours is the point: a downtown
+    parcel at 10x the suburbs is normal, a parcel at 5x everything around it is suspicious.
+
+    Returns a DataFrame indexed like `gdf` (flagged rows only) with nb_median, nb_count, ratio
+    and footprint_sqft. Classifying the cause is city-specific (see run_arlington.py); the
+    policy is: fix artifacts at the source (denominator, stacking, condo land), hide slivers
+    (likely_remnant), and publish genuine assessor values (commercial frontage, small fee-simple
+    lots) with a note.
+    """
+    import geopandas as gpd
+
+    utm = gdf.estimate_utm_crs()
+    u = gdf.to_crs(utm)
+    # Keep gdf's own index on every frame: the neighbour medians are assigned back by label.
+    cent = gpd.GeoDataFrame({"v": pd.to_numeric(gdf[per_sqft_col], errors="coerce")},
+                            geometry=u.geometry.centroid, crs=utm, index=gdf.index)
+    zones = gpd.GeoDataFrame(geometry=cent.geometry.buffer(radius_m), crs=utm, index=gdf.index)
+    j = gpd.sjoin(zones, cent, predicate="contains")
+    j = j[j.index != j["index_right"]]
+    grp = j.groupby(level=0)["v"]
+    out = pd.DataFrame(index=gdf.index)
+    out["land_value_per_sqft"] = cent["v"]
+    out["nb_median"] = grp.median()
+    out["nb_count"] = grp.size()
+    out["ratio"] = out["land_value_per_sqft"] / out["nb_median"].replace(0, np.nan)
+    out["footprint_sqft"] = u.geometry.area.values * SQM_TO_SQFT
+    out["land_value"] = pd.to_numeric(gdf[land_col], errors="coerce").values
+    floor = out["land_value_per_sqft"].quantile(min_city_quantile)
+    flagged = (out["ratio"] >= min_ratio) & (out["land_value_per_sqft"] >= floor) \
+        & (out["nb_count"] >= min_neighbours)
+    return out[flagged].sort_values("ratio", ascending=False)

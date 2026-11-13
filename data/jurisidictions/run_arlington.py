@@ -45,6 +45,7 @@ Notes:
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -58,10 +59,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "data"))
 sys.path.append(str(Path(__file__).resolve().parent))
 from parcel_calculations import (add_improvement_ratio_fields, classify_property_refined,  # noqa: E402
-                                 gis_area_sqft)
-from tx_common import (NON_LAND_CATEGORIES, SQFT_PER_ACRE, categorize_sptb,  # noqa: E402
+                                 gis_area_sqft, land_value_singularities)
+from tx_common import (CONDO_EXCLUDE_RE, CONDO_LEGAL_RE, NON_LAND_CATEGORIES, SQFT_PER_ACRE, categorize_sptb,  # noqa: E402
                        clip_centroid_within, dedup_accounts, fetch_arcgis_geojson, fix_geometry,
-                       log, merge_condo_stubs, merge_stacked_footprints, owner_is_institutional,
+                       log, merge_condo_stubs, merge_stacked_footprints, owner_is_institutional, road_row_polygons,
                        owner_is_public)
 
 CITY, STATE = "arlington", "tx"
@@ -169,10 +170,29 @@ parcel = merge_stacked_footprints(parcel, "acct", ["LAND_VAL", "IMPR_VAL", "MARK
                                   area_col="LAND_ACRE", dup_subset=["OWNER_NAME"])
 parcel = dedup_accounts(parcel, "acct", ["LAND_VAL", "IMPR_VAL", "MARKET_VALUE", "STATE_USE_CODE"])
 assert not parcel["acct"].duplicated().any()
-# Condo units mapped as tiny per-unit polygons (Parkside, Wellington Place I, Willow Brook...)
-# render at 3-6x their neighbours' land $/sqft; merge each development down (skill §6b).
+# Condo developments drawn as unit outlines (Parkside, Wellington Place I, S Arlington Prof
+# Bldg...) are merged onto their land (skill §6b): their own §23.18 common-area parcel, else a
+# nominal parent, else the unit hull grown into unparcelled ground (never into another parcel,
+# exempt or off-roll ones included, nor public road right-of-way).
+roads_cache = DATA_DIR / f"{CITY}-{STATE}-roads.parquet"
+if roads_cache.exists():
+    roads = gpd.read_parquet(roads_cache)
+else:
+    roads = road_row_polygons(boundary.bounds)
+    roads.to_parquet(roads_cache)
+blockers = gpd.GeoDataFrame(pd.concat([raw[["acct", "geometry"]], off_roll[["geometry"]]],
+                                      ignore_index=True), geometry="geometry", crs=4326)
 parcel = merge_condo_stubs(parcel, "PARCEL_LEGAL_DESCRIPTION", ["LAND_VAL", "IMPR_VAL", "MARKET_VALUE"],
-                           area_col="LAND_ACRE")
+                           area_col="LAND_ACRE", blockers=blockers, roads=roads)
+# Remaining association common areas (Texas Tax Code §23.18: valued at a nominal $1 because
+# their value is already in the members' lots) are not land-value parcels: shipped as-is they
+# render as $0 land and count as "Vacant". Drop them like exempt land.
+legal = parcel["PARCEL_LEGAL_DESCRIPTION"].fillna("").str.upper()
+nominal_common = legal.str.contains("COMMON") & parcel["LAND_VAL"].fillna(0).le(1000) \
+    & parcel["land_source"].isna()
+log(f"Dropping {int(nominal_common.sum()):,} nominal-value association common areas "
+    f"({parcel.loc[nominal_common].to_crs(parcel.estimate_utm_crs()).area.sum() / 4046.86:,.0f} acres)")
+parcel = parcel[~nominal_common].copy()
 log(f"After stack merge + dedup + condo merge -> {len(parcel):,}")
 
 ex = parcel.copy()
@@ -246,4 +266,51 @@ log(f"  parcels with interior rings (holes): {int((holes > 0).sum()):,}")
 log(f"  zero land value (renders as gp-error): "
     f"{int((final['current_full_land_value'].fillna(0) <= 0).sum()):,}")
 log(f"  bounds: {[round(v, 4) for v in final.total_bounds]}")
+
+# ── Singularity sweep: land $/sqft >= 4x the 300 m neighbourhood and in the city's top 10% ──
+# Policy: artifacts (value on the wrong footprint) are fixed above at the source; slivers are
+# hidden (likely_remnant); what remains must be genuine appraiser values, which are published.
+# Any condo still flagged means a development's land was not found - investigate it.
+sing = land_value_singularities(final)
+legal_f = ex.loc[sing.index, "PARCEL_LEGAL_DESCRIPTION"].fillna("").str.upper()
+cat_f = ex.loc[sing.index, "property_land_use_category"]
+
+
+def _cause(i):
+    lg, cat = legal_f[i], cat_f[i]
+    if final.loc[i, "likely_remnant"] == 1:
+        return "sliver <500 sqft (hidden)"
+    if pd.notna(ex.loc[i, "land_source"]):
+        if ex.loc[i, "land_source"] in ("common_area_parcel", "nominal_parent"):
+            # Merged onto the development's own land (units + §23.18 common area): the value
+            # now sits on the whole development; what remains is real pricing.
+            return "development on its common-area land (appraiser value, published)"
+        return f"condo, land from {ex.loc[i, 'land_source']} (UNRESOLVED)"
+    if re.search(CONDO_LEGAL_RE, lg) and not re.search(CONDO_EXCLUDE_RE, lg):
+        if ex.loc[i, "n_records"] > 1:
+            # Units stacked on the complex's own plat polygon (common-area record included):
+            # the value already sits on the development's full land as TAD draws it.
+            return "condo complex on its plat polygon (appraiser value, published)"
+        return "condo unit not merged (UNRESOLVED)"
+    if re.search(r"TOWNHOME|TOWNHOUSE|TNHSE", lg) or sing.loc[i, "footprint_sqft"] < 2500:
+        return "small fee-simple lot (appraiser value, published)"
+    if cat in ("Commercial", "Industrial", "Multifamily", "Vacant Commercial"):
+        return "commercial/multifamily land (appraiser value, published)"
+    if cat in ("Single Family", "Vacant Residential"):
+        return "residential lot (appraiser value, published)"
+    return "other (review)"
+
+
+sing["cause"] = [_cause(i) for i in sing.index]
+sing["account"] = ex.loc[sing.index, "acct"].values
+sing["legal"] = legal_f.values
+sing["address"] = ex.loc[sing.index, "SITUS_ADDR"].values
+sing.drop(columns="geometry", errors="ignore").to_csv(DATA_DIR / f"{CITY}-{STATE}-singularities.csv")
+summary = sing.groupby("cause").agg(n=("ratio", "size"), median_ratio=("ratio", "median"),
+                                    max_ratio=("ratio", "max"), land=("land_value", "sum"))
+log(f"Singularity sweep: {len(sing):,} parcels >= 4x neighbours (of {len(final):,}); by cause:\n"
+    f"{summary.round(1).to_string()}")
+unresolved = sing["cause"].str.contains("UNRESOLVED")
+if unresolved.any():
+    log(f"  UNRESOLVED: {sing.loc[unresolved, ['account', 'ratio', 'legal']].head(20).to_string()}")
 log("DONE")
