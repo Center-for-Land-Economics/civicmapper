@@ -168,10 +168,34 @@ def build(cfg: TadCity) -> None:
 
     raw["acct"] = raw["ACCOUNT"].astype(str).str.strip()
     raw = raw[raw["acct"].ne("") & raw["acct"].ne("None")]
+    # Account numbers are only unique within a county (Denton and Parker both have R000112537):
+    # key non-Tarrant rows by county too. Tarrant keeps the bare TAD account (links, export join).
+    other = raw["COUNTYNAME"].ne("Tarrant")
+    raw.loc[other, "acct"] = raw.loc[other, "COUNTYNAME"] + ":" + raw.loc[other, "acct"]
     for c in ["LAND_VAL", "IMPR_VAL", "MARKET_VALUE", "LAND_ACRE"]:
         raw[c] = pd.to_numeric(raw[c], errors="coerce")
     raw = fix_geometry(raw)
     raw = fill_from_tad_export(raw, cfg.expected_tax_year)
+    # Denton County rows carry no LAND_ACRE, but tract legals state it (", 88.2523 ACRES").
+    # Strict pattern (comma, decimal number, ACRES) so "LOT 6 ACRES 2.473" is not misread.
+    den = raw["COUNTYNAME"].eq("Denton") & raw["LAND_ACRE"].isna()
+    legal_ac = pd.to_numeric(raw.loc[den, "PARCEL_LEGAL_DESCRIPTION"].fillna("")
+                             .str.extract(r",\s*(\d*\.\d+)\s+ACRES", flags=re.I)[0], errors="coerce")
+    raw.loc[den, "LAND_ACRE"] = legal_ac
+    if den.any():
+        log(f"Denton acreage from legal descriptions: {int(legal_ac.notna().sum()):,} of {int(den.sum()):,} rows")
+    # Agricultural (open-space) tracts: the layer records LAND_VAL = 0 and puts the land's
+    # market value in AG_VAL / MARKET_VALUE (TAD's export confirms land = market for them).
+    # The map shows market land value, not the productivity value, so land = market - impr.
+    ag0 = raw["LAND_VAL"].eq(0) & raw["MARKET_VALUE"].gt(raw["IMPR_VAL"].fillna(0))
+    raw.loc[ag0, "LAND_VAL"] = raw.loc[ag0, "MARKET_VALUE"] - raw.loc[ag0, "IMPR_VAL"].fillna(0)
+    log(f"Land = market - improvements on {int(ag0.sum()):,} rows recorded with $0 land "
+        f"(by county {raw.loc[ag0, 'COUNTYNAME'].value_counts().to_dict()})")
+    # Possessory interests are leaseholds on exempt (usually public) land, drawn as marker
+    # polygons; not fee land (Harrisonburg precedent: leaseholds on exempt land are left off).
+    pi = raw["PARCEL_LEGAL_DESCRIPTION"].fillna("").str.upper().str.contains("POSSESSORY INTEREST")
+    log(f"Dropping {int(pi.sum()):,} possessory-interest (leasehold) records")
+    raw = raw[~pi].copy()
 
     # ── 2. City limits (centroid within), cross-checked with the taxing unit ─
     parcel = clip_centroid_within(raw, boundary)
@@ -264,6 +288,18 @@ def build(cfg: TadCity) -> None:
     use_reported = (ex["reported_sqft"] > 0) & (ratio.sub(1).abs() <= 0.25)
     ex["land_area_sqft"] = np.where(use_reported, ex["reported_sqft"], ex["geom_area_sqft"])
     ex["area_source"] = np.where(use_reported, "reported", "gis")
+    # Non-Tarrant rows (Denton/Parker/Wise/Johnson parts of Fort Worth) are drawn only where
+    # the City of Fort Worth's layer covers them, so a tract can be clipped to a sliver while
+    # its value is the whole tract's (Walsh Ranches: 60.52 ac on the roll, 0.16 ac drawn). Prorate
+    # land and improvement value by the drawn share when the roll's acreage exceeds the polygon
+    # by > 50%. (Tarrant rows are whole parcels; there a big gap means a bad LAND_ACRE instead.)
+    clipped = ex["COUNTYNAME"].ne("Tarrant") & (ratio < 1 / 1.5)
+    share = ratio.where(clipped, 1.0)
+    for c in ["land_value", "improvement_value", "MARKET_VALUE"]:
+        ex[c] = ex[c] * share
+    ex.loc[clipped, "area_source"] = "gis_prorated"
+    log(f"Prorated {int(clipped.sum()):,} non-Tarrant tracts clipped by the source layer "
+        f"(median drawn share {ratio[clipped].median():.2f})")
     ex["land_area_acres"] = ex["land_area_sqft"] / SQFT_PER_ACRE
     ex["likely_remnant"] = (ex["land_area_sqft"] < 500).astype(int)
     ex["full_market_value"] = ex["MARKET_VALUE"].where(ex["MARKET_VALUE"] > 0,
@@ -273,7 +309,8 @@ def build(cfg: TadCity) -> None:
     ex["land_value_per_sqft"] = ex["land_value"] / den
     ex["improvement_value_per_sqft"] = ex["improvement_value"] / den
     ex = add_improvement_ratio_fields(ex, land_col="land_value", improvement_col="improvement_value")
-    ex["link"] = [COUNTY_LINKS.get(c, tad_link)(a) for c, a in zip(ex["COUNTYNAME"], ex["acct"].astype(str))]
+    ex["link"] = [COUNTY_LINKS.get(c, tad_link)(a.split(":")[-1])
+                  for c, a in zip(ex["COUNTYNAME"], ex["acct"].astype(str))]
 
     # ── 6. Export ─────────────────────────────────────────────────────────────
     COLUMNS = ["geometry", "exemption_flag", "property_land_use_category", "property_land_use_refined",

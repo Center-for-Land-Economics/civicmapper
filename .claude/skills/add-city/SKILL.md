@@ -426,6 +426,22 @@ Don't add data columns or re-bake for values you can compute client-side.
   `<city>-<state>-singularities.csv` every run so the residue is reviewable. Relative to the
   neighbours is the point: downtown at 10x the suburbs is normal; a needle at 5x its block is not.
 - **LAND_ACRE can hold square feet or junk fractions**: trust it only within 25% of the polygon.
+- **Tarrant cities share `tad_city.py`** (`run_arlington.py`, `run_fortworth.py` are configs).
+  The Fort Worth layer lacks the land/improvement split for ~12.7k Tarrant accounts (mostly class
+  O builder lots + downtown); TAD's own PropertyData export (tad.org data downloads, refreshed
+  weekly, pipe-delimited) fills them by account. Downloaded automatically on first run.
+- **SPTB class O is RESIDENTIAL INVENTORY (builder lots, real land), not personal property.**
+  The old categorizers lumped O with L/M/N/S and would drop whole new subdivisions (9.2k in
+  Fort Worth). Check any older Texas script (run_dallas/run_sanantonio/run_bcs) before re-running.
+- **Ag tracts can carry LAND_VAL = 0** with the market land value in AG_VAL / MARKET_VALUE: use
+  market - improvements (TAD's export confirms). Drop "POSSESSORY INTEREST" records (leaseholds on
+  public land, drawn as marker polygons).
+- **Multi-county layers: key accounts by county** (Denton and Parker both have R000112537), and a
+  county part drawn only inside a city layer can be CLIPPED: prorate value by drawn share when the
+  roll acreage exceeds the polygon (Walsh Ranches: 60.5 ac on the roll, 0.16 ac drawn).
+- **Big ArcGIS pulls: resolve the spatial filter to object IDs once, then fetch by ID chunks**
+  (`fetch_arcgis_geojson`, chunk-cached, resumable). Offset paging over a polygon query timed out
+  past ~60k rows; ID chunks pulled Fort Worth's 344k rows in one minute.
 - **Parking without Overpass: `parking_lot_extraction.py --overture-only`.** OSM parking comes from
   Overture (`base/infrastructure` class=parking, OSM tags in `source_tags`), gas stations from
   Overture places, buildings via pyarrow (`data/scripts/overture_source.py`; no DuckDB extensions).

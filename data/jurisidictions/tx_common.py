@@ -64,8 +64,8 @@ def fetch_arcgis_geojson(layer_url: str, *, where: str = "1=1", out_fields: str 
     Spatial pre-filter (intersects), either `geometry` = envelope dict {xmin, ymin, xmax, ymax}
     or `polygon` = a shapely (Multi)Polygon in EPSG:4326 (sent by POST; simplify it first - a
     city outline instead of its bounding box cut Fort Worth's pull from 741k to ~330k rows).
-    Pages are ordered by `order_by` and fetched `workers` at a time; rows are de-duplicated on
-    `id_field` at the end so overlapping pages cannot double-count.
+    The filter is resolved once to object IDs, which are then fetched in chunks of `page`,
+    `workers` at a time, each chunk cached beside `cache` so an interrupted pull resumes.
     """
     from concurrent.futures import ThreadPoolExecutor
     if cache is not None and cache.exists():
@@ -80,27 +80,46 @@ def fetch_arcgis_geojson(layer_url: str, *, where: str = "1=1", out_fields: str 
         base.update({"geometry": ",".join(str(geometry[k]) for k in ("xmin", "ymin", "xmax", "ymax")),
                      "geometryType": "esriGeometryEnvelope", "inSR": 4326,
                      "spatialRel": "esriSpatialRelIntersects"})
-    total = requests.post(q, data={**base, "returnCountOnly": "true", "f": "json"}, headers=HEADERS,
-                          timeout=300).json().get("count", 0)
-    log(f"Pulling {total:,} features from {layer_url.split('/services/')[-1]} ({workers} at a time) ...")
+    # Resolve the spatial filter ONCE to object IDs, then fetch by ID chunks: no spatial
+    # predicate and no deep offsets per page (offset paging over a polygon query timed out
+    # repeatedly past ~60k rows on Fort Worth). Chunks are cached so a failure resumes.
+    ids = requests.post(q, data={**base, "returnIdsOnly": "true", "f": "json"}, headers=HEADERS,
+                        timeout=600).json()
+    oid_field = ids.get("objectIdFieldName", id_field)
+    oids = sorted(ids.get("objectIds") or [])
+    total = len(oids)
+    chunks = [oids[i:i + page] for i in range(0, total, page)]
+    part_dir = (cache.parent / f".{cache.stem}_parts") if cache is not None else None
+    if part_dir is not None:
+        part_dir.mkdir(parents=True, exist_ok=True)
+    log(f"Pulling {total:,} features from {layer_url.split('/services/')[-1]} "
+        f"({len(chunks)} chunks, {workers} at a time) ...")
 
-    def fetch(off: int) -> gpd.GeoDataFrame:
-        for attempt in range(6):
+    def fetch(i: int) -> gpd.GeoDataFrame:
+        part = part_dir / f"{i:05d}.parquet" if part_dir is not None else None
+        if part is not None and part.exists():
+            return gpd.read_parquet(part)
+        for attempt in range(8):
             try:
-                r = requests.post(q, data={**base, "outFields": out_fields, "returnGeometry": "true",
-                                           "orderByFields": order_by, "resultOffset": off,
-                                           "resultRecordCount": page, "outSR": 4326,
-                                           "f": "geojson"}, headers=HEADERS, timeout=600)
+                r = requests.post(q, data={"objectIds": ",".join(map(str, chunks[i])),
+                                           "outFields": out_fields, "returnGeometry": "true",
+                                           "outSR": 4326, "f": "geojson"}, headers=HEADERS, timeout=600)
                 r.raise_for_status()
-                return gpd.GeoDataFrame.from_features(r.json()["features"], crs="EPSG:4326")
+                js = r.json()
+                if "features" not in js:
+                    raise RuntimeError(str(js.get("error", js))[:120])
+                gdf = gpd.GeoDataFrame.from_features(js["features"], crs="EPSG:4326")
+                if part is not None:
+                    gdf.to_parquet(part, index=False)
+                return gdf
             except Exception as e:  # noqa: BLE001 - retried, then raised below
-                log(f"  retry {attempt + 1} @offset {off}: {type(e).__name__}: {str(e)[:80]}")
-                time.sleep(5 * (attempt + 1))
-        raise RuntimeError(f"ArcGIS pull failed at offset {off}")
+                log(f"  retry {attempt + 1} chunk {i}: {type(e).__name__}: {str(e)[:80]}")
+                time.sleep(min(120, 10 * (attempt + 1)))
+        raise RuntimeError(f"ArcGIS pull failed at chunk {i} (re-run to resume)")
 
     pages, done = [], 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        for gdf in ex.map(fetch, range(0, total, page)):
+        for gdf in ex.map(fetch, range(len(chunks))):
             pages.append(gdf)
             done += len(gdf)
             if done % 20000 < page:
@@ -113,6 +132,9 @@ def fetch_arcgis_geojson(layer_url: str, *, where: str = "1=1", out_fields: str 
     if cache is not None:
         out.to_parquet(cache, index=False)
         log(f"  cached -> {cache.name} ({len(out):,} rows)")
+        if part_dir is not None:
+            import shutil
+            shutil.rmtree(part_dir, ignore_errors=True)
     return out
 
 
@@ -137,7 +159,11 @@ def categorize_sptb(code) -> str:
         return "Mineral / Oil & Gas"
     if raw[0] in ("J", "U"):
         return "Utility"
-    if raw[0] in ("L", "M", "N", "O", "S"):
+    if raw[0] == "O":
+        # SPTB O = real-property RESIDENTIAL INVENTORY: lots and new homes held by builders
+        # (8.6k in Fort Worth's new subdivisions). Real land - not personal property.
+        return "Residential Inventory"
+    if raw[0] in ("L", "M", "N", "S"):
         return "Personal Property / Inventory"
     return "Other"
 
@@ -240,7 +266,7 @@ def clip_centroid_within(gdf: gpd.GeoDataFrame, boundary) -> gpd.GeoDataFrame:
 # fee-simple lot in a planned development and is excluded (see CONDO_EXCLUDE_RE).
 CONDO_LEGAL_RE = r"CONDO|CONDMINIUM|[0-9.]+\s*%?\s*(?:OF\s+)?(?:COMMON AREA|CE)\b|% IN CE|\bCE\b"
 CONDO_EXCLUDE_RE = r"PART OF (?:THE )?(?:COMMON AREA|CE)\b"
-DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+OFFICE CENTER|"
+DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+SITE|\s+OFFICE CENTER|"
                 r"\s+APT|\s+COMMON|\s+ALL UNITS|$)")
 
 # Public road right-of-way half-widths (m) by Overture road class, used to keep a gap fill out
@@ -318,6 +344,10 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
     is_stub = is_condo & (sqft < stub_max_sqft)
     sizes = g[is_stub].groupby("_dev").size()
     devs = set(sizes[sizes >= min_units].index)
+    # ... or by having >= min_units separately drawn condo units of any size (office condos
+    # with large unit outlines and no common-area parcel, e.g. Woodland Springs Office Park).
+    units_any = g[is_condo].groupby("_dev").size()
+    devs |= set(units_any[units_any >= min_units].index)
     condo_union = g[is_condo].groupby("_dev")["geometry"].apply(lambda s: unary_union(list(s)))
     for dev, cg in g[is_common & g["_dev"].isin(condo_union.index)].groupby("_dev"):
         if cg.geometry.distance(condo_union[dev]).min() <= 200:
@@ -331,8 +361,13 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
     small_lot = ~is_common & ~is_condo & (sqft < stub_max_sqft)
     lot_stats = g[small_lot].groupby("_dev").agg(n=("geometry", "size"))
     lot_stats["med_sqft"] = sqft[small_lot].groupby(g.loc[small_lot, "_dev"]).median()
+    # Footprint lots must be the MAJORITY of the subdivision's lots: a big single-family
+    # subdivision with a few remnant slivers and an HOA greenbelt (Sendera Ranch, Marine Creek
+    # Ranch) is not a townhome development.
+    all_lots = g[~is_common & ~is_condo].groupby("_dev").size()
+    lot_stats["share"] = lot_stats["n"] / all_lots.reindex(lot_stats.index)
     fdevs = set()
-    for dev, st in lot_stats[(lot_stats["n"] >= min_units)
+    for dev, st in lot_stats[(lot_stats["n"] >= min_units) & (lot_stats["share"] >= 0.5)
                              & (lot_stats["med_sqft"] < footprint_lot_sqft)].iterrows():
         lots_geom = unary_union(list(g.loc[small_lot & (g["_dev"] == dev), "geometry"]))
         cg = g[is_common & (g["_dev"] == dev)]
