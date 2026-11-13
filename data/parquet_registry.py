@@ -85,6 +85,8 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "dallas": CityParquet(city="dallas", state="tx", legacy_filename="dallas-tx-parcels.parquet"),
     "sanantonio": CityParquet(city="sanantonio", state="tx", legacy_filename="sanantonio-tx-parcels.parquet"),
     "bcs": CityParquet(city="bcs", state="tx", legacy_filename="bcs-tx-parcels.parquet"),
+    # City of Arlington, TX (Tarrant County) — not Arlington VA/WA/MA.
+    "arlington": CityParquet(city="arlington", state="tx", legacy_filename="arlington-tx-parcels.parquet"),
     "rockville": CityParquet(
         city="rockville", state="md", legacy_filename="rockville-md-parcels.parquet"
     ),

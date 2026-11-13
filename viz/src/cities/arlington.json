@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "City of Arlington, TX (Tarrant County), within city limits. Built by data/jurisidictions/run_arlington.py from one automated source: the City of Fort Worth's public copy of the Tarrant Appraisal District (TAD) roll (Parcels_Public_Vview), refreshed nightly from TAD. Values are TAD's 2026 appraisal (TAX_YEAR 2026 asserted). Clipped to the City of Arlington Municipal Boundary (centroid within); TAD's own taxing-unit code agrees on all but 62 / 31 parcels.",
+    "Exempt land is dropped. TAD almost never uses state class X (10 parcels), and its EXEMPTION_CODE is YES for any exemption including homesteads, so the exemption signal is $0 City of Arlington taxable value on an appraised non-residential parcel (763 of 768 city-owned parcels), plus class X and named public owners. Homes with $0 taxable (100% disabled-veteran homesteads, 1,677) stay in as private land.",
+    "Stacked records are summed onto their footprint: condo units mapped onto the whole complex polygon (The Cloisters: 491 units on 27.6 acres), undivided-interest owners each carrying a share, and lots split into accounts at school/TIF boundaries (1,061 footprints, 4,154 records). Condo units mapped as tiny per-unit polygons are merged per development (745 units, 24 developments) onto a nominal common-area parcel (Pebblebrook) or the hull of the units. TAD has no parcel for those developments' common grounds, so about 8 small ones (Willow Brook, Wellington Place I, Cedar Place, Fielder Park...) still show land $/sqft several times their neighbours'.",
+    "Land size: TAD's LAND_ACRE is used when within 25% of the polygon area, else the polygon area (on ~6.7k parcels LAND_ACRE holds square feet, a tiny fraction or a partial area). 10 sub-500 sqft remnants hidden.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 277 lots, 265.5 acres, $71.1M est. land value. OSM has 598 parking polygons (729 acres) inside the city; the rest sit on exempt land (stadium complexes, UT Arlington, schools, churches) and are excluded by design. apply_parking_category.py tagged 8 parcels 'Parking Lot'.",
+    "link points at TAD's property page by account number (URL pattern not verified from the build environment)."
+  ],
+  "displayName": "Arlington",
+  "state": "tx",
+  "filename": "arlington-tx-parcels.parquet",
+  "pmtilesFilename": "arlington-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-13-tad2026-hexfix",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "arlington-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-13-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "arlington-tx",
+    "arlington_tx",
+    "arlingtontx"
+  ],
+  "coords": [
+    -97.1081,
+    32.7357
+  ]
+}
