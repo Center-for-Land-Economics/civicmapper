@@ -99,6 +99,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     # The independent city (FIPS 51660), not the surrounding Rockingham County.
     "harrisonburg": "Harrisonburg, Virginia, USA",
     "arlington": "Arlington, Texas, USA",
+    "fortworth": "Fort Worth, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",

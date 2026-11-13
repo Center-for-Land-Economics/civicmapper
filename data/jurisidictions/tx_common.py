@@ -44,50 +44,70 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def _esri_polygon(geom) -> str:
+    """Shapely (Multi)Polygon in EPSG:4326 -> ArcGIS JSON polygon geometry string."""
+    import json
+    parts = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+    rings = []
+    for p in parts:
+        rings.append([list(c) for c in p.exterior.coords])
+        rings.extend([list(c) for c in r.coords] for r in p.interiors)
+    return json.dumps({"rings": rings, "spatialReference": {"wkid": 4326}})
+
+
 def fetch_arcgis_geojson(layer_url: str, *, where: str = "1=1", out_fields: str = "*",
-                         geometry: dict | None = None, cache: Path | None = None,
-                         page: int = 2000, order_by: str = "OBJECTID") -> gpd.GeoDataFrame:
+                         geometry: dict | None = None, polygon=None, cache: Path | None = None,
+                         page: int = 2000, order_by: str = "OBJECTID", workers: int = 4,
+                         id_field: str = "OBJECTID") -> gpd.GeoDataFrame:
     """Paginated GeoJSON pull from an ArcGIS FeatureServer layer, cached to parquet.
 
-    `geometry` is an optional envelope dict {xmin, ymin, xmax, ymax} in EPSG:4326 used as a
-    spatial pre-filter (intersects). Pages are ordered by `order_by` so offsets are stable.
+    Spatial pre-filter (intersects), either `geometry` = envelope dict {xmin, ymin, xmax, ymax}
+    or `polygon` = a shapely (Multi)Polygon in EPSG:4326 (sent by POST; simplify it first - a
+    city outline instead of its bounding box cut Fort Worth's pull from 741k to ~330k rows).
+    Pages are ordered by `order_by` and fetched `workers` at a time; rows are de-duplicated on
+    `id_field` at the end so overlapping pages cannot double-count.
     """
+    from concurrent.futures import ThreadPoolExecutor
     if cache is not None and cache.exists():
         log(f"Using cached pull: {cache.name}")
         return gpd.read_parquet(cache)
     q = f"{layer_url.rstrip('/')}/query"
-    base = {"where": where, "f": "json"}
-    if geometry is not None:
+    base = {"where": where}
+    if polygon is not None:
+        base.update({"geometry": _esri_polygon(polygon), "geometryType": "esriGeometryPolygon",
+                     "inSR": 4326, "spatialRel": "esriSpatialRelIntersects"})
+    elif geometry is not None:
         base.update({"geometry": ",".join(str(geometry[k]) for k in ("xmin", "ymin", "xmax", "ymax")),
                      "geometryType": "esriGeometryEnvelope", "inSR": 4326,
                      "spatialRel": "esriSpatialRelIntersects"})
-    total = requests.get(q, params={**base, "returnCountOnly": "true"}, headers=HEADERS,
-                         timeout=180).json().get("count", 0)
-    log(f"Pulling {total:,} features from {layer_url.split('/services/')[-1]} ...")
-    pages, off = [], 0
-    while off < total:
-        gdf = None
-        for attempt in range(5):
+    total = requests.post(q, data={**base, "returnCountOnly": "true", "f": "json"}, headers=HEADERS,
+                          timeout=300).json().get("count", 0)
+    log(f"Pulling {total:,} features from {layer_url.split('/services/')[-1]} ({workers} at a time) ...")
+
+    def fetch(off: int) -> gpd.GeoDataFrame:
+        for attempt in range(6):
             try:
-                r = requests.get(q, params={**base, "outFields": out_fields, "returnGeometry": "true",
-                                            "orderByFields": order_by, "resultOffset": off,
-                                            "resultRecordCount": page, "outSR": 4326,
-                                            "f": "geojson"}, headers=HEADERS, timeout=300)
+                r = requests.post(q, data={**base, "outFields": out_fields, "returnGeometry": "true",
+                                           "orderByFields": order_by, "resultOffset": off,
+                                           "resultRecordCount": page, "outSR": 4326,
+                                           "f": "geojson"}, headers=HEADERS, timeout=600)
                 r.raise_for_status()
-                gdf = gpd.GeoDataFrame.from_features(r.json()["features"], crs="EPSG:4326")
-                break
+                return gpd.GeoDataFrame.from_features(r.json()["features"], crs="EPSG:4326")
             except Exception as e:  # noqa: BLE001 - retried, then raised below
                 log(f"  retry {attempt + 1} @offset {off}: {type(e).__name__}: {str(e)[:80]}")
                 time.sleep(5 * (attempt + 1))
-        if gdf is None:
-            raise RuntimeError(f"ArcGIS pull failed at offset {off}")
-        if not len(gdf):
-            break
-        pages.append(gdf)
-        off += len(gdf)
-        if off % 20000 < page:
-            log(f"  fetched {off:,}/{total:,}")
+        raise RuntimeError(f"ArcGIS pull failed at offset {off}")
+
+    pages, done = [], 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for gdf in ex.map(fetch, range(0, total, page)):
+            pages.append(gdf)
+            done += len(gdf)
+            if done % 20000 < page:
+                log(f"  fetched {done:,}/{total:,}")
     out = gpd.GeoDataFrame(pd.concat(pages, ignore_index=True), crs="EPSG:4326")
+    if id_field in out.columns:
+        out = out.drop_duplicates(id_field)
     if len(out) != total:
         log(f"  WARNING: pulled {len(out):,} rows but the server counted {total:,}")
     if cache is not None:
