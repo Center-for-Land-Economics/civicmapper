@@ -98,6 +98,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "lynchburg": "Lynchburg, Virginia, USA",
     # The independent city (FIPS 51660), not the surrounding Rockingham County.
     "harrisonburg": "Harrisonburg, Virginia, USA",
+    "arlington": "Arlington, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",
@@ -226,6 +227,16 @@ def parse_args() -> argparse.Namespace:
             "Skip NAIP fetch and ML inference entirely. "
             "Use OpenStreetMap parking polygons as the sole source. "
             "Fast and reliable for cities with good OSM coverage."
+        ),
+    )
+    parser.add_argument(
+        "--overture-only",
+        action="store_true",
+        help=(
+            "Like --osm-only, but read the OSM parking polygons (and the tags and gas "
+            "stations the classifier needs) from Overture Maps on S3 instead of the "
+            "Overpass API. Use where Overpass is unreachable or flaky; Overture lags "
+            "OSM by about a month."
         ),
     )
     parser.add_argument(
@@ -1697,6 +1708,29 @@ def fetch_osm_parking(city_key: str, bbox: list[float] | None = None) -> gpd.Geo
     return gdf
 
 
+def fetch_overture_parking(bbox: list[float]) -> gpd.GeoDataFrame:
+    """OSM parking polygons delivered through Overture Maps (no Overpass).
+
+    Same output columns as fetch_osm_parking. Overture's base/infrastructure class=parking
+    carries OSM amenity=parking areas with their original tags; street-side parking is dropped.
+    """
+    from data.scripts import overture_source
+    from data.scripts.classify_parking_surface import OVERTURE_RELEASE
+    release = overture_source.resolve_release(OVERTURE_RELEASE)
+    print(f"  Reading Overture {release} base/infrastructure class=parking ...")
+    gdf = overture_source.parking_polygons(tuple(bbox), release)
+    if gdf.empty:
+        return gpd.GeoDataFrame()
+    gdf_proj = _project_for_area(gdf)
+    gdf["parking_area_sqft"] = gdf_proj.geometry.area * 10.7639
+    gdf["parking_area_acres"] = gdf["parking_area_sqft"] / 43560.0
+    gdf["source"] = "osm"
+    gdf["confidence"] = 1.0
+    gdf = gdf[["geometry", "source", "confidence", "parking_area_sqft", "parking_area_acres"]]
+    print(f"  Overture (OSM) parking polygons: {len(gdf):,}")
+    return gdf
+
+
 def _unpin_overpass_dns() -> None:
     """Make socket.gethostbyname raise for overpass-api.de so osmnx falls back to
     the full getaddrinfo (v4+v6) result set instead of pinning one (often-dead)
@@ -2405,7 +2439,16 @@ def main() -> None:
     boundary_geometry = city_boundary_geometry(city_key, parcels)
 
     # -----------------------------------------------------------------------
-    if args.osm_only:
+    if args.overture_only:
+        # ── Overture-only mode: OSM parking via Overture, no NAIP / ML / Overpass ──
+        print("=" * 60)
+        print("Step 3-4: Overture-only mode – OSM parking polygons via Overture Maps")
+        print("=" * 60)
+        parking_gdf = fetch_overture_parking(bbox)
+        if parking_gdf.empty:
+            raise RuntimeError(f"No Overture parking polygons found for '{city_key}'.")
+
+    elif args.osm_only:
         # ── OSM-only mode: skip NAIP fetch and ML inference entirely ──────
         print("=" * 60)
         print("Step 3-4: OSM-only mode – skipping NAIP fetch and ML inference")
@@ -2523,7 +2566,9 @@ def main() -> None:
         try:
             from data.scripts.classify_parking_surface import classify_parking
             cls_bbox = tuple(parking_gdf.to_crs(4326).total_bounds)
-            parking_gdf = classify_parking(parking_gdf, cls_bbox, parcels=parcels)
+            parking_gdf = classify_parking(
+                parking_gdf, cls_bbox, parcels=parcels,
+                osm_source="overture" if args.overture_only else "overpass")
             vc = parking_gdf["parking_type"].value_counts().to_dict()
             print(f"  Classified: {vc}")
         except Exception as e:
@@ -2559,6 +2604,9 @@ def main() -> None:
         resolution_m=args.resolution,
         naip_date_range=f"{args.naip_start}/{args.naip_end}",
     )
+    if args.overture_only:
+        # Same OSM data, different delivery: record which Overture release carried it.
+        metadata["parkingTotals"]["osm_delivery"] = _overture_release_tag()
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
     print(f"  Metadata JSON: {metadata_path}")

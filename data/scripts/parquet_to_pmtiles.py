@@ -887,6 +887,25 @@ def build_pmtiles_h3_wsl_native(
     print(f"PMTiles created: {pmtiles_path}")
 
 
+def split_hex_geojson_by_band(hex_geojson: Path, out_dir: Path) -> list[tuple[Path, int, int]]:
+    """Split the H3 GeoJSON into one file per zoom band, dropping the per-feature
+    `tippecanoe` member (the band becomes the run's -Z/-z instead). Returns
+    [(path, minzoom, maxzoom)] in band order."""
+    with open(hex_geojson) as f:
+        feats = json.load(f)["features"]
+    bands: dict[tuple[int, int], list[dict]] = {}
+    for feat in feats:
+        tz = feat.pop("tippecanoe", {})
+        bands.setdefault((tz.get("minzoom", 0), tz.get("maxzoom", 14)), []).append(feat)
+    out = []
+    for i, ((mn, mx), fs) in enumerate(sorted(bands.items())):
+        p = out_dir / f"parcels_low_band{i}.geojson"
+        with open(p, "w") as f:
+            json.dump({"type": "FeatureCollection", "features": fs}, f)
+        out.append((p, mn, mx))
+    return out
+
+
 def build_pmtiles_h3_native(
     parcels_geojson: Path,
     hex_geojson: Path,
@@ -913,14 +932,23 @@ def build_pmtiles_h3_native(
             )
     with tempfile.TemporaryDirectory() as td:
         t = Path(td)
-        hexm, parc, cmb = t / "hex.mbtiles", t / "parc.mbtiles", t / "c.mbtiles"
-        runs = [
-            [tippecanoe_bin, "-o", str(hexm), "-t", td, "-Z0", f"-z{hex_maxzoom}",
-             "--no-tile-size-limit", "--no-feature-limit", "-L", f"parcels_low:{hex_geojson}"],
-            [tippecanoe_bin, "-o", str(parc), "-t", td, f"-Z{parcel_minzoom}", "-z14",
-             "--no-tile-size-limit", "--no-feature-limit", "-l", "parcels", str(parcels_geojson)],
-        ]
-        join_inputs = [str(hexm), str(parc)]
+        parc, cmb = t / "parc.mbtiles", t / "c.mbtiles"
+        # One tippecanoe run PER H3 zoom band (-Z/-z from the band) instead of one run gated by
+        # per-feature `tippecanoe: {minzoom, maxzoom}` members: some tippecanoe builds (Ubuntu's
+        # 2.49 package) collapse a layer to ONE feature per tile when that member is present
+        # (Arlington, 2026-11: 1 hex per tile instead of 13k). tile-join then merges the bands
+        # back into the single `parcels_low` layer, so the output is the same on any version.
+        runs, join_inputs = [], []
+        for i, (band_path, mn, mx) in enumerate(split_hex_geojson_by_band(hex_geojson, t)):
+            hexm = t / f"hex{i}.mbtiles"
+            runs.append([tippecanoe_bin, "-o", str(hexm), "-t", td, f"-Z{mn}", f"-z{mx}",
+                         "--no-tile-size-limit", "--no-feature-limit", "-l", "parcels_low",
+                         str(band_path)])
+            join_inputs.append(str(hexm))
+        runs.append([tippecanoe_bin, "-o", str(parc), "-t", td, f"-Z{parcel_minzoom}", "-z14",
+                     "--no-tile-size-limit", "--no-feature-limit", "-l", "parcels",
+                     str(parcels_geojson)])
+        join_inputs.append(str(parc))
         if under_geojson is not None:
             underm = t / "under.mbtiles"
             runs.append(

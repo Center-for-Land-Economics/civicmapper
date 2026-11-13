@@ -393,3 +393,31 @@ on every PMTiles city until 2026-10; issue #22.) The bake also aliases
 labels the canonical column. Otherwise the core label "Land *Assessed* Value" would show a
 *market* value, which is wrong in fractional-assessment states (Cook County 10/25%, GA 40%).
 Don't add data columns or re-bake for values you can compute client-side.
+
+## 10. Texas appraisal rolls & cloud-sandbox builds (learned on Arlington, 2026-11)
+
+- **Shared helpers live in `data/jurisidictions/tx_common.py`** (paginated ArcGIS pull,
+  `categorize_sptb`, stacked-footprint merge, account dedup, condo-stub merge). New Texas cities
+  import from it; `run_arlington.py` is the reference.
+- **Tarrant County (TAD):** the City of Fort Worth's `Parcels_Public_Vview` is a nightly copy of the
+  whole TAD roll (2026 values, SPTB class, LAND_ACRE). Its non-Tarrant rows are 2023 data.
+- **TAD's EXEMPTION_CODE is YES for homesteads too, and TAD almost never uses class X.** The full-
+  exemption signal is `CITY_TAXABLE_VALUE == 0` with `APPRAISED_VALUE > 0` on non-residential parcels
+  (763 of 768 city-owned). On homes it is mostly 100% disabled-veteran homesteads → keep them unless
+  the owner is institutional. Check this field in other Texas CAD layers before trusting an owner list.
+- **Stacked records on one polygon are partial values → SUM them** (`merge_stacked_footprints`):
+  condo units all mapped onto the complex (491 on one polygon), undivided-interest owners each
+  carrying a share, school/TIF boundary splits. Denominator = footprint area, not the unit's acres.
+- **Condo units drawn as tiny per-unit polygons** with no common-area parcel: `merge_condo_stubs`
+  (nominal-value parent if one contains them, else the unit hull minus other parcels). Gate on condo
+  wording in the legal description so fee-simple townhomes keep their real small lots.
+- **LAND_ACRE can hold square feet or junk fractions**: trust it only within 25% of the polygon.
+- **Parking without Overpass: `parking_lot_extraction.py --overture-only`.** OSM parking comes from
+  Overture (`base/infrastructure` class=parking, OSM tags in `source_tags`), gas stations from
+  Overture places, buildings via pyarrow (`data/scripts/overture_source.py`; no DuckDB extensions).
+  Validated on Dallas: $2.51B vs $2.52B matched value against the Overpass build. A pruned
+  `OVERTURE_RELEASE` pin now falls back to the newest live release instead of failing.
+- **tippecanoe 2.49 (Ubuntu apt) collapses a layer to ONE feature per tile when features carry a
+  per-feature `tippecanoe: {minzoom, maxzoom}` member.** The Linux/macOS bake now runs one
+  tippecanoe pass per H3 band and tile-joins them. If hexes look empty, decode a tile
+  (`pmtiles tile` + mapbox_vector_tile) and count `parcels_low` features before blaming the frontend.

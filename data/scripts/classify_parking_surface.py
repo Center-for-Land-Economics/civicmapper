@@ -45,7 +45,10 @@ import shapely.wkb
 # Bumped 2026-08-20 from the pruned 2026-05-20.0 (only 2026-07-22.0 and 2026-08-19.0
 # remained). Cities baked against an earlier release keep their existing parking
 # metadata; only re-runs pick this up.
-OVERTURE_RELEASE = "2026-08-19.0"
+# Bumped 2026-11-13 from the pruned 2026-08-19.0. Reads now go through
+# overture_source.resolve_release(), which falls back to the newest live release (with a
+# warning) when this pin has been pruned, so a stale pin no longer breaks classification.
+OVERTURE_RELEASE = "2026-10-21.0"
 OVERTURE_BUILDINGS = (
     f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/"
     "theme=buildings/type=building/*"
@@ -248,26 +251,12 @@ def fetch_osm_fuel(bbox: tuple) -> gpd.GeoDataFrame:
 
 
 def fetch_overture_buildings(bbox: tuple) -> gpd.GeoDataFrame:
-    """Pull Overture building footprints (geometry + height + num_floors + class)."""
-    import duckdb
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;")
-    con.execute("SET s3_region='us-west-2';")
-    minx, miny, maxx, maxy = bbox
-    rows = con.execute(
-        f"""
-        SELECT geometry AS wkb, height, num_floors, class, subtype
-        FROM read_parquet('{OVERTURE_BUILDINGS}')
-        WHERE bbox.xmin BETWEEN {minx} AND {maxx}
-          AND bbox.ymin BETWEEN {miny} AND {maxy}
-        """
-    ).fetchall()
-    geoms = [shapely.wkb.loads(bytes(r[0])) for r in rows]
-    gdf = gpd.GeoDataFrame(
-        {"height": [r[1] for r in rows], "num_floors": [r[2] for r in rows],
-         "class": [r[3] for r in rows], "subtype": [r[4] for r in rows]},
-        geometry=geoms, crs=4326,
-    )
+    """Pull Overture building footprints (geometry + height + num_floors + class).
+
+    Read with pyarrow straight from S3 (overture_source), so no DuckDB extensions are needed.
+    """
+    from data.scripts import overture_source
+    gdf = overture_source.buildings(bbox, overture_source.resolve_release(OVERTURE_RELEASE))
     # Bucket each building: parking structure / canopy / real building
     cls = gdf["class"].fillna("").str.lower()
     gdf["bcat"] = "real"
@@ -486,7 +475,8 @@ def parcel_context(parking: gpd.GeoDataFrame, parcels: gpd.GeoDataFrame) -> gpd.
 
 
 def classify_parking(parking: gpd.GeoDataFrame, bbox: tuple,
-                     parcels: gpd.GeoDataFrame | None = None) -> gpd.GeoDataFrame:
+                     parcels: gpd.GeoDataFrame | None = None,
+                     osm_source: str = "overpass") -> gpd.GeoDataFrame:
     """Classify each parking polygon surface | structure | uncertain | excluded and
     pro-rate land value to the effective unbuilt surface.
 
@@ -496,10 +486,20 @@ def classify_parking(parking: gpd.GeoDataFrame, bbox: tuple,
 
     Reusable by the main ETL pipeline. Requires `parking_area_sqft` and (for value)
     `land_value_per_sqft` columns. Robust to missing OSM tags (e.g. ML-derived
-    parking): falls back to footprint signals.
+    parking): falls back to footprint signals. `osm_source="overture"` takes the OSM
+    parking tags and gas stations from Overture instead of Overpass.
     """
-    osm = fetch_osm_tags(bbox)
-    fuel = fetch_osm_fuel(bbox)
+    if osm_source == "overture":
+        # OSM tags + gas stations delivered through Overture (no Overpass): parking tags
+        # come from the infrastructure layer's source_tags, fuel from Overture places.
+        from data.scripts import overture_source
+        rel = overture_source.resolve_release(OVERTURE_RELEASE)
+        osm = overture_source.parking_polygons(bbox, rel)
+        fuel = overture_source.fuel_stations(bbox, rel)
+        print(f"  Overture {rel}: {len(osm):,} tagged parking polygons, {len(fuel):,} fuel stations")
+    else:
+        osm = fetch_osm_tags(bbox)
+        fuel = fetch_osm_fuel(bbox)
     bldg = fetch_overture_buildings(bbox)
     parking = attach_osm_tags(parking, osm)
     parking = building_overlap(parking, bldg)
