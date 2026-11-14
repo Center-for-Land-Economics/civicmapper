@@ -1,6 +1,6 @@
 {
   "notes": [
-    "City of El Paso, TX (El Paso County), within city limits. Built by data/jurisidictions/run_elpaso.py (pacs_city.py + tx_pipeline.py). 205,655 parcels, $11.54B land.",
+    "City of El Paso, TX (El Paso County), within city limits. Built by data/jurisidictions/run_elpaso.py (pacs_city.py + tx_pipeline.py). 205,661 parcels, $11.54B land.",
     "Values: El Paso Central Appraisal District's 2026 certified export, 'As of Supplement' (exported 2026-10-13, PACS layout 8.0.34): certified values including supplemental corrections through October (each property's latest supplement). epcad.org is behind a browser challenge, so the export was downloaded by hand from epcad.org/OpenGovernment.",
     "Geometry: the district's own web-map service (ElPasoCADWebService, BIS-hosted), joined on prop_id (217,959 of 218,259 polygons match). City limits: Census TIGER/Line 2025 place 4824000; the City of El Paso taxing entity (CEP) agrees on all but 76 / 29 of ~214k accounts.",
     "Classes are read through the district's state-code table: C2 = COLONIA lots (residential), C10 = commercial vacant lot, X21-X23 = ranch improvements on ag land (statewide D2), XV-C / XV-R = totally exempt. Exemptions: the roll's EX flags (EX-XV etc.) plus class X and named public owners: 7,194 records dropped.",
@@ -14,7 +14,7 @@
   "state": "tx",
   "filename": "elpaso-tx-parcels.parquet",
   "pmtilesFilename": "elpaso-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-14-epcad2026-c",
+  "pmtilesVersion": "2026-11-14-epcad2026-d",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "elpaso-tx-parking-lots.parquet",
