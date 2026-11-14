@@ -485,3 +485,18 @@ Don't add data columns or re-bake for values you can compute client-side.
   per-feature `tippecanoe: {minzoom, maxzoom}` member.** The Linux/macOS bake now runs one
   tippecanoe pass per H3 band and tile-joins them. If hexes look empty, decode a tile
   (`pmtiles tile` + mapbox_vector_tile) and count `parcels_low` features before blaming the frontend.
+- **tippecanoe < 2.55 gives features OTHER features' attribute values.** Its string pool compares
+  FNV-1a hashes as `(int)(a - b)`, so two distinct values sharing the low 32 bits of their hash
+  are stored as one (~100 per run at ~1M distinct values). Symptoms: a lone hex or parcel tower
+  (El Paso: a hex's $25,943.55 land became another hex's $414,333.41 improvement value), a flat
+  hex with 20,452 acres, a link that opens a different parcel. Ubuntu apt and WSL ship 2.49.
+  `parquet_to_pmtiles.py` now predicts the collisions before every tippecanoe run and nudges
+  one value of each pair by a few cents / 1e-6 acre (links get a trailing `#`); the bake log
+  prints `tippecanoe pool guard: ...`. After any bake, run
+  `python data/scripts/verify_pmtiles_attributes.py --city <c> --drop-remnants`, which decodes
+  the tiles and compares every parcel (by link) and r11 hex with the source. The old "round to
+  2 decimals to avoid pool overflow" note was this bug: rounding reduced it, never removed it.
+  PMTiles baked before 2026-11-14 may carry such swaps; re-bake to fix.
+- **A tower that shows only in hex form, never as a parcel:** besides the pool bug above,
+  check for parcels whose polygon has no usable area. The parcel layer can't draw them, but
+  the hex aggregate keeps their value against ~0 acres. `tx_pipeline` flags them `likely_remnant`.

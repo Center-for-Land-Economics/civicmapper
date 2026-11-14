@@ -19,8 +19,9 @@ Local state codes are read through the district's state-code table: C2 = COLONIA
 D2, not exempt), XV-C / XV-R = totally exempt.
 
 Pipeline shared with Brownsville: pacs_city.py + tx_pipeline.py.
-Link: El Paso CAD's True Prodigy portal, property-detail/<prop_id> (same platform and pattern
-as Travis CAD's; not verified from the build host).
+Link: EPCAD's own property page, epcad.org/Search/Details/<prop_id>/<year>, pinned to 2026 (the
+certified year these values come from). Pattern confirmed by the user (prop 108327); epcad.org
+is not reachable from the build host.
 """
 from pacs_city import PacsCity, build
 
@@ -32,7 +33,7 @@ CONFIG = PacsCity(
     export_url="https://epcad.org/OpenGovernment",   # manual download (browser challenge)
     tiger_geoid="4824000",
     city_entity="CEP",
-    link=lambda prop_id: f"https://elpaso.prodigycad.com/property-detail/{prop_id}",
+    link=lambda prop_id: f"https://epcad.org/Search/Details/{prop_id}/2026",
     gis_values={"land": ["land_val"], "impr": ["imprv_val"], "market": "market"},
     public_names=["CITY OF EL PASO", "EL PASO CITY OF", "EL PASO COUNTY OF", "COUNTY OF EL PASO",
                   "EL PASO WATER", "PUBLIC SERVICE BOARD", "EL PASO INDEPENDENT SCHOOL",

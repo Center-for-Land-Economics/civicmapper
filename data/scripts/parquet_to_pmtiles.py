@@ -368,22 +368,160 @@ def add_region_value_totals(gdf: gpd.GeoDataFrame, metadata: dict) -> None:
 FLOAT_DECIMALS = {"land_area_acres": 6}
 
 
+# ---- tippecanoe < 2.55 string-pool collision guard --------------------------------------
+# tippecanoe dedups every attribute key and value of a run in one string pool, a search tree
+# ordered by a 64-bit FNV-1a hash of (string, type). Before 2.55.0 ("Fix hash collisions in
+# the string pool") the comparator returned (int)(ahash - bhash), so two DIFFERENT strings
+# whose hashes share their low 32 bits compare equal and the second is stored as the first:
+# a feature silently takes another feature's value, from any attribute. With ~1M distinct
+# values that is ~100 collisions per run (El Paso 2026-11: a hex's $25,943.55 land became
+# another hex's $414,333.41 improvement value, a 56 $/sqft tower). The apt build is 2.49.
+# The guard reproduces tippecanoe's value strings (numbers: shortest round-trip decimal via
+# milo dtoa, type mvt_double=2; strings and keys: type mvt_string=0), finds colliding pairs
+# before the run, and nudges one float of each pair by a few units of its last kept decimal
+# (cents, or 1e-6 acre; URLs get a trailing '#') until no low-32-bit hash is shared. Harmless on fixed tippecanoe versions.
+_FNV_PRIME = np.uint64(1099511628211)
+_FNV_BASIS = np.uint64(14695981039346656037)
+_MVT_STRING, _MVT_DOUBLE = 0, 2
+
+
+def _tippecanoe_number_string(v) -> str:
+    """milo::dtoa_milo as tippecanoe 2.49 writes a parsed GeoJSON number into its pool."""
+    if isinstance(v, (int, np.integer)):
+        return str(int(v))
+    v = float(v)
+    if v == int(v) and abs(v) < 1e21:
+        return str(int(v))
+    r = repr(v)
+    return np.format_float_positional(v, unique=True, trim="-") if "e" in r else r
+
+
+def _fnv1a_low32(strings: list[str], types: np.ndarray) -> np.ndarray:
+    b = [s.encode("utf-8") for s in strings]
+    lens = np.fromiter((len(x) for x in b), dtype=np.int64, count=len(b))
+    width = int(lens.max()) if len(b) else 0
+    h = np.full(len(b), _FNV_BASIS, dtype=np.uint64)
+    if width:
+        arr = np.frombuffer(b"".join(x.ljust(width, b"\0") for x in b),
+                            dtype=np.uint8).reshape(len(b), width)
+    with np.errstate(over="ignore"):
+        for j in range(width):
+            k = j < lens
+            h[k] = (h[k] ^ arr[k, j].astype(np.uint64)) * _FNV_PRIME
+        h = (h ^ types.astype(np.uint64)) * _FNV_PRIME
+    return h & np.uint64(0xFFFFFFFF)
+
+
+def tippecanoe_pool_fixes(columns: dict[str, "pd.Series"]) -> dict[str, dict]:
+    """Return {column: {old_value: new_value}} nudges that leave no two distinct pool strings
+    of one tippecanoe run sharing a low-32-bit hash. `columns` holds every property column of
+    the run (already rounded as written). Float values move by one unit of their kept
+    decimals; URL strings (links) get a trailing '#', which browsers ignore. Keys, ints and
+    other strings are never changed (their colliding partner is nudged instead)."""
+    # (string, type) -> [(col, value, nudge)]; nudge = decimals (float), "url", or None.
+    entries: dict[tuple[str, int], list] = {}
+    for col, s in columns.items():
+        entries.setdefault((str(col), _MVT_STRING), [])
+        if pd.api.types.is_bool_dtype(s):
+            continue
+        is_float = pd.api.types.is_float_dtype(s)
+        dec = FLOAT_DECIMALS.get(col, 2)
+        for v in pd.unique(s.dropna()):
+            if isinstance(v, (bool, np.bool_)):
+                continue
+            if isinstance(v, str):
+                entries.setdefault((v, _MVT_STRING), []).append(
+                    (col, v, "url" if v.startswith(("http://", "https://")) else None))
+            elif isinstance(v, (int, float, np.integer, np.floating)):
+                if isinstance(v, (float, np.floating)) and not np.isfinite(v):
+                    continue
+                entries.setdefault((_tippecanoe_number_string(v), _MVT_DOUBLE), []).append(
+                    (col, v, dec if is_float else None))
+    keys = list(entries)
+    if not keys:
+        return {}
+
+    def low32(k):
+        return int(_fnv1a_low32([k[0]], np.array([k[1]]))[0])
+
+    lo = _fnv1a_low32([k[0] for k in keys], np.array([k[1] for k in keys]))
+    taken: dict[int, tuple[str, int]] = {}
+    clashes: list[tuple[str, int]] = []
+    for k, l in zip(keys, lo.tolist()):
+        if l in taken:
+            clashes.append(k)
+        else:
+            taken[l] = k
+
+    def nudgeable(users):
+        return bool(users) and (all(isinstance(n, int) and not isinstance(n, bool) for *_, n in users)
+                                or all(n == "url" for *_, n in users))
+
+    def candidates(users):
+        if users[0][2] == "url":
+            for n in range(1, 50):
+                yield users[0][1] + "#" * n, (users[0][1] + "#" * n, _MVT_STRING)
+        else:
+            # Nearest first, both directions. FNV's low 32 bits depend only on the low 32 bits
+            # of the running state, so once two prefixes collide every shared suffix does too:
+            # escaping can need the second-last digit to change (at most ~5 units away).
+            step = 10.0 ** -min(n for *_, n in users)
+            base = float(users[0][1])
+            for n in range(1, 50):
+                for sign in (1, -1):
+                    cand = round(base + sign * n * step, 8)
+                    yield cand, (_tippecanoe_number_string(cand), _MVT_DOUBLE)
+
+    fixes: dict[str, dict] = {}
+    unresolved_ex: list[tuple[str, str]] = []
+    for k in clashes:
+        holder = taken[low32(k)]
+        if nudgeable(entries[k]):
+            target = k
+        elif nudgeable(entries.get(holder, [])):
+            target = holder
+        else:
+            unresolved_ex.append((k[0][:60], holder[0][:60]))
+            continue
+        users = entries[target]
+        for cand, ck in candidates(users):
+            cl = low32(ck)
+            # Free slot, or a value already in the pool that owns its slot (merging onto an
+            # existing value adds no new string).
+            if taken.get(cl, ck) == ck:
+                taken[cl] = ck
+                for col, v, _ in users:
+                    fixes.setdefault(col, {})[v] = cand
+                if target is holder:   # k takes over the slot the old holder vacated
+                    taken[low32(k)] = k
+                break
+        else:
+            unresolved_ex.append((k[0][:60], "no free nudge"))
+    n_fixed = sum(len(m) for m in fixes.values())
+    if clashes:
+        print(f"  tippecanoe pool guard: {len(keys):,} distinct strings, {len(clashes)} hash "
+              f"collisions -> {n_fixed} value(s) nudged"
+              + (f", {len(unresolved_ex)} UNRESOLVED: {unresolved_ex[:5]}" if unresolved_ex else ""))
+    return fixes
+
+
 def write_geojson(gdf: gpd.GeoDataFrame, output_path: Path) -> None:
     """Write GeoDataFrame to GeoJSON.
 
-    Round float attributes to 2 decimals first. Full-precision (17-significant-digit)
-    floats across ~100k+ features overflow tippecanoe's per-tile attribute value pool
-    and get mis-encoded — e.g. land_value_per_sqft picking up an unrelated parcel's
-    dollar value, producing false multi-thousand-$/sqft spikes on the map. Rounding
-    collapses the distinct-value explosion; display precision is unaffected. NaN is
-    preserved (written as null); only ±inf is normalized to null.
-    FLOAT_DECIMALS overrides the 2 decimals per column.
+    Round float attributes to 2 decimals first (FLOAT_DECIMALS overrides per column) to keep
+    the distinct-value count down, then apply the tippecanoe pool-collision guard above. The
+    'mis-encoded value' spikes once blamed on pool overflow (land_value_per_sqft picking up an
+    unrelated parcel's dollar value) are those hash collisions. NaN is preserved (written as
+    null); only ±inf is normalized to null.
     """
     gdf = gdf.copy()
     geom_col = gdf.geometry.name
     for c in gdf.columns:
         if c != geom_col and pd.api.types.is_float_dtype(gdf[c]):
             gdf[c] = gdf[c].replace([np.inf, -np.inf], np.nan).round(FLOAT_DECIMALS.get(c, 2))
+    fixes = tippecanoe_pool_fixes({c: gdf[c] for c in gdf.columns if c != geom_col})
+    for c, m in fixes.items():
+        gdf[c] = gdf[c].replace(m)
     gdf.to_file(output_path, driver="GeoJSON")
 
 
@@ -1262,6 +1400,17 @@ def main() -> None:
                     })
                 print(f"  parcels_low r{res}: {len(hex_gdf):,} hexes (z{mn}-{mx})")
             if feats:
+                # Pool-collision guard over ALL hex features at once: a collision-free set
+                # stays collision-free in every per-band subset (the Linux per-band runs) and
+                # in the single all-band run (WSL/Windows).
+                _props = pd.DataFrame([ft["properties"] for ft in feats])
+                _fixes = tippecanoe_pool_fixes({c: _props[c] for c in _props.columns})
+                for ft in feats:
+                    pr = ft["properties"]
+                    for c, m in _fixes.items():
+                        v = pr.get(c)
+                        if isinstance(v, float) and v in m:
+                            pr[c] = m[v]
                 with open(hex_path, "w") as f:
                     json.dump({"type": "FeatureCollection", "features": feats}, f)
                 layer_specs.append(("parcels_low", hex_path))

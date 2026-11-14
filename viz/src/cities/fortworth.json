@@ -5,7 +5,7 @@
     "City limits: Census TIGER/Line 2025 place 4827000 (boundaries as of 2025-01-01; the city's hosted copy is TIGER 2024, 6.3 km2 smaller). Taxing-unit codes agree on all but 523 / 432 of ~322k accounts.",
     "Exempt land dropped: $0 City of Fort Worth taxable value on appraised non-residential parcels, plus class X and named public owners (7,679 records). Homes with $0 taxable (10,389, mostly 100% disabled-veteran homesteads) stay in as private land. SPTB class O (residential inventory: builder lots, 9.2k) is real land and kept.",
     "Agricultural tracts recorded with $0 land use market minus improvements (1,509). 26 possessory-interest leaseholds on public land are left off. 20 Parker/Wise/Johnson tracts the source layer draws only partly have land and improvement value prorated by the drawn share. Denton parcels take acreage from their legal descriptions where stated.",
-    "Stacked records summed onto their footprint (3,317 footprints, 10,266 records). Condo developments merged onto their land (1,634 units, 66 developments: 48 onto their own Texas Tax Code §23.18 common-area parcel, 18 onto the unit hull grown into unparcelled ground). 4 footprint-lot townhome developments treated the same way. 2,511 leftover nominal common areas (3,840 ac) dropped like exempt land.",
+    "Stacked records summed onto their footprint (3,317 footprints, 10,266 records). Condo developments merged onto their land (1,634 units, 66 developments: 48 onto their own Texas Tax Code \u00a723.18 common-area parcel, 18 onto the unit hull grown into unparcelled ground). 4 footprint-lot townhome developments treated the same way. 2,511 leftover nominal common areas (3,840 ac) dropped like exempt land.",
     "Singularity sweep (land $/sqft >= 4x the 300 m neighbourhood and in the city's top 10%): 263 of 302,411 parcels, all genuine appraiser values or hidden slivers; nothing unresolved. Review list: fortworth-tx-singularities.csv.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 981 lots, 1,290 acres, $619M est. land value. apply_parking_category.py tagged 192 parcels 'Parking Lot'.",
     "Links: Tarrant parcels open TAD's property page by account (verified). Denton and Parker parcels link to that district's property search (per-parcel URL patterns not verified)."
@@ -14,7 +14,7 @@
   "state": "tx",
   "filename": "fortworth-tx-parcels.parquet",
   "pmtilesFilename": "fortworth-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-14-round3",
+  "pmtilesVersion": "2026-11-14-round4",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "fortworth-tx-parking-lots.parquet",

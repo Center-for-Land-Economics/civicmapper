@@ -8,13 +8,13 @@
     "Land area: on 754 parcels the polygon is a fragment of the roll's own acreage (e.g. a 3.52-ac tract drawn as 2,359 sqft) and the appraiser's area is used; acreage repeated across a whole subdivision (a parent tract's 12.129 ac on every lot) is ignored. 18 GIS slivers carrying whole lots' values (Tierra del Este #90 lots drawn as 1-4 sqft), and 10 records whose polygon has no usable area (e.g. props 703947/703948, $507k land, which had shown as hex-only towers in the east), are hidden. One placeholder value (market == prop_id) taken from the district's map service.",
     "Singularity sweep: 147 of 205,655 parcels, all genuine appraiser values, hidden slivers, or the 6 small condo units above.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified: 376 lots, 372.5 acres, $133.5M est. land value. apply_parking_category.py tagged 89 parcels 'Parking Lot'.",
-    "link: El Paso CAD's True Prodigy portal (elpaso.prodigycad.com/property-detail/<prop_id>); not verified from the build host (the portal's data API is not reachable there)."
+    "link: EPCAD's own property page, epcad.org/Search/Details/<prop_id>/2026 (pinned to the certified year these values come from; pattern from a working example, prop 108327). epcad.org is behind a browser challenge, so it is not checked from the build host."
   ],
   "displayName": "El Paso",
   "state": "tx",
   "filename": "elpaso-tx-parcels.parquet",
   "pmtilesFilename": "elpaso-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-14-epcad2026-b",
+  "pmtilesVersion": "2026-11-14-epcad2026-c",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "elpaso-tx-parking-lots.parquet",
