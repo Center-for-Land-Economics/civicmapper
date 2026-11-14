@@ -110,6 +110,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "frisco": "Frisco, Texas, USA",
     "mckinney": "McKinney, Texas, USA",
     "denton": "Denton, Texas, USA",
+    "amarillo": "Amarillo, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",
