@@ -42,14 +42,14 @@ echo -e "${GREEN}  Starting Local Development Environment${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
 # Check if node_modules exist and install if needed
-if [ ! -d "api/node_modules" ]; then
-  echo -e "${YELLOW}Installing API dependencies...${NC}"
-  cd api && npm install && cd ..
+if ! (cd api && node -e "const f=require('fs');process.exit(f.statSync('package-lock.json').mtimeMs>f.statSync('node_modules/.package-lock.json').mtimeMs?1:0)" 2>/dev/null); then
+  echo "Installing API dependencies (node_modules missing or package-lock.json changed)..."
+  (cd api && npm install)
 fi
 
-if [ ! -d "viz/node_modules" ]; then
-  echo -e "${YELLOW}Installing viz dependencies...${NC}"
-  cd viz && npm install && cd ..
+if ! (cd viz && node -e "const f=require('fs');process.exit(f.statSync('package-lock.json').mtimeMs>f.statSync('node_modules/.package-lock.json').mtimeMs?1:0)" 2>/dev/null); then
+  echo "Installing viz dependencies (node_modules missing or package-lock.json changed)..."
+  (cd viz && npm install)
 fi
 
 echo -e "${GREEN}✓ Dependencies ready${NC}\n"

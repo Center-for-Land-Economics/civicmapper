@@ -10,14 +10,20 @@ echo ========================================
 echo   Starting Local Development Environment
 echo ========================================
 
-if not exist "api\node_modules" (
+REM Install when node_modules is missing or package-lock.json changed (e.g. after a git pull).
+pushd api
+node -e "const f=require('fs');process.exit(f.statSync('package-lock.json').mtimeMs>f.statSync('node_modules/.package-lock.json').mtimeMs?1:0)" 2>nul || (
   echo Installing API dependencies...
-  pushd api && call npm install && popd
+  call npm install
 )
-if not exist "viz\node_modules" (
+popd
+REM Install when node_modules is missing or package-lock.json changed (e.g. after a git pull).
+pushd viz
+node -e "const f=require('fs');process.exit(f.statSync('package-lock.json').mtimeMs>f.statSync('node_modules/.package-lock.json').mtimeMs?1:0)" 2>nul || (
   echo Installing viz dependencies...
-  pushd viz && call npm install && popd
+  call npm install
 )
+popd
 
 REM Inherited by the child windows below.
 set "PORT=8080"

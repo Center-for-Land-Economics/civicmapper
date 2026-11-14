@@ -158,5 +158,14 @@
   </dialog>
 
   <script type="module" src="/src/label/main.ts"></script>
+  <script>
+    // If the module never starts (usually: new dependencies not installed), say so on the page.
+    setTimeout(function () {
+      if (window.__labelBooted) return;
+      var m = document.getElementById('sqmeta');
+      if (m) m.innerHTML = '<span class="warn">The label script failed to load. In the viz folder run ' +
+        '<code>npm install</code> and restart the dev server (see the browser console for details).</span>';
+    }, 4000);
+  </script>
 </body>
 </html>

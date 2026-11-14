@@ -79,6 +79,7 @@ function closedRing(ring: number[][]): number[][] {
 }
 
 async function main() {
+  (window as any).__labelBooted = true;
   if (!isLocalDev()) { $('blocked').hidden = false; return; }
   $('app').hidden = false;
 
