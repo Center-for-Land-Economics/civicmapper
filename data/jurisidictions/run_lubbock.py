@@ -61,4 +61,6 @@ PUBLIC = ["CITY OF LUBBOCK", "LUBBOCK CITY OF", "LUBBOCK COUNTY", "COUNTY OF LUB
           "PRESBYTERIAN", "EPISCOPAL", "CONGREGATION", "ASSEMBLY OF GOD", "MINISTRIES", "CEMETERY"]
 
 if __name__ == "__main__":
-    build_city(CITY, STATE, "4845000", [("Lubbock", rows, lubbock_link)], PUBLIC)
+    # No appraiser acreage in StratMap's Lubbock edition: hide vacant lot-value fragments up to
+    # 2,500 sqft (WATTS MCGEE L 1: $70,000 on a 1,228 sqft polygon).
+    build_city(CITY, STATE, "4845000", [("Lubbock", rows, lubbock_link)], PUBLIC, strip_max_sqft=2500)

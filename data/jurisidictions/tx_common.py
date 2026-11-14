@@ -502,6 +502,18 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
         rep["land_source"] = src
         if area_col:
             rep[area_col] = np.nan
+            # Unit outlines grown into a hull can cover far less than the lot the units share
+            # (StratMap Webb: Southview Professional Plaza, 10 office units on lots 4 & 5 = 1.75
+            # ac by the roll, merged hull 0.35 ac -> $67/sqft). When every unit's roll acreage is
+            # a FRACTION of the hull (its share of the common land) and together they exceed it,
+            # keep the summed acreage so the area rules use the appraiser's lot size. Units that
+            # each repeat the whole complex's acreage are not fractions and stay blanked.
+            if src == "unit_hull_fill":
+                ua = pd.to_numeric(units[area_col], errors="coerce")
+                hull_ac = geom.area / 4046.8564224
+                if len(ua) and ua.notna().all() and ua.max() < hull_ac and ua.sum() > 1.25 * hull_ac:
+                    rep[area_col] = float(ua.sum())
+                    how["unit_hull_fill:roll_area"] = how.get("unit_hull_fill:roll_area", 0) + 1
         new_rows.append(rep)
     out = pd.concat([g.drop(index=list(drop_idx)), pd.DataFrame(new_rows)], ignore_index=True)
     out = gpd.GeoDataFrame(out.drop(columns="_dev"), geometry="geometry", crs=utm).to_crs(gdf.crs)

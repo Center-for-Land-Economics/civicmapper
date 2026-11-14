@@ -30,7 +30,7 @@ def tiger_boundary(data_dir: Path, city: str, state: str, geoid: str):
 
 def build_city(city: str, state: str, geoid: str,
                sources: list[tuple[str, Callable, Callable[[str], str]]],
-               public_names: list[str]) -> gpd.GeoDataFrame:
+               public_names: list[str], strip_max_sqft: float = 1000.0) -> gpd.GeoDataFrame:
     data_dir = ROOT / "data" / "jurisidictions" / "data" / city
     data_dir.mkdir(parents=True, exist_ok=True)
     boundary = tiger_boundary(data_dir, city, state, geoid)
@@ -56,4 +56,5 @@ def build_city(city: str, state: str, geoid: str,
 
     return process(raw, off_roll, boundary, city=city, state=state, data_dir=data_dir,
                    public_names=public_names, exempt_fn=exempt_fn,
-                   link_fn=lambda county, acct: links[county](acct), coded=coded)
+                   link_fn=lambda county, acct: links[county](acct), coded=coded,
+                   strip_max_sqft=strip_max_sqft)

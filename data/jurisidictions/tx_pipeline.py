@@ -35,7 +35,8 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
             data_dir: Path, public_names: list[str] = (),
             exempt_fn: Callable[[gpd.GeoDataFrame], pd.Series] | None = None,
             link_fn: Callable[[str, str], str] = lambda county, acct: "",
-            coded: pd.Series | None = None, home_county: str | None = None) -> gpd.GeoDataFrame:
+            coded: pd.Series | None = None, home_county: str | None = None,
+            strip_max_sqft: float = 1000.0) -> gpd.GeoDataFrame:
     """Run the shared pipeline and write <city>-<state>-parcels.parquet (+ singularities CSV).
 
     `home_county` is the county whose rows are whole parcels; rows from other counties may be
@@ -262,7 +263,10 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
     # the full-lot $55,000 = $83/sqft, while the matching 64 sqft strip is $100). Under 1,000 sqft
     # and >= 4x the neighbourhood, non-condo: hidden like the sub-500 slivers (value kept in
     # the parquet; off the map and out of the hexes).
-    strip = (sing["footprint_sqft"] < 1000) & sing["cause"].str.startswith("small fee-simple")
+    # strip_max_sqft: 1,000 by default. Sources with no appraiser acreage (StratMap Lubbock) cannot
+    # catch fragment polygons with the acreage rules, so they pass a larger cap (2,500, the sweep's
+    # small-lot size): Lubbock's WESTMORELAND BLK 6 L 14 & 15 = two lots drawn as 1,215 sqft.
+    strip = (sing["footprint_sqft"] < strip_max_sqft) & sing["cause"].str.startswith("small fee-simple")
     strip &= ~legal_f.str.contains(CONDO_LEGAL_RE, regex=True)
     # Vacant only: built small lots (townhome footprint lots: Ridglea Place, Portside PUD) are real.
     strip &= pd.to_numeric(final.loc[sing.index, "improvement_value"], errors="coerce").fillna(0).le(0)
@@ -278,10 +282,10 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
     if strip.any():
         idx = sing.index[strip]
         final.loc[idx, "likely_remnant"] = 1
-        sing.loc[idx, "cause"] = "strip <1000 sqft with a lot-size value (hidden)"
+        sing.loc[idx, "cause"] = f"strip <{strip_max_sqft:,.0f} sqft with a lot-size value (hidden)"
         final.to_parquet(out, index=False)
         final.to_parquet(DATA_DIR / f"{CITY}-{STATE}-parcels_{datetime.now():%Y_%m_%d}.parquet", index=False)
-        log(f"Strips <1,000 sqft carrying lot-size values, hidden: {int(strip.sum())} "
+        log(f"Strips <{strip_max_sqft:,.0f} sqft carrying lot-size values, hidden: {int(strip.sum())} "
             f"(${sing.loc[idx, 'land_value'].sum():,.0f} land); remnants now {int(final['likely_remnant'].sum()):,}")
     sing["account"] = ex.loc[sing.index, "acct"].values
     sing["county"] = ex.loc[sing.index, "COUNTYNAME"].values
