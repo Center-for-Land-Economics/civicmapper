@@ -5,7 +5,7 @@
     "Geometry: the district's own web-map service (ElPasoCADWebService, BIS-hosted), joined on prop_id (217,959 of 218,259 polygons match). City limits: Census TIGER/Line 2025 place 4824000; the City of El Paso taxing entity (CEP) agrees on all but 76 / 29 of ~214k accounts.",
     "Classes are read through the district's state-code table: C2 = COLONIA lots (residential), C10 = commercial vacant lot, X21-X23 = ranch improvements on ag land (statewide D2), XV-C / XV-R = totally exempt. Exemptions: the roll's EX flags (EX-XV etc.) plus class X and named public owners: 7,194 records dropped.",
     "Condo and common-interest developments (UND% / % INT IN COM AREA / UND 1/50 INT phrasings) merged onto their land: 1,397 units in 102 developments, mostly onto the unit hull grown into unparcelled ground (El Paso has few common-area parcels). 6 small units (~$0.76M; La Lorraine, Chaparral Park, one office condo) remain 4-6x their neighbours.",
-    "Land area: on 754 parcels the polygon is a fragment of the roll's own acreage (e.g. a 3.52-ac tract drawn as 2,359 sqft) and the appraiser's area is used; acreage repeated across a whole subdivision (a parent tract's 12.129 ac on every lot) is ignored. 18 GIS slivers carrying whole lots' values (Tierra del Este #90 lots drawn as 1-4 sqft) are hidden. One placeholder value (market == prop_id) taken from the district's map service.",
+    "Land area: on 754 parcels the polygon is a fragment of the roll's own acreage (e.g. a 3.52-ac tract drawn as 2,359 sqft) and the appraiser's area is used; acreage repeated across a whole subdivision (a parent tract's 12.129 ac on every lot) is ignored. 18 GIS slivers carrying whole lots' values (Tierra del Este #90 lots drawn as 1-4 sqft), and 10 records whose polygon has no usable area (e.g. props 703947/703948, $507k land, which had shown as hex-only towers in the east), are hidden. One placeholder value (market == prop_id) taken from the district's map service.",
     "Singularity sweep: 147 of 205,655 parcels, all genuine appraiser values, hidden slivers, or the 6 small condo units above.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified: 376 lots, 372.5 acres, $133.5M est. land value. apply_parking_category.py tagged 89 parcels 'Parking Lot'.",
     "link: El Paso CAD's True Prodigy portal (elpaso.prodigycad.com/property-detail/<prop_id>); not verified from the build host (the portal's data API is not reachable there)."
@@ -14,7 +14,7 @@
   "state": "tx",
   "filename": "elpaso-tx-parcels.parquet",
   "pmtilesFilename": "elpaso-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-14-epcad2026",
+  "pmtilesVersion": "2026-11-14-epcad2026-b",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "elpaso-tx-parking-lots.parquet",
@@ -28,7 +28,7 @@
     "el-paso-tx"
   ],
   "coords": [
-    -106.4850,
+    -106.485,
     31.7619
   ]
 }

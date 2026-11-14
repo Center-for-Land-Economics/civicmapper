@@ -177,7 +177,14 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
     log(f"Prorated {int(clipped.sum()):,} non-Tarrant tracts clipped by the source layer "
         f"(median drawn share {ratio[clipped].median():.2f})")
     ex["land_area_acres"] = ex["land_area_sqft"] / SQFT_PER_ACRE
-    ex["likely_remnant"] = (ex["land_area_sqft"] < 500).astype(int)
+    # Slivers, AND parcels with no usable land area at all (zero-area / degenerate polygons with
+    # no roll acreage: El Paso 703947/703948). Those are invisible in the detail layer but their
+    # value still lands in the H3 hex totals with no area, spiking the hex - so they are hidden
+    # and dropped from the hexes like slivers.
+    no_area = ~(ex["land_area_sqft"] > 0)
+    ex["likely_remnant"] = ((ex["land_area_sqft"] < 500) | no_area).astype(int)
+    log(f"Remnants: {int(ex['likely_remnant'].sum()):,} (incl. {int(no_area.sum()):,} with no usable land area, "
+        f"${ex.loc[no_area, 'land_value'].sum():,.0f} land)")
     ex["full_market_value"] = ex["MARKET_VALUE"].where(ex["MARKET_VALUE"] > 0,
                                                        ex["land_value"] + ex["improvement_value"])
     den = ex["land_area_sqft"].replace(0, np.nan)
