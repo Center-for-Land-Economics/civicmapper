@@ -15,6 +15,7 @@ import {
   type GeoJSONStoreFeatures, type HexColor
 } from 'terra-draw';
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
+import polygonClipping, { type MultiPolygon as ClipMulti, type Polygon as ClipPoly } from 'polygon-clipping';
 import { is3DPrintEnabled as isLocalDev } from '../print3d';
 
 // 'cutout' = a hole: subtracted from the parking shapes it overlaps when labels are exported
@@ -134,13 +135,21 @@ async function main() {
 
   // ---- drawing ----------------------------------------------------------------------------
   const clsOf = (f: GeoJSONStoreFeatures): Cls => ((f.properties?.class as Cls) || 'paved');
+  // Terra Draw handles editing and draws outlines only; fills come from the 'label-fill' layer
+  // below, where each shape is drawn minus the cut-outs that overlap it.
   const polyStyles = {
-    fillColor: (f: GeoJSONStoreFeatures) => (clsOf(f) === 'cutout' ? '#000000' : COLORS[clsOf(f)]),
+    fillColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
     outlineColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
-    fillOpacity: (f: GeoJSONStoreFeatures) => (state.shapesHidden ? 0 : clsOf(f) === 'cutout' ? 0.55 : 0.28),
+    fillOpacity: 0,
     outlineOpacity: () => (state.shapesHidden ? 0 : 1),
     outlineWidth: 2
   };
+  map.addSource('label-fill', { type: 'geojson', data: empty });
+  map.addLayer({ id: 'label-fill', type: 'fill', source: 'label-fill', paint: {
+    'fill-color': ['match', ['get', 'class'], 'unpaved', COLORS.unpaved, 'structure', COLORS.structure,
+      'unsure', COLORS.unsure, COLORS.paved],
+    'fill-opacity': 0.3
+  } });
   const editable = {
     feature: {
       draggable: true,
@@ -162,7 +171,7 @@ async function main() {
           selectedPolygonColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
           selectedPolygonOutlineColor: '#ffffff',
           selectedPolygonOutlineWidth: 3,
-          selectedPolygonFillOpacity: 0.35
+          selectedPolygonFillOpacity: 0
         }
       })
     ]
@@ -170,9 +179,36 @@ async function main() {
   draw.start();
   draw.on('finish', (id, ctx) => {
     if ((ctx as any)?.action === 'draw') draw.updateFeatureProperties(id, { class: state.cls });
+    queueFills();
   });
 
   const polygons = () => draw.getSnapshot().filter((f) => f.geometry.type === 'Polygon');
+
+  // Fills = every non-cut-out shape minus the cut-outs, redrawn (once per frame) on any change.
+  let fillQueued = false;
+  function renderFills() {
+    fillQueued = false;
+    const shapes = polygons().map((f) => ({
+      cls: (f.properties?.class as Cls) || (f.properties?.currentlyDrawing ? state.cls : 'paved'),
+      rings: f.geometry.coordinates as ClipPoly
+    })).filter((s) => s.rings[0]?.length >= 4);
+    const cuts = shapes.filter((s) => s.cls === 'cutout').map((s) => s.rings);
+    const feats: GeoJSON.Feature[] = [];
+    for (const s of shapes) {
+      if (s.cls === 'cutout') continue;
+      let geom: ClipMulti = [s.rings];
+      if (cuts.length) {
+        try { geom = polygonClipping.difference(s.rings, ...cuts); } catch { /* mid-edit self-intersection: show unclipped */ }
+      }
+      if (geom.length) feats.push({ type: 'Feature', properties: { class: s.cls },
+        geometry: { type: 'MultiPolygon', coordinates: geom } });
+    }
+    (map.getSource('label-fill') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: feats });
+  }
+  const queueFills = () => {
+    if (!fillQueued) { fillQueued = true; requestAnimationFrame(renderFills); }
+  };
+  draw.on('change', queueFills);
   const selected = () => polygons().filter((f) => f.properties?.selected);
 
   function setTool(mode: 'polygon' | 'angled-rectangle' | 'select') {
@@ -186,6 +222,7 @@ async function main() {
     state.cls = c;
     document.querySelectorAll<HTMLButtonElement>('.cls').forEach((b) => b.classList.toggle('on', b.dataset.c === c));
     for (const f of selected()) draw.updateFeatureProperties(f.id as string, { class: c });
+    queueFills();
   }
 
   function loadShapes(features: GeoJSON.Feature[], fromPrefill: boolean) {
@@ -370,6 +407,7 @@ async function main() {
     if (draw.getModeState() === 'drawing') return; // re-adding features would drop a shape in progress
     state.shapesHidden = !state.shapesHidden;
     $('view-shapes').classList.toggle('on', state.shapesHidden);
+    map.setLayoutProperty('label-fill', 'visibility', state.shapesHidden ? 'none' : 'visible');
     // Re-add the features so Terra Draw restyles them.
     const snap = polygons().map((f) => {
       const { selected: _s, ...props } = f.properties;
