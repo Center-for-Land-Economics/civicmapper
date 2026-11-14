@@ -5,6 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
+import { labelsEnabled, labelsRouter } from "./labels.js";
 
 // ---------------------------------------------------------------------------
 // Structured logger
@@ -274,6 +275,9 @@ for (const route of stagingRoutes) {
   app.get(route, dataLimiter, handleStagingProxy);
   app.head(route, dataLimiter, handleStagingProxy);
 }
+
+// Dev-only parking-label campaigns (loopback requests only; see labels.js).
+if (labelsEnabled()) app.use("/api/labels", labelsRouter());
 
 app.use((err, _req, res, next) => {
   if (err && err.message === "CORS") {

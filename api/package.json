@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/server.test.js"
+    "test": "node --test test/server.test.js test/labels.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

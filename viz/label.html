@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Parking Labels — Civic Mapper (dev)</title>
+  <!-- DEV ONLY: not a Vite build input, and the page refuses to run off localhost. -->
+  <style>
+    :root { --bg:#14161a; --panel:#1d2026; --line:#2f343d; --ink:#e8eaed; --mute:#9aa1ab;
+      --accent:#4f9cf9; --paved:#ff4d6d; --unpaved:#f4a259; --structure:#b388ff; --unsure:#ffe066; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+      font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #app { display:grid; grid-template-columns: 1fr 320px; height:100vh; }
+    #map { position:relative; }
+    #side { background:var(--panel); border-left:1px solid var(--line); overflow:auto; padding:12px 14px; }
+    h1 { font-size:15px; margin:0 0 8px; } h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--mute); margin:16px 0 6px; }
+    label.row { display:flex; gap:8px; align-items:center; margin:4px 0; }
+    input[type=text], select, textarea { width:100%; background:#111317; color:var(--ink); border:1px solid var(--line);
+      border-radius:6px; padding:6px 8px; font:inherit; }
+    textarea { min-height:52px; resize:vertical; }
+    button { background:#2a2f38; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 9px;
+      font:inherit; cursor:pointer; }
+    button:hover { border-color:var(--accent); }
+    button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button.primary { background:#2e7d32; border-color:#2e7d32; width:100%; padding:9px; font-weight:600; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+    .cls { border-left:5px solid; text-align:left; }
+    .cls[data-c=paved]{border-left-color:var(--paved)} .cls[data-c=unpaved]{border-left-color:var(--unpaved)}
+    .cls[data-c=structure]{border-left-color:var(--structure)} .cls[data-c=unsure]{border-left-color:var(--unsure)}
+    kbd { background:#0e1013; border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; color:var(--mute); }
+    .meta { color:var(--mute); font-size:12px; } .meta b { color:var(--ink); font-weight:500; }
+    .warn { color:#ffb74d; }
+    #toast { position:absolute; left:50%; top:12px; transform:translateX(-50%); background:#000c; padding:6px 12px;
+      border-radius:6px; display:none; z-index:5; }
+    #blocked { padding:40px; max-width:560px; }
+    dialog { max-width:760px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; }
+    dialog::backdrop { background:#000a; }
+    dialog h3 { margin:14px 0 4px; font-size:14px; } dialog ul { margin:4px 0; padding-left:20px; } dialog li { margin:2px 0; }
+    .flags label { display:inline-flex; gap:4px; margin:2px 8px 2px 0; font-size:12px; }
+    @media (max-width: 800px) { #app { grid-template-columns:1fr; grid-template-rows: 60vh auto; } }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <div id="map"><div id="toast"></div></div>
+    <aside id="side">
+      <h1>Surface parking labels <span class="meta">(dev)</span></h1>
+      <label class="row"><select id="campaign"></select></label>
+      <label class="row"><input id="labeler" type="text" placeholder="Your name" maxlength="60" autocomplete="name" /></label>
+      <div class="grid2">
+        <button id="mode-blind" title="Draw everything yourself; existing data hidden">Blind</button>
+        <button id="mode-correction" title="Start from existing OSM/Overture polygons and fix them">Correction</button>
+      </div>
+      <p class="meta" id="progress"></p>
+
+      <h2>Square</h2>
+      <div class="meta" id="sqmeta">—</div>
+
+      <h2>Draw</h2>
+      <div class="grid2">
+        <button id="tool-polygon">Polygon <kbd>D</kbd></button>
+        <button id="tool-rect">Rectangle <kbd>R</kbd></button>
+        <button id="tool-select">Edit <kbd>E</kbd></button>
+        <button id="tool-delete">Delete <kbd>Del</kbd></button>
+      </div>
+      <h2>Class (new / selected shape)</h2>
+      <div class="grid2">
+        <button class="cls" data-c="paved">Paved <kbd>1</kbd></button>
+        <button class="cls" data-c="unpaved">Gravel/dirt <kbd>2</kbd></button>
+        <button class="cls" data-c="structure">Garage/roof <kbd>3</kbd></button>
+        <button class="cls" data-c="unsure">Unsure <kbd>4</kbd></button>
+      </div>
+
+      <h2>View</h2>
+      <div class="grid2">
+        <button id="view-cir">Infrared <kbd>C</kbd></button>
+        <button id="view-parcels">Parcels <kbd>P</kbd></button>
+        <button id="view-shapes">Hide shapes <kbd>H</kbd></button>
+        <button id="view-fit">Recenter <kbd>F</kbd></button>
+      </div>
+
+      <h2>Flags</h2>
+      <div class="flags" id="flags">
+        <label><input type="checkbox" value="shadows" />Shadows</label>
+        <label><input type="checkbox" value="trees" />Tree cover</label>
+        <label><input type="checkbox" value="construction" />Construction</label>
+        <label><input type="checkbox" value="clouds" />Clouds/haze</label>
+        <label><input type="checkbox" value="misregistered" />Misaligned</label>
+        <label><input type="checkbox" value="imagery_stale" />Looks out of date</label>
+      </div>
+      <textarea id="note" placeholder="Note (optional)" maxlength="1000"></textarea>
+
+      <h2>Finish</h2>
+      <button class="primary" id="submit">Submit shapes <kbd>Enter</kbd></button>
+      <div class="grid2" style="margin-top:6px">
+        <button id="no-parking">No parking <kbd>N</kbd></button>
+        <button id="cant-tell">Can't tell <kbd>T</kbd></button>
+        <button id="skip">Skip <kbd>K</kbd></button>
+        <button id="guide-btn">Guidelines <kbd>?</kbd></button>
+      </div>
+      <p class="meta" style="margin-top:14px">Imagery: USDA NAIP via Microsoft Planetary Computer. Labels are saved to
+        <code>data/labels/&lt;campaign&gt;/labels.jsonl</code> on this machine.</p>
+    </aside>
+  </div>
+
+  <div id="blocked" hidden>
+    <h1>Parking labels are only available in local development</h1>
+    <p>Run the API and the Vite dev server (start-local), then open <code>http://localhost:5173/label.html</code>.</p>
+  </div>
+
+  <dialog id="guide">
+    <h2 style="margin-top:0">Labelling guidelines</h2>
+    <p>Outline every <b>ground-level surface used to park or store vehicles</b> inside the bright square.
+      Shapes may run past the square's edge; only the part inside counts.</p>
+    <h3>Paved parking <kbd>1</kbd> — draw it</h3>
+    <ul>
+      <li>Asphalt or concrete lots, including their drive aisles and the striped stalls.</li>
+      <li>Car-dealership inventory lots, truck and trailer yards, bus and fleet depots, rental-car lots.</li>
+      <li>Parking on churches, schools, government and other tax-exempt land: label it the same. Tax status is
+        handled separately.</li>
+      <li>Apartment and townhome parking courts. Large paved areas at houses (more than a normal driveway).</li>
+    </ul>
+    <h3>Gravel, caliche or dirt lots <kbd>2</kbd></h3>
+    <ul><li>Unpaved ground clearly used for parking or vehicle storage: tracks, rows of vehicles, worn surface.</li></ul>
+    <h3>Garages and rooftop parking <kbd>3</kbd></h3>
+    <ul><li>Structured garages and roof-deck parking are <b>not</b> surface parking. Outline them as class 3 so the
+      model learns to leave them out.</li></ul>
+    <h3>Do not draw</h3>
+    <ul>
+      <li>Public streets, alleys, highway ramps, ordinary single-family driveways.</li>
+      <li>Loading docks only big enough for a truck at a door, sidewalks, plazas, sports courts, building roofs.</li>
+      <li>Open storage of materials (pipe, pallets, containers) with no vehicles, unless it is also a vehicle yard.</li>
+    </ul>
+    <h3>How to draw</h3>
+    <ul>
+      <li>Follow the pavement edge. Include drive aisles inside the lot; stop at the street curb or property driveway.</li>
+      <li>Cut out landscaped islands bigger than about 3 parking spaces (draw around them as separate shapes).</li>
+      <li>Trees over a lot: draw the lot where you can infer it. Tick <i>Tree cover</i> if you had to guess.</li>
+      <li>Shadows: late-season imagery (e.g. November) has long building shadows. A shadowed lot is still a lot.</li>
+      <li>Use <i>Infrared</i> (C) to separate grass and trees (bright red) from pavement (grey/blue-green).</li>
+      <li>Use <i>Unsure</i> (4) for a shape you think is parking but can't confirm.</li>
+      <li><b>No parking</b> (N) when the square truly has none. <b>Can't tell</b> (T) when imagery is unusable.
+        <b>Skip</b> (K) to pass the square to someone else.</li>
+    </ul>
+    <h3>Modes</h3>
+    <ul>
+      <li><b>Blind</b>: draw from scratch. Used to measure what existing map data misses.</li>
+      <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
+    </ul>
+    <h3>Keys</h3>
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · 1–4 class · C infrared · P parcels ·
+      H hide shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
+    <form method="dialog" style="text-align:right"><button>Got it</button></form>
+  </dialog>
+
+  <script type="module" src="/src/label/main.ts"></script>
+</body>
+</html>

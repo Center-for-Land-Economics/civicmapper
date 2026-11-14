@@ -34,6 +34,7 @@ echo   Servers starting in two new windows
 echo ========================================
 echo   App (Austin): http://localhost:5173/app.html?city=austin
 echo   City picker:  http://localhost:5173/cities.html
+echo   Labels (dev): http://localhost:5173/label.html
 echo   API:          http://localhost:8080
 echo ========================================
 

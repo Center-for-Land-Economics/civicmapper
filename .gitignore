@@ -47,3 +47,6 @@ data/jurisidictions/copenhagen-vurdst-access-email.md
 # macOS folder junk + Vite dep cache — never commit
 .DS_Store
 .vite/
+
+# Parking-label campaigns (local; synced to the parking-labels-dev Azure container)
+data/labels/
