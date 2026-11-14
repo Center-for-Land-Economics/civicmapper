@@ -83,6 +83,31 @@ function closedRing(ring: number[][]): number[][] {
   return dedup;
 }
 
+type Pt = [number, number];
+function pointInRing(pt: Pt, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function ringArea(ring: number[][]): number {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+  return Math.abs(a / 2);
+}
+/** Closest point on segment ab to p (all screen pixels). */
+function nearestOnSegment(p: Pt, a: Pt, b: Pt): Pt {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len = dx * dx + dy * dy;
+  const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len)) : 0;
+  return [a[0] + t * dx, a[1] + t * dy];
+}
+const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const SNAP_VERTEX_PX = 12;
+const SNAP_EDGE_PX = 8;
+
 async function main() {
   (window as any).__labelBooted = true;
   if (!isLocalDev()) { $('blocked').hidden = false; return; }
@@ -98,7 +123,10 @@ async function main() {
     cir: false,
     parcels: true,
     shapesHidden: false,
-    busy: false
+    busy: false,
+    tool: 'polygon' as 'polygon' | 'angled-rectangle' | 'select' | 'parcel',
+    snap: true,
+    parcels_fc: { type: 'FeatureCollection', features: [] } as GeoJSON.FeatureCollection
   };
 
   // ---- map --------------------------------------------------------------------------------
@@ -150,10 +178,44 @@ async function main() {
       'unsure', COLORS.unsure, COLORS.paved],
     'fill-opacity': 0.3
   } });
+  // Snapping (polygon drawing and corner dragging): vertices first, then edges, of the other
+  // shapes, the parcels and the sample square. Toggle with S; hold Alt to place freely.
+  const rings = (g: GeoJSON.Geometry | null | undefined): number[][][] =>
+    !g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+  function snapTargets(excludeId?: string | number): number[][][] {
+    const out: number[][][] = [];
+    for (const f of draw.getSnapshot()) {
+      if (f.geometry.type !== 'Polygon' || f.id === excludeId || f.properties?.currentlyDrawing) continue;
+      out.push(...(f.geometry.coordinates as number[][][]));
+    }
+    for (const f of state.parcels_fc.features) out.push(...rings(f.geometry));
+    if (state.square) out.push(...state.square.geometry.coordinates);
+    return out;
+  }
+  function snapPoint(e: { containerX: number; containerY: number; heldKeys: string[] },
+                     excludeId?: string | number): number[] | undefined {
+    if (!state.snap || e.heldKeys.includes('Alt')) return undefined;
+    const p: Pt = [e.containerX, e.containerY];
+    const targets = snapTargets(excludeId).map((r) => r.map((c) => { const q = map.project(c as [number, number]); return [q.x, q.y] as Pt; }));
+    let best: Pt | null = null, bestD = SNAP_VERTEX_PX;
+    for (const r of targets) for (const v of r) { const d = dist(p, v); if (d < bestD) { best = v; bestD = d; } }
+    if (!best) {
+      bestD = SNAP_EDGE_PX;
+      for (const r of targets) for (let i = 1; i < r.length; i++) {
+        const q = nearestOnSegment(p, r[i - 1], r[i]);
+        const d = dist(p, q);
+        if (d < bestD) { best = q; bestD = d; }
+      }
+    }
+    if (!best) return undefined;
+    const ll = map.unproject(best);
+    return [round(ll.lng), round(ll.lat)];
+  }
+  const snapping = { toCustom: (e: any, ctx: any) => snapPoint(e, ctx?.currentId), showSnappingPoint: true };
   const editable = {
     feature: {
       draggable: true,
-      coordinates: { midpoints: true, draggable: true, deletable: true }
+      coordinates: { midpoints: true, draggable: true, deletable: true, snappable: snapping }
     }
   };
   const draw = new TerraDraw({
@@ -163,9 +225,13 @@ async function main() {
       map, minPixelDragDistance: 8, minPixelDragDistanceDrawing: 10, minPixelDragDistanceSelecting: 6
     }),
     modes: [
-      new TerraDrawPolygonMode({ styles: polyStyles }),
+      new TerraDrawPolygonMode({ styles: polyStyles, snapping }),
       new TerraDrawAngledRectangleMode({ styles: polyStyles }),
       new TerraDrawSelectMode({
+        // Selection is ours (map click below): Terra Draw picks the top shape, which made a cut-out
+        // drawn before its lot unreachable.
+        allowManualSelection: false,
+        allowManualDeselection: false,
         flags: { polygon: editable, 'angled-rectangle': editable },
         styles: {
           selectedPolygonColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
@@ -177,6 +243,7 @@ async function main() {
     ]
   });
   draw.start();
+  (window as any).__label = { map, draw }; // dev page: handy for debugging and headless tests
   draw.on('finish', (id, ctx) => {
     if ((ctx as any)?.action === 'draw') draw.updateFeatureProperties(id, { class: state.cls });
     queueFills();
@@ -211,16 +278,81 @@ async function main() {
   draw.on('change', queueFills);
   const selected = () => polygons().filter((f) => f.properties?.selected);
 
-  function setTool(mode: 'polygon' | 'angled-rectangle' | 'select') {
-    draw.setMode(mode);
+  function setTool(mode: 'polygon' | 'angled-rectangle' | 'select' | 'parcel') {
+    state.tool = mode;
+    draw.setMode(mode === 'parcel' ? 'select' : mode);
+    if (mode === 'parcel') for (const f of selected()) draw.deselectFeature(f.id as string);
     $('tool-polygon').classList.toggle('on', mode === 'polygon');
     $('tool-rect').classList.toggle('on', mode === 'angled-rectangle');
     $('tool-select').classList.toggle('on', mode === 'select');
+    $('tool-parcel').classList.toggle('on', mode === 'parcel');
+    map.setPaintProperty('parcels', 'line-width', mode === 'parcel' ? 2 : 1);
+    map.setPaintProperty('parcels', 'line-opacity', mode === 'parcel' ? 1 : 0.75);
   }
 
-  function setClass(c: Cls) {
+  // Edit-mode selection: the smallest shape under the pointer wins (so a cut-out inside a lot is
+  // reachable); clicking again in the same place cycles to the next larger shape underneath.
+  function shapesAt(px: Pt, tolPx: number) {
+    const ll = map.unproject(px);
+    const pt: Pt = [ll.lng, ll.lat];
+    return polygons().filter((f) => {
+      const r = (f.geometry.coordinates as number[][][])[0];
+      if (pointInRing(pt, r)) return true;
+      const s = r.map((c) => { const q = map.project(c as [number, number]); return [q.x, q.y] as Pt; });
+      return s.some((_, i) => i > 0 && dist(px, nearestOnSegment(px, s[i - 1], s[i])) < tolPx);
+    }).sort((a, b) => ringArea((a.geometry.coordinates as number[][][])[0]) - ringArea((b.geometry.coordinates as number[][][])[0]));
+  }
+  function nearOutline(f: GeoJSONStoreFeatures, px: Pt, tolPx: number) {
+    const s = (f.geometry.coordinates as number[][][])[0].map((c) => { const q = map.project(c as [number, number]); return [q.x, q.y] as Pt; });
+    return s.some((_, i) => i > 0 && dist(px, nearestOnSegment(px, s[i - 1], s[i])) < tolPx);
+  }
+  function selectAt(px: Pt) {
+    const cur = selected()[0];
+    // Clicks on the selected shape's corners/midpoints belong to Terra Draw (insert, drag).
+    if (cur && nearOutline(cur, px, 10)) return;
+    const cands = shapesAt(px, 6);
+    for (const f of selected()) draw.deselectFeature(f.id as string);
+    if (!cands.length) return;
+    const i = cur ? cands.findIndex((f) => f.id === cur.id) : -1;
+    const next = cands[(i + 1) % cands.length];
+    draw.selectFeature(next.id as string);
+    setClassButtons(clsOf(next));
+  }
+
+  // "From parcel": click inside a parcel outline to turn it into a shape of the current class.
+  function parcelToShape(px: Pt) {
+    const ll = map.unproject(px);
+    const pt: Pt = [ll.lng, ll.lat];
+    const hits: number[][][][] = [];
+    for (const f of state.parcels_fc.features) {
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const poly of polys) {
+        if (pointInRing(pt, poly[0] as number[][]) && !poly.slice(1).some((h) => pointInRing(pt, h as number[][]))) {
+          hits.push(poly as number[][][]);
+        }
+      }
+    }
+    if (!hits.length) { toast('No parcel here'); return; }
+    hits.sort((a, b) => ringArea(a[0]) - ringArea(b[0]));
+    loadShapes([{ type: 'Feature', properties: { class: state.cls },
+      geometry: { type: 'Polygon', coordinates: [hits[0][0]] } }], false);
+    queueFills();
+    toast(`Parcel added as ${state.cls === 'cutout' ? 'a cut-out' : state.cls}`);
+  }
+
+  map.on('click', (e) => {
+    const px: Pt = [e.point.x, e.point.y];
+    if (state.tool === 'select') selectAt(px);
+    else if (state.tool === 'parcel') parcelToShape(px);
+  });
+
+  function setClassButtons(c: Cls) {
     state.cls = c;
     document.querySelectorAll<HTMLButtonElement>('.cls').forEach((b) => b.classList.toggle('on', b.dataset.c === c));
+  }
+  function setClass(c: Cls) {
+    setClassButtons(c);
     for (const f of selected()) draw.updateFeatureProperties(f.id as string, { class: c });
     queueFills();
   }
@@ -294,6 +426,7 @@ async function main() {
       api<GeoJSON.FeatureCollection>(`/${c}/layer/parcels?square=${id}`),
       api<{ labels: any[] }>(`/${c}/labels?square=${id}&labeler=${encodeURIComponent(state.labeler)}`)
     ]);
+    state.parcels_fc = parcels;
     (map.getSource('parcels') as maplibregl.GeoJSONSource).setData(parcels);
     const last = mine.labels.filter((l) => l.outcome !== 'skip').at(-1);
     if (last) {
@@ -431,6 +564,13 @@ async function main() {
   $('tool-polygon').onclick = () => setTool('polygon');
   $('tool-rect').onclick = () => setTool('angled-rectangle');
   $('tool-select').onclick = () => setTool('select');
+  $('tool-parcel').onclick = () => setTool('parcel');
+  const toggleSnap = () => {
+    state.snap = !state.snap;
+    $('tool-snap').classList.toggle('on', state.snap);
+    toast(state.snap ? 'Snapping on (hold Alt to place freely)' : 'Snapping off');
+  };
+  $('tool-snap').onclick = toggleSnap;
   $('tool-delete').onclick = deleteSelected;
   document.querySelectorAll<HTMLButtonElement>('.cls').forEach((b) => (b.onclick = () => setClass(b.dataset.c as Cls)));
   $('view-cir').onclick = toggleCir;
@@ -477,6 +617,8 @@ async function main() {
     else if (k === 'd' || k === 'D') setTool('polygon');
     else if (k === 'r' || k === 'R') setTool('angled-rectangle');
     else if (k === 'e' || k === 'E') setTool('select');
+    else if (k === 'g' || k === 'G') setTool('parcel');
+    else if (k === 's' || k === 'S') toggleSnap();
     else if (k === 'Delete' || k === 'Backspace') { deleteSelected(); e.preventDefault(); }
     else if (k === 'c' || k === 'C') toggleCir();
     else if (k === 'p' || k === 'P') toggleParcels();
@@ -495,6 +637,7 @@ async function main() {
   setMode(state.mode);
   setClass('paved');
   setTool('polygon');
+  $('tool-snap').classList.add('on');
   $('view-parcels').classList.add('on');
 
   const campaigns = await refreshProgress().catch((e) => {
