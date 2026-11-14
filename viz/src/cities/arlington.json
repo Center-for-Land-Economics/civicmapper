@@ -12,7 +12,7 @@
   "state": "tx",
   "filename": "arlington-tx-parcels.parquet",
   "pmtilesFilename": "arlington-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-14-round4",
+  "pmtilesVersion": "2026-11-15-refresh",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "arlington-tx-parking-lots.parquet",
