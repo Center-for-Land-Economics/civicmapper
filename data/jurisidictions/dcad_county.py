@@ -26,11 +26,15 @@ import pandas as pd
 
 from tx_common import fix_geometry, log
 
-DCAD_LINK = "https://www.dallascad.org/AcctDetail.aspx?ID="
+# DCAD's account pages are split by division: AcctDetailRes.aspx (residential) and
+# AcctDetailCom.aspx (commercial); residential pattern confirmed by the user (2026-11-14).
+DCAD_PAGES = {"RES": "https://www.dallascad.org/AcctDetailRes.aspx?ID=",
+              "COM": "https://www.dallascad.org/AcctDetailCom.aspx?ID="}
+_DIVISION: dict[str, str] = {}
 
 
 def dcad_link(acct: str) -> str:
-    return DCAD_LINK + acct
+    return DCAD_PAGES.get(_DIVISION.get(acct, "RES"), DCAD_PAGES["RES"]) + acct
 
 
 def statewide_class(code: str) -> str:
@@ -99,7 +103,7 @@ def dcad_rows(boundary, data_dir: Path, *, city_juris: str, year: str = "2026"):
         raw["src_exempt"] = raw["acct"].isin(tex)
         raw["city_juris"] = raw["CITY_JURIS_DESC"].fillna("").str.strip().str.upper()
         raw = fix_geometry(raw)
-        keep = ["acct", "COUNTYNAME", "LAND_VAL", "IMPR_VAL", "MARKET_VALUE", "LAND_ACRE", "STATE_USE_CODE",
+        keep = ["acct", "DIVISION_CD", "COUNTYNAME", "LAND_VAL", "IMPR_VAL", "MARKET_VALUE", "LAND_ACRE", "STATE_USE_CODE",
                 "LOCAL_STATE_CODE", "OWNER_NAME", "PARCEL_LEGAL_DESCRIPTION", "SITUS_ADDR", "src_exempt",
                 "city_juris", "GIS_PARCEL_ID", "geometry"]
         raw = raw[keep]
@@ -109,5 +113,6 @@ def dcad_rows(boundary, data_dir: Path, *, city_juris: str, year: str = "2026"):
         off_roll.to_parquet(data_dir / f"dcad-offroll-{year}.parquet", index=False)
     log(f"DCAD {year} certified accounts on a polygon near the city: {len(raw):,} "
         f"(totally exempt: {int(raw['src_exempt'].sum()):,}); polygons with no account: {len(off_roll):,}")
+    _DIVISION.update(dict(zip(raw["acct"], raw["DIVISION_CD"].fillna("RES"))))
     coded = raw["city_juris"].eq(city_juris.upper())
     return raw, off_roll, coded, (lambda p: p["src_exempt"].fillna(False).astype(bool))

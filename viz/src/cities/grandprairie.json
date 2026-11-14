@@ -10,7 +10,7 @@
     "Singularity sweep: 54 of 54,805 parcels, all genuine appraiser values: e.g. Westchester lots at $12/sqft next to Lakeside 1 & 2, an old paper subdivision of 1,100 sqft lots DCAD values at a flat $500 each.",
     "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only): 140 lots, 168.2 acres, $25.7M est. land value. apply_parking_category.py tagged 13 parcels 'Parking Lot'.",
-    "Links: Dallas County parcels open DCAD's account page (dallascad.org/AcctDetail.aspx?ID=<account>), Tarrant parcels TAD's (tad.org/property?account=<account>), Ellis parcels Ellis CAD's eSearch page (esearch.elliscad.com/Property/View/<prop_id>?year=2026; pattern not yet confirmed)."
+    "Links: Dallas County parcels open DCAD's account page for their division (dallascad.org/AcctDetailRes.aspx?ID=<account> for residential, AcctDetailCom.aspx for commercial), Tarrant parcels TAD's (tad.org/property?account=<account>), Ellis parcels Ellis CAD's property page pinned to 2026 (elliscad.com/property-detail/<prop_id>/2026). DCAD and Ellis patterns confirmed by the user."
   ],
   "displayName": "Grand Prairie",
   "state": "tx",

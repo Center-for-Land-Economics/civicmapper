@@ -44,7 +44,7 @@ def load_boundary(data_dir: Path):
     return gpd.read_parquet(cache).union_all()
 
 
-ellis_link = lambda prop_id: f"https://esearch.elliscad.com/Property/View/{prop_id}?year={YEAR}"  # noqa: E731
+ellis_link = lambda prop_id: f"https://www.elliscad.com/property-detail/{prop_id}/{YEAR}"  # noqa: E731
 
 PUBLIC = ["CITY OF GRAND PRAIRIE", "GRAND PRAIRIE CITY OF", "GRAND PRAIRIE INDEPENDENT",
           "GRAND PRAIRIE ISD", "GRAND PRAIRIE HOUSING", "ARLINGTON INDEPENDENT", "MANSFIELD INDEPENDENT",
