@@ -22,8 +22,8 @@ EXPORTS = {"Potter": "potter-2026-certified.zip", "Randall": "randall-2026-certi
 
 
 def prad_link(prop_id: str) -> str:
-    # Placeholder until a working per-parcel URL is confirmed.
-    return f"https://www.prad.org/?prop_id={prop_id}"
+    # PRAD's property page pinned to the 2026 roll (pattern confirmed by the user, prop 119174).
+    return f"https://www.prad.org/property-detail/{prop_id}/2026"
 
 
 def _geometry(boundary, cache: Path) -> None:
