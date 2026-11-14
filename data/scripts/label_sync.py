@@ -13,8 +13,8 @@ Usage:
   python data/scripts/label_sync.py --pull          # download only (never upload)
   python data/scripts/label_sync.py --dry-run
 
-Credentials: AZURE_LABELS_CONNECTION_STRING in data/.env, a connection string whose SAS is scoped to
-the parking-labels-dev container with read, add, create, write and list permissions. Falls back to
+Credentials: AZURE_LABELS_CONNECTION_STRING (environment or data/.env), either a bare SAS token or
+a connection string, scoped to the parking-labels-dev container with read, add, create, write and list permissions. Falls back to
 AZURE_STORAGE_CONNECTION_STRING when that is an account-level key (the parquets-dev SAS is scoped
 to its own container and cannot reach this one).
 """
@@ -32,6 +32,9 @@ LABELS = ROOT / "data" / "labels"
 ENV_FILE = ROOT / "data" / ".env"
 CAMPAIGN_FILES = ["campaign.json", "squares.geojson", "prefill.geojson", "parcels.geojson"]
 CONTAINER = os.environ.get("LABELS_CONTAINER", "parking-labels-dev")
+ACCOUNT = os.environ.get("AZURE_STORAGE_ACCOUNT", "landeconomics")
+CREDENTIAL_VARS = ["AZURE_LABELS_CONNECTION_STRING", "AZURE_LABEL_CONNECTION_STRING", "AZURE_LABELS_SAS",
+                   "AZURE_STORAGE_CONNECTION_STRING"]
 
 
 def load_env(path: Path) -> None:
@@ -74,22 +77,37 @@ def main() -> int:
     a = ap.parse_args()
 
     load_env(ENV_FILE)
-    conn = os.environ.get("AZURE_LABELS_CONNECTION_STRING") or os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-    if not conn:
-        sys.exit("AZURE_LABELS_CONNECTION_STRING not found in data/.env")
     try:
-        from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
-        from azure.storage.blob import BlobServiceClient, ContentSettings
+        from azure.core.exceptions import ClientAuthenticationError, HttpResponseError, ResourceNotFoundError
+        from azure.storage.blob import BlobServiceClient, ContainerClient, ContentSettings
     except ImportError:
         sys.exit("Missing dependency. Run:  python -m pip install azure-storage-blob")
-    cc = BlobServiceClient.from_connection_string(conn, retry_total=8).get_container_client(CONTAINER)
 
-    try:
-        remote_names = {b.name for b in cc.list_blobs()}
-    except ClientAuthenticationError:
-        sys.exit(f"Azure refused access to container {CONTAINER!r}. Add AZURE_LABELS_CONNECTION_STRING to "
-                 "data/.env: a connection string with a SAS for that container (permissions: read, add, "
-                 "create, write, list).")
+    def client(value: str):
+        """A container client from a full connection string or a bare SAS token."""
+        v = value.strip().strip('"').strip("'")
+        if "BlobEndpoint=" in v or "AccountName=" in v:
+            return BlobServiceClient.from_connection_string(v, retry_total=8).get_container_client(CONTAINER)
+        url = f"https://{ACCOUNT}.blob.core.windows.net/{CONTAINER}?{v.lstrip('?')}"
+        return ContainerClient.from_container_url(url, retry_total=8)
+
+    # First credential that can list the container wins; the parquets-dev SAS is tried last and
+    # normally fails (it is scoped to its own container).
+    cc, remote_names = None, None
+    tried = [n for n in CREDENTIAL_VARS if os.environ.get(n)]
+    for n in tried:
+        try:
+            c = client(os.environ[n])
+            remote_names = {b.name for b in c.list_blobs()}
+            cc = c
+            print(f"Using {n} for container {CONTAINER!r}")
+            break
+        except (ClientAuthenticationError, HttpResponseError, ValueError) as e:
+            print(f"  {n}: refused ({type(e).__name__})")
+    if cc is None:
+        sys.exit(f"No credential could list container {CONTAINER!r} (tried {', '.join(tried) or 'none'}). Set "
+                 "AZURE_LABELS_CONNECTION_STRING to a SAS token or connection string for that container "
+                 "(permissions: read, add, create, write, list).")
     remote_campaigns = {n.split("/", 1)[0] for n in remote_names if "/" in n}
     local_campaigns = {p.name for p in LABELS.glob("*") if (p / "campaign.json").exists()} if LABELS.exists() else set()
     todo = a.campaigns or sorted(local_campaigns | remote_campaigns)
