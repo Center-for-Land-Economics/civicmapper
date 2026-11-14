@@ -209,7 +209,7 @@ def main() -> None:
             "double": n_double, "seed": a.seed, "strata": sq_out["stratum"].value_counts().to_dict(),
             "strata_available": avail, "naip_years": sq_out["naip_year"].value_counts().to_dict(),
             "prefill_polygons": n_pre, "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "classes": ["paved", "unpaved", "structure", "unsure"]}
+            "classes": ["paved", "unpaved", "structure", "unsure", "cutout"]}
     (out / "campaign.json").write_text(json.dumps(meta, indent=2, default=str))
     print(json.dumps(meta, indent=2, default=str))
 

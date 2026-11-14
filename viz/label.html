@@ -8,7 +8,7 @@
   <!-- DEV ONLY: not a Vite build input, and the page refuses to run off localhost. -->
   <style>
     :root { --bg:#14161a; --panel:#1d2026; --line:#2f343d; --ink:#e8eaed; --mute:#9aa1ab;
-      --accent:#4f9cf9; --paved:#ff4d6d; --unpaved:#f4a259; --structure:#b388ff; --unsure:#ffe066; }
+      --accent:#4f9cf9; --paved:#ff4d6d; --unpaved:#f4a259; --structure:#b388ff; --unsure:#ffe066; --cutout:#ffffff; }
     * { box-sizing: border-box; }
     html, body { margin:0; height:100%; background:var(--bg); color:var(--ink);
       font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -31,6 +31,7 @@
     .cls { border-left:5px solid; text-align:left; }
     .cls[data-c=paved]{border-left-color:var(--paved)} .cls[data-c=unpaved]{border-left-color:var(--unpaved)}
     .cls[data-c=structure]{border-left-color:var(--structure)} .cls[data-c=unsure]{border-left-color:var(--unsure)}
+    .cls[data-c=cutout]{border-left-color:var(--cutout); border-left-style:dashed; grid-column:1 / -1}
     kbd { background:#0e1013; border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; color:var(--mute); }
     .meta { color:var(--mute); font-size:12px; } .meta b { color:var(--ink); font-weight:500; }
     .warn { color:#ffb74d; }
@@ -81,6 +82,7 @@
         <button class="cls" data-c="unpaved">Gravel/dirt <kbd>2</kbd></button>
         <button class="cls" data-c="structure">Garage/roof <kbd>3</kbd></button>
         <button class="cls" data-c="unsure">Unsure <kbd>4</kbd></button>
+        <button class="cls" data-c="cutout" title="Draw over an island, building or tree well inside a lot; it is subtracted from the lot">Cut-out (hole) <kbd>5</kbd> <kbd>X</kbd></button>
       </div>
 
       <h2>View</h2>
@@ -146,7 +148,9 @@
     <h3>How to draw</h3>
     <ul>
       <li>Follow the pavement edge. Include drive aisles inside the lot; stop at the street curb or property driveway.</li>
-      <li>Cut out landscaped islands bigger than about 3 parking spaces (draw around them as separate shapes).</li>
+      <li>Landscaped islands bigger than about 3 parking spaces: draw the whole lot first, then draw a <b>Cut-out</b>
+        (<kbd>5</kbd> or <kbd>X</kbd>) over each island. Cut-outs show dark and are subtracted from the lot when labels
+        are exported. Use them for a kiosk or building inside a lot too.</li>
       <li>Trees over a lot: draw the lot where you can infer it. Tick <i>Tree cover</i> if you had to guess.</li>
       <li>Shadows: late-season imagery (e.g. November) has long building shadows. A shadowed lot is still a lot.</li>
       <li>Use <i>Infrared</i> (C) to separate grass and trees (bright red) from pavement (grey/blue-green).</li>
@@ -160,7 +164,7 @@
       <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · 1–4 class · C infrared · P parcels ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · 1–4 class · 5/X cut-out · C infrared · P parcels ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>

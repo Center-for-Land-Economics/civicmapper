@@ -18,7 +18,9 @@ import { fileURLToPath } from "url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const LABELS_DIR = process.env.LABELS_DIR || path.join(ROOT, "data", "labels");
 
-export const CLASSES = ["paved", "unpaved", "structure", "unsure"];
+// "cutout" marks a hole (landscaped island, kiosk): exports subtract it from the parking shapes it
+// overlaps. Labels keep the raw shapes as drawn.
+export const CLASSES = ["paved", "unpaved", "structure", "unsure", "cutout"];
 export const OUTCOMES = ["labeled", "no_parking", "cant_tell", "skip"];
 const FLAGS = ["shadows", "trees", "construction", "imagery_stale", "clouds", "misregistered"];
 const LEASE_MS = 10 * 60 * 1000;
@@ -129,7 +131,9 @@ export function validateLabel(body, squareIds) {
     polygons.push({ type: "Feature", geometry: { type: "Polygon", coordinates: g.coordinates },
       properties: { class: cls, ...(f.properties.from_prefill ? { from_prefill: true } : {}) } });
   }
-  if (b.outcome === "labeled" && polygons.length === 0) errors.push("labeled needs at least one polygon");
+  if (b.outcome === "labeled" && !polygons.some((p) => p.properties.class !== "cutout")) {
+    errors.push("labeled needs at least one polygon that is not a cut-out");
+  }
   if (b.outcome !== "labeled" && polygons.length > 0) errors.push(`${b.outcome} takes no polygons`);
   const flags = Array.isArray(b.flags) ? b.flags.filter((f) => FLAGS.includes(f)) : [];
   const note = typeof b.note === "string" ? b.note.slice(0, 1000) : "";

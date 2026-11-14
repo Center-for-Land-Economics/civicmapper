@@ -58,6 +58,9 @@ test("rejects bad campaign names and invalid labels", async () => {
   assert.equal((await fetch(`${base}/api/labels/..%2F..%2Fetc/squares`)).status, 404);
   assert.equal((await post({ labeler: "A", square_id: "nope", outcome: "labeled", mode: "blind", polygons: [poly] })).status, 400);
   assert.equal((await post({ labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [] })).status, 400);
+  const cut = { ...poly, properties: { class: "cutout" } };
+  assert.equal((await post({ labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [cut] })).status, 400,
+    "a label of only cut-outs is rejected");
   const bad = { ...poly, properties: { class: "lawn" } };
   assert.ok(validateLabel({ labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [bad] },
     new Set(["demo-0001"])).errors);

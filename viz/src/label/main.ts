@@ -17,7 +17,9 @@ import {
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
 import { is3DPrintEnabled as isLocalDev } from '../print3d';
 
-type Cls = 'paved' | 'unpaved' | 'structure' | 'unsure';
+// 'cutout' = a hole: subtracted from the parking shapes it overlaps when labels are exported
+// (Terra Draw cannot draw polygons with holes).
+type Cls = 'paved' | 'unpaved' | 'structure' | 'unsure' | 'cutout';
 type Outcome = 'labeled' | 'no_parking' | 'cant_tell' | 'skip';
 type Mode = 'blind' | 'correction';
 interface SquareProps {
@@ -30,8 +32,10 @@ type Square = GeoJSON.Feature<GeoJSON.Polygon, SquareProps>;
 const API = '/api/labels';
 const TILER = 'https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x';
 const MAX_ITEMS = 4;
-const COLORS: Record<Cls, HexColor> = { paved: '#ff4d6d', unpaved: '#f4a259', structure: '#b388ff', unsure: '#ffe066' };
-const CLASS_KEYS: Record<string, Cls> = { '1': 'paved', '2': 'unpaved', '3': 'structure', '4': 'unsure' };
+const COLORS: Record<Cls, HexColor> = { paved: '#ff4d6d', unpaved: '#f4a259', structure: '#b388ff', unsure: '#ffe066',
+  cutout: '#ffffff' };
+const CLASS_KEYS: Record<string, Cls> = { '1': 'paved', '2': 'unpaved', '3': 'structure', '4': 'unsure', '5': 'cutout',
+  x: 'cutout', X: 'cutout' };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -131,9 +135,9 @@ async function main() {
   // ---- drawing ----------------------------------------------------------------------------
   const clsOf = (f: GeoJSONStoreFeatures): Cls => ((f.properties?.class as Cls) || 'paved');
   const polyStyles = {
-    fillColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
+    fillColor: (f: GeoJSONStoreFeatures) => (clsOf(f) === 'cutout' ? '#000000' : COLORS[clsOf(f)]),
     outlineColor: (f: GeoJSONStoreFeatures) => COLORS[clsOf(f)],
-    fillOpacity: () => (state.shapesHidden ? 0 : 0.28),
+    fillOpacity: (f: GeoJSONStoreFeatures) => (state.shapesHidden ? 0 : clsOf(f) === 'cutout' ? 0.55 : 0.28),
     outlineOpacity: () => (state.shapesHidden ? 0 : 1),
     outlineWidth: 2
   };
@@ -301,7 +305,7 @@ async function main() {
     if (state.busy || !state.square) return;
     if (!state.labeler) { toast('Enter your name first'); $('labeler').focus(); return; }
     const shapes = outcome === 'labeled' ? polygons() : [];
-    if (outcome === 'labeled' && !shapes.length) {
+    if (outcome === 'labeled' && !shapes.some((f) => clsOf(f) !== 'cutout')) {
       toast('No shapes drawn — use “No parking” (N) if the square has none');
       return;
     }
