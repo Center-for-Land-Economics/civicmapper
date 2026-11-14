@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "City of Frisco, TX: the whole city within city limits, across Collin County (113 km2) and Denton County (66 km2). Built by data/jurisidictions/run_frisco.py (collin_county.py + denton_county.py, shared runner tx_multicounty.py). 67,438 parcels, $19.98B land (Collin $12.45B, Denton $7.53B). All values 2026.",
+    "Collin County: Collin Central Appraisal District's own public parcel layer (CCAD Parcel Feature Set, data of 2026-10-23); the layer has rolled to the 2027 roll year, so the 2026 certified values are its prior-year fields. Properties split for 2027 are re-joined with their child polygons, so each 2026 value sits on the land it was appraised for.",
+    "Denton County: Denton Central Appraisal District's 2026 certified export (PACS 8.0.33, 2026-07-27) joined on prop_id to its certified parcel polygons (Parcels_Certified_2026, nightly geodatabase); both downloaded by hand. Undrawn condo units are placed on their parcel via Denton CAD's condo link table or a matching legal description.",
+    "Check: the districts' taxable land on City of Frisco properties is $12.494B (Collin, CFR) and $7.606B (Denton, C32) vs $12.452B and $7.530B kept; the Denton gap is mostly records Denton CAD's map does not draw.",
+    "City limits: Census TIGER/Line 2025 place 4827684; the counties' Frisco codes agree on all but 12 / 6 accounts.",
+    "Exempt land dropped: total exemption codes / EX flags plus named public owners: 1,656 records. Condos: 957 units in 51 developments merged onto their land; 863 leftover nominal common areas (914 ac) dropped like exempt land.",
+    "Singularity sweep: 10 of 67,438 parcels, all at most 4.3x the neighbourhood or hidden slivers.",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 427 lots, 566.0 acres, $389M est. land value. apply_parking_category.py tagged 19 parcels 'Parking Lot'.",
+    "Links: Collin parcels open Collin CAD's eSearch page pinned to 2026 (esearch.collincad.org/Property/View/<prop_id>?year=2026; confirmed); Denton parcels Denton CAD's property page (denton.prodigycad.com/property-detail/<prop_id>/2026)."
+  ],
+  "displayName": "Frisco",
+  "state": "tx",
+  "filename": "frisco-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "frisco-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "frisco-tx",
+    "frisco_tx"
+  ],
+  "coords": [
+    -96.8236,
+    33.1507
+  ]
+}

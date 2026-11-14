@@ -226,7 +226,12 @@ def _place_undrawn(gis: gpd.GeoDataFrame, roll: pd.DataFrame) -> tuple[pd.DataFr
     Returns (rows with the roll columns + geometry, prop_ids of off-roll polygons now used)."""
     have = set(gis["prop_id"].dropna().astype(int))
     und = roll[~roll["prop_id"].astype(int).isin(have) & roll["LAND_VAL"].gt(0)].copy()
-    if und.empty or "legal_desc" not in gis.columns:
+    if "legal_desc" not in gis.columns:
+        # Map without attributes (Brownsville, Ellis, Denton): a drawn polygon's legal description
+        # and situs come from its own certified record.
+        att = roll.drop_duplicates("prop_id").set_index("prop_id")[["legal_desc", "situs_num", "situs_street"]]
+        gis = gis.join(att, on="prop_id")
+    if und.empty:
         log(f"Certified records without a polygon: {len(und):,} (${und['LAND_VAL'].sum():,.0f} land); "
             "GIS has no legal descriptions to place them")
         return und.iloc[0:0].assign(geometry=None), set()

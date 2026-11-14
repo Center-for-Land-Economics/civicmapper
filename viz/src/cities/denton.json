@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "City of Denton, TX (Denton County), within city limits. Built by data/jurisidictions/run_denton.py (denton_county.py, shared runner tx_multicounty.py). 45,543 parcels, $7.09B land. All values 2026.",
+    "Denton County: Denton Central Appraisal District's 2026 certified export (PACS 8.0.33, 2026-07-27) joined on prop_id to its certified parcel polygons (Parcels_Certified_2026, nightly geodatabase); both downloaded by hand. Undrawn condo units are placed on their parcel via Denton CAD's condo link table or a matching legal description.",
+    "Check: Denton CAD's taxable land on City of Denton accounts (C05) is $7.209B vs $7.092B kept; the gap (1.6%) is records the certified map does not draw (new accounts, some condo units and tracts).",
+    "City limits: Census TIGER/Line 2025 place 4819972; the City of Denton entity agrees on all but 32 / 60 accounts.",
+    "Exempt land dropped: the roll's EX flags (EX-XV etc.) plus named public owners (city, UNT, TWU, TxDOT): 2,583 records. Condos: 66 units in 6 developments merged onto their land; 149 leftover nominal common areas (206 ac) dropped.",
+    "Singularity sweep: 64 of 45,543 parcels, all at most 6x the neighbourhood (small lots, Graystone Village condo units at ~5x).",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 511 lots, 321.2 acres, $133M est. land value. apply_parking_category.py tagged 33 parcels 'Parking Lot'.",
+    "Links: Denton CAD's property page pinned to 2026 (denton.prodigycad.com/property-detail/<prop_id>/2026)."
+  ],
+  "displayName": "Denton",
+  "state": "tx",
+  "filename": "denton-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "denton-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "denton-tx",
+    "denton_tx"
+  ],
+  "coords": [
+    -97.1331,
+    33.2148
+  ]
+}

@@ -4,7 +4,11 @@ Source: CCAD's own public parcel layer, "CCAD Parcel Feature Set" (ArcGIS Online
 one row per property with geometry and roll attributes. By 2026-11 the layer is on the 2027
 roll year (propYear 2027, current-value fields empty), so the 2026 certified values are its
 prevVal* fields (prevValYear 2026: land, improvement, market). Properties created for 2027 have
-no 2026 value and are kept only as blockers; 2026 accounts retired since are not in the layer.
+no 2026 value. When such a property was SPLIT from a 2026 property (propSplitFromPID), the 2026
+value covers the parent and its children together, so the children's polygons and acreage are
+merged back into the parent (McKinney: WESTRIDGE RETAIL BLK A LOT 4 kept 0.12 ac and its 2026
+$2.66M, while new LOT 4-1 took 4.09 ac; read alone that is $513/sqft). Other new properties are
+kept only as blockers; 2026 accounts retired since are not in the layer.
 
 propCategoryCode is already the statewide SPTB class (A, B, C1, D1, F1...). Vacant land whose
 propSubType is Commercial is read as C1C (vacant commercial). exemptCodes lists each property's
@@ -27,7 +31,7 @@ CCAD_LAYER = ("https://services2.arcgis.com/uXyoacYrZTPTKD3R/arcgis/rest/service
 FIELDS = ["OBJECTID", "propID", "propType", "propSubType", "propCategoryCode", "propUseCode",
           "legalDescription", "udiPropFlag", "udiInterestPct", "commonInterestPct", "entityCityCode",
           "situsConcatShort", "ownerName", "landSizeAcres", "exemptCodes", "prevValYear",
-          "prevValImprv", "prevValLand", "prevValMarket"]
+          "prevValImprv", "prevValLand", "prevValMarket", "propSplitFromPID"]
 
 
 def ccad_link(prop_id: str) -> str:
@@ -47,8 +51,22 @@ def ccad_rows(boundary, data_dir: Path, *, city_code: str, year: str = "2026"):
                              cache=data_dir / "ccad-geometry.parquet", id_field="OBJECTID")
     g = g[g["propID"].notna()].copy()
     has = pd.to_numeric(g["prevValYear"], errors="coerce").eq(int(year))
-    off_roll = g[~has][["geometry"]].copy()
+    pid = pd.to_numeric(g["propID"], errors="coerce")
+    parent = pd.to_numeric(g["propSplitFromPID"], errors="coerce")
+    kid = ~has & parent.isin(set(pid[has]))
+    off_roll = g[~has & ~kid][["geometry"]].copy()
     raw = g[has & g["propType"].fillna("").eq("Real")].copy()
+    if kid.any():
+        kids = g[kid].assign(_parent=parent[kid])
+        kgeom = kids.groupby("_parent")["geometry"].apply(lambda s: s.union_all())
+        kac = pd.to_numeric(kids["landSizeAcres"], errors="coerce").groupby(kids["_parent"]).sum(min_count=1)
+        rp = pd.to_numeric(raw["propID"], errors="coerce")
+        m = rp.isin(kgeom.index)
+        raw.loc[m, "geometry"] = [geom.union(kgeom[p]) for geom, p in zip(raw.loc[m, "geometry"], rp[m])]
+        raw.loc[m, "landSizeAcres"] = (pd.to_numeric(raw.loc[m, "landSizeAcres"], errors="coerce").fillna(0)
+                                       + rp[m].map(kac).fillna(0)).values
+        log(f"CCAD properties split for {int(year) + 1}: {int(m.sum()):,} parents re-joined with "
+            f"{int(kid.sum()):,} child polygons (${pd.to_numeric(raw.loc[m, 'prevValLand']).sum():,.0f} land)")
     log(f"CCAD properties near the city: {len(g):,}; with {year} values: {int(has.sum()):,}; "
         f"without (new since): {int((~has).sum()):,}")
     raw["acct"] = "COLLIN:" + pd.to_numeric(raw["propID"], errors="coerce").astype("Int64").astype(str)

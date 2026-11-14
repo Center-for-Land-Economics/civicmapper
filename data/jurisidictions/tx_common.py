@@ -175,7 +175,10 @@ def owner_is_public(owner: pd.Series, extra: list[str] = ()) -> pd.Series:
     kw = [k for k in (*PUBLIC_OWNER_KEYWORDS, *extra) if k]
     # Short keywords must end on a word boundary: " ISD" is a school district, not owner
     # ISDELL / ISDARELY. Long ones stay prefixes ("...IMPROVEMENT CORP" -> "CORPORATION").
-    pat = "|".join(k + (r"\b" if len(raw.strip()) <= 5 and re.search(r"\w$", raw) else "")
+    # ...and every keyword must START on a word boundary: "STATE OF TEXAS" is not
+    # "PRO-REAL ESTATE OF TEXAS LLC".
+    pat = "|".join((r"(?<![A-Z0-9])" if re.match(r"\w", raw) else "")
+                   + k + (r"\b" if len(raw.strip()) <= 5 and re.search(r"\w$", raw) else "")
                    for raw, k in zip(kw, pd.Series(kw).str.replace(r"([.()&+?*\[\]^$|\\])", r"\\\1", regex=True)))
     return owner.fillna("").astype(str).str.upper().str.contains(pat, regex=True)
 
@@ -280,7 +283,7 @@ CONDO_LEGAL_RE = (r"CONDO|CONDMINIUM|[0-9.]+\s*%?\s*(?:OF\s+)?(?:COMMON AREA|CE)
                   r"|%\s*CMN\s+INT\b")
 CONDO_EXCLUDE_RE = r"PART OF (?:THE )?(?:COMMON AREA|CE)\b"
 DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+SITE|\s+TR\b|\s+TRACT\b|\s+REPLAT\b|\s+OFFICE CENTER|"
-                r"\s+APT|\s+COMMON|\s+ALL UNITS|$)")
+                r"\s+APT|\s+COMMON|\s+ALL UNITS|\s+BLD\b|\s+UNT\b|$)")
 
 # Public road right-of-way half-widths (m) by Overture road class, used to keep a gap fill out
 # of streets. service/footway/path are deliberately absent: those are parking aisles and walks
