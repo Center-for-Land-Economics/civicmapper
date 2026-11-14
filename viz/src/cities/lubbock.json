@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "City of Lubbock, TX (Lubbock County), within city limits. PROVISIONAL source: Lubbock Appraisal District's own export and GIS are not reachable, so this is built from TxGIO StratMap 2026 land parcels for Lubbock County (collected from Lubbock CAD 2026-07-01; tax year 2026). Built by data/jurisidictions/run_lubbock.py (stratmap_county.py, shared runner tx_multicounty.py). 101,062 parcels, $4.04B land.",
+    "StratMap's Lubbock edition carries land and market value, owner and legal description, but no improvement value, state class, exemption flag or city code. So: improvement = market - land; the property category comes from the City of Lubbock's zoning district (NewZoning_UDC, 2023) at each parcel, with no improvement value meaning vacant (92% of parcels fall in a zoning district; the rest are 'Other' or vacant); exemptions come from owner names (city, county, ISDs, Texas Tech, LCU, hospital district, housing authority, churches) and from a $0 recorded market value (railway and public right-of-way): 2,395 records dropped. Categories and exemptions are therefore approximate.",
+    "City limits: Census TIGER/Line 2025 place 4845000 (no taxing-unit code to cross-check).",
+    "Condos: 447 units in 29 developments merged onto their land. 83 remnants / strips hidden.",
+    "Singularity sweep: commercial land in the Overton redevelopment district by Texas Tech ($12-20/sqft) sits next to older east-side lots Lubbock CAD values near $0.25/sqft (Chapman, Baker subdivisions: ~$2,000 a lot), so ratios reach 50-85x there; these are the district's values. No hex towers (max hex ~ $11/sqft).",
+    "Over 100k parcels: PMTiles with H3 hexes, tiles verified against the source.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 1,552 lots, 653.2 acres, $117M est. land value. apply_parking_category.py tagged 151 parcels 'Parking Lot'.",
+    "Links: placeholder to lubbockcad.org until a working per-parcel URL is confirmed."
+  ],
+  "displayName": "Lubbock",
+  "state": "tx",
+  "filename": "lubbock-tx-parcels.parquet",
+  "pmtilesFilename": "lubbock-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-15-stratmap26",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "lubbock-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-15-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "lubbock-tx",
+    "lubbock_tx"
+  ],
+  "coords": [
+    -101.8552,
+    33.5779
+  ]
+}
