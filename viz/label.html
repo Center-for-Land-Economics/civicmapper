@@ -36,6 +36,8 @@
     .warn { color:#ffb74d; }
     #toast { position:absolute; left:50%; top:12px; transform:translateX(-50%); background:#000c; padding:6px 12px;
       border-radius:6px; display:none; z-index:5; }
+    #map-hint { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); z-index:4; max-width:420px;
+      text-align:center; background:#000b; padding:14px 18px; border-radius:8px; font-size:15px; }
     #blocked { padding:40px; max-width:560px; }
     dialog { max-width:760px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; }
     dialog::backdrop { background:#000a; }
@@ -46,7 +48,8 @@
 </head>
 <body>
   <div id="app" hidden>
-    <div id="map"><div id="toast"></div></div>
+    <div id="map"><div id="toast"></div>
+      <div id="map-hint">Type your name in the box on the right and press <kbd>Enter</kbd> to load your first square.</div></div>
     <aside id="side">
       <h1>Surface parking labels <span class="meta">(dev)</span></h1>
       <label class="row"><select id="campaign"></select></label>

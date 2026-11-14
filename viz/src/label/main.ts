@@ -205,6 +205,7 @@ async function main() {
   // ---- squares ----------------------------------------------------------------------------
   function showSquare(sq: Square) {
     state.square = sq;
+    $('map-hint').hidden = true;
     const p = sq.properties;
     const items = (p.naip_items || []).slice(0, MAX_ITEMS);
     for (const kind of ['rgb', 'cir'] as const) {
@@ -277,6 +278,9 @@ async function main() {
     if (!r.square) {
       draw.clear();
       $('sqmeta').textContent = 'Nothing left for you in this campaign. Thank you!';
+      state.square = null;
+      $('map-hint').textContent = 'Nothing left for you in this campaign. Thank you!';
+      $('map-hint').hidden = false;
       return;
     }
     showSquare(r.square);
@@ -394,17 +398,29 @@ async function main() {
 
   const nameInput = $('labeler') as HTMLInputElement;
   nameInput.value = state.labeler;
-  nameInput.onchange = () => {
-    state.labeler = nameInput.value.trim();
+  const commitName = () => {
+    const v = nameInput.value.trim();
+    if (v === state.labeler && state.square) return;
+    state.labeler = v;
     store('label.labeler', state.labeler);
     if (state.labeler && !state.square) void next();
   };
+  nameInput.onchange = commitName;
+  nameInput.onkeydown = (e) => { if (e.key === 'Enter') { commitName(); nameInput.blur(); } };
+  ($('guide') as HTMLDialogElement).addEventListener('close', () => { if (!state.labeler) nameInput.focus(); });
 
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     if (t.closest('input, textarea, select') || ($('guide') as HTMLDialogElement).open) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
+    if (k === '?') { ($('guide') as HTMLDialogElement).showModal(); return; }
+    // No shortcuts until a square is loaded (stray keys while finding the name box would
+    // otherwise toggle views).
+    if (!state.square) {
+      if (!state.labeler) nameInput.focus();
+      return;
+    }
     if (CLASS_KEYS[k]) setClass(CLASS_KEYS[k]);
     else if (k === 'd' || k === 'D') setTool('polygon');
     else if (k === 'r' || k === 'R') setTool('angled-rectangle');
@@ -418,7 +434,6 @@ async function main() {
     else if (k === 'n' || k === 'N') submit('no_parking');
     else if (k === 't' || k === 'T') submit('cant_tell');
     else if (k === 'k' || k === 'K') submit('skip');
-    else if (k === '?') ($('guide') as HTMLDialogElement).showModal();
   });
 
   // ---- start ------------------------------------------------------------------------------
