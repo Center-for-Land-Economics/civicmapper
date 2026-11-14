@@ -275,7 +275,9 @@ CONDO_LEGAL_RE = (r"CONDO|CONDMINIUM|[0-9.]+\s*%?\s*(?:OF\s+)?(?:COMMON AREA|CE)
                   # "& UND 2.11% INT IN CMN AREA"
                   r"|UND\s*%\s+IN\s+(?:COMMON|COM|CMN)\b|%\s*(?:UND\s+)?INT\s+IN\s+(?:THE\s+)?(?:COMMON|COM|CMN)\b"
                   # fractional shares: "& UND 1/50 INT IN COMMON AREA"
-                  r"|UND\s+\d+/\d+\s+INT\s+IN\s+(?:THE\s+)?(?:COMMON|COM|CMN)\b")
+                  r"|UND\s+\d+/\d+\s+INT\s+IN\s+(?:THE\s+)?(?:COMMON|COM|CMN)\b"
+                  # Collin CAD: "MIDWAY MEDICAL CENTER, BLDG 3108, UNIT 200, 9.79 % CMN INT"
+                  r"|%\s*CMN\s+INT\b")
 CONDO_EXCLUDE_RE = r"PART OF (?:THE )?(?:COMMON AREA|CE)\b"
 DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+SITE|\s+TR\b|\s+TRACT\b|\s+REPLAT\b|\s+OFFICE CENTER|"
                 r"\s+APT|\s+COMMON|\s+ALL UNITS|$)")
@@ -340,6 +342,13 @@ def _fill_holes(geom):
     from shapely.geometry import MultiPolygon, Polygon
     parts = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
     return MultiPolygon([Polygon(p.exterior) for p in parts]) if len(parts) > 1 else Polygon(parts[0].exterior)
+
+
+def _unit_numbered(legal: pd.Series) -> bool:
+    L = legal.fillna("").str.upper()
+    unit = L.str.contains(r"\bUNIT\s+[A-Z]?-?\d+", regex=True)
+    lot = L.str.contains(r"\b(?:LOT|LT|LTS|BLK|BLOCK)\b", regex=True)
+    return bool(len(L)) and float((unit & ~lot).mean()) >= 0.8
 
 
 def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str],
@@ -407,11 +416,21 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
     all_lots = g[~is_common & ~is_condo].groupby("_dev").size()
     lot_stats["share"] = lot_stats["n"] / all_lots.reindex(lot_stats.index)
     fdevs = set()
+    unit_devs = {d for d in lot_stats.index
+                 if _unit_numbered(g.loc[small_lot & (g["_dev"] == d), legal_col])}
+    lot_ok = (lot_stats["med_sqft"] < footprint_lot_sqft) | lot_stats.index.isin(unit_devs)
     for dev, st in lot_stats[(lot_stats["n"] >= min_units) & (lot_stats["share"] >= 0.5)
-                             & (lot_stats["med_sqft"] < footprint_lot_sqft)].iterrows():
+                             & lot_ok].iterrows():
         lots_geom = unary_union(list(g.loc[small_lot & (g["_dev"] == dev), "geometry"]))
         cg = g[is_common & (g["_dev"] == dev)]
         if len(cg) and cg.geometry.distance(lots_geom).min() <= 200:
+            fdevs.add(dev)
+        elif _unit_numbered(g.loc[small_lot & (g["_dev"] == dev), legal_col]):
+            # Unit outlines with no association parcel drawn: lots numbered as UNITs with no
+            # block / lot (Collin: "PARKBLUFF ADDITION PHASE I, UNIT 112", 700-980 sqft; West Plano
+            # Medical Center office units ~2,000 sqft; any size under the stub cap) are condo
+            # units drawn one by one, not fee-simple lots ("OSO RIVER ESTATES UNIT 3 BLK 1 LOT 1A"
+            # is a subdivision phase and has a LOT).
             fdevs.add(dev)
     members |= small_lot & g["_dev"].isin(fdevs)
     devs |= fdevs

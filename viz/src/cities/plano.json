@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "City of Plano, TX, Collin County part (180 of 187 km2). Built by data/jurisidictions/run_plano.py (collin_county.py + tx_pipeline.py). 75,056 parcels, $20.38B land. All values 2026. PENDING: the 6.7 km2 strip on the west edge in Denton County is not included yet (no Denton CAD data reachable from the build host).",
+    "Values: Collin Central Appraisal District's own public parcel layer (CCAD Parcel Feature Set, data of 2026-10-23). The layer has rolled to the 2027 roll year, so the 2026 certified values are its prior-year fields (prevValYear 2026: land, improvement, market); 184 properties created for 2027 have no 2026 value. Check: CCAD's taxable (non-exempt, non-utility) land on City of Plano properties is $20.379B vs $20.377B kept here.",
+    "City limits: Census TIGER/Line 2025 place 4858016; CCAD's City of Plano code (CPL) agrees on all but 5 / 1 accounts.",
+    "Exempt land dropped: CCAD's total exemption codes (EX-XV public property, EX-XJ schools... and CHODO), plus named public owners: 1,026 records. Homestead / disabled-veteran exemptions are personal and those homes stay in. 53 utility records left off.",
+    "Condos and townhomes: CCAD draws many condo units as unit outlines. 1,714 units in 120 developments are merged onto their land (28 onto their own common-area parcel, the rest onto the unit hull grown into unparcelled ground), including developments numbered by unit with no lot (Parkbluff, Springwood Creek, Briarpark Village) and office condos ('% CMN INT': Midway Medical Center, West Plano Medical Center). 221 polygons carry stacked records (undivided-interest shares, summed). 560 leftover nominal common areas (359 ac) dropped like exempt land.",
+    "Land size: appraiser acreage when within 25% of the polygon; 54 parcels drawn as fragments of their roll area use the appraiser's area; 17 remnants hidden.",
+    "Singularity sweep: 15 of 75,056 parcels, all at most 8.2x the neighbourhood: downtown townhome lots (1897 Townhomes, 17th Street Townhomes at ~$90-97/sqft), the Mapleplex office condo on its plat polygon, and one Shiloh Park unit (4.7x).",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 739 lots, 860.3 acres, $884M est. land value (Legacy / Granite Park office parking). apply_parking_category.py tagged 51 parcels 'Parking Lot'.",
+    "Links: Collin CAD eSearch pinned to 2026 (esearch.collincad.org/Property/View/<prop_id>?year=2026); pattern not yet confirmed."
+  ],
+  "displayName": "Plano",
+  "state": "tx",
+  "filename": "plano-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "plano-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "plano-tx",
+    "plano_tx"
+  ],
+  "coords": [
+    -96.6989,
+    33.0198
+  ]
+}
