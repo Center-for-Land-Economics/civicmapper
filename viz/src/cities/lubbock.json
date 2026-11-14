@@ -7,13 +7,13 @@
     "Singularity sweep: commercial land in the Overton redevelopment district by Texas Tech ($12-20/sqft) sits next to older east-side lots Lubbock CAD values near $0.25/sqft (Chapman, Baker subdivisions: ~$2,000 a lot), so ratios reach 50-85x there; these are the district's values. No hex towers (max hex ~ $11/sqft).",
     "Over 100k parcels: PMTiles with H3 hexes, tiles verified against the source.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 1,552 lots, 653.2 acres, $117M est. land value. apply_parking_category.py tagged 151 parcels 'Parking Lot'.",
-    "Links: placeholder to lubbockcad.org until a working per-parcel URL is confirmed."
+    "Links: Lubbock CAD's property page by quick-ref id (lubbockcad.org/Property-Detail/PropertyQuickRefID/<R id>; confirmed by the user)."
   ],
   "displayName": "Lubbock",
   "state": "tx",
   "filename": "lubbock-tx-parcels.parquet",
   "pmtilesFilename": "lubbock-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-15-stratmap26",
+  "pmtilesVersion": "2026-11-15-stratmap26-b",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "lubbock-tx-parking-lots.parquet",

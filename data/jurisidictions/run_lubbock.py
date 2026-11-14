@@ -23,8 +23,8 @@ ZONING = "https://services2.arcgis.com/eYXun6c1pgy8Qpta/arcgis/rest/services/New
 
 
 def lubbock_link(prop_id: str) -> str:
-    # Placeholder until a working Lubbock CAD per-parcel URL is confirmed.
-    return f"https://lubbockcad.org/?prop_id={prop_id}"
+    # Lubbock CAD's property page by quick-ref id (R...); pattern confirmed by the user (R64540).
+    return f"https://lubbockcad.org/Property-Detail/PropertyQuickRefID/{prop_id}"
 
 
 def zoning_class(district: str) -> str:
