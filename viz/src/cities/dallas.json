@@ -1,17 +1,34 @@
 {
+  "notes": [
+    "City of Dallas, TX: the city within city limits across Dallas County (895 km2), Collin County (31 km2) and Denton County (6 km2). Built by data/jurisidictions/run_dallas.py (dcad_county.py + collin_county.py + denton_county.py, shared runner tx_multicounty.py). 297,221 parcels, $92.56B land (Dallas County $89.07B, Collin $3.08B, Denton $410M). All values 2026 certified. Replaces the 2026-06 build on DCAD's proposed values. Not included: the Rockwall County part (53 km2, almost all Lake Ray Hubbard) and the Kaufman County part (8 km2).",
+    "Dallas County: Dallas Central Appraisal District's 2026 certified data files (current certified values with supplements, files of 2026-11-09), joined on GIS_PARCEL_ID to DCAD's parcel polygons (2026-11); both downloaded by hand from dallascad.org. DCAD's own codes are mapped to statewide classes with DCAD's crosswalk. Check: DCAD's taxable land on City of Dallas accounts with a polygon is $89.076B vs $89.071B kept here.",
+    "Collin County: Collin CAD's public parcel layer, 2026 certified values from its prior-year fields (city code CDA). Denton County: Denton CAD's 2026 certified export joined to its certified parcel polygons (entity C20).",
+    "City limits: Census TIGER/Line 2025 place 4819000; the counties' City of Dallas codes agree on all but 86 / 46 of ~351k accounts.",
+    "Exempt land dropped: DCAD's totally exempt accounts, Collin's total exemption codes, Denton's EX flags, plus named public owners (city, DISD, county, DART, Parkland hospital, universities, DFW Airport): 10,171 records. 4,306 personal-property / leased-space mobile homes and 560 utility records are left off.",
+    "Condos, co-ops and mobile-home parks: DCAD maps every unit / space onto the complex polygon, and those records are summed there (2,303 polygons, 39,313 records). 603 more units in 24 developments merged onto their land; 1,097 leftover nominal common areas (827 ac) dropped like exempt land.",
+    "Land size: appraiser acreage when within 25% of the polygon; 368 parcels drawn as fragments of their roll area use the appraiser's area; 223 remnants hidden.",
+    "Singularity sweep: 76 of 297,221 parcels, nearly all small fee-simple lots at 4-10x their neighbourhood or hidden slivers; one Collin condo unit at 5.4x. Highest hexes ~$200/sqft in Uptown / downtown; no towers.",
+    "Over 100k parcels: PMTiles with H3 hexes, tiles verified against the source.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 1,998 lots, 1,872 acres, $2.67B est. land value. apply_parking_category.py tagged 682 parcels 'Parking Lot'.",
+    "Links: Dallas County parcels open DCAD's account page for their division (dallascad.org/AcctDetailRes.aspx?ID=<account> residential, AcctDetailCom.aspx commercial); Collin parcels Collin CAD eSearch (2026); Denton parcels Denton CAD's property page (2026)."
+  ],
   "displayName": "Dallas",
   "state": "tx",
   "filename": "dallas-tx-parcels.parquet",
   "pmtilesFilename": "dallas-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-07-13-hexprune",
+  "pmtilesVersion": "2026-11-15-dcad-certified",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "dallas-tx-parking-lots.parquet",
-  "parkingVersion": "2026-06-09",
+  "parkingVersion": "2026-11-15-overture",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "coords": [
     -96.797,
     32.7767
+  ],
+  "aliases": [
+    "dallas-tx",
+    "dallas_tx"
   ]
 }
