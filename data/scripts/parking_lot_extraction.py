@@ -105,6 +105,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "corpuschristi": "Corpus Christi, Texas, USA",
     "grandprairie": "Grand Prairie, Texas, USA",
     "irving": "Irving, Texas, USA",
+    "garland": "Garland, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",

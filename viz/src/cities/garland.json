@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "City of Garland, TX (Dallas County), within city limits. Built by data/jurisidictions/run_garland.py (dcad_county.py + tx_pipeline.py). 67,706 parcels, $6.52B land. All values 2026. A 0.14 km2 sliver of the city in Collin County has no parcels of its own.",
+    "Values: Dallas Central Appraisal District's 2026 certified data files (current certified values with supplements, files of 2026-11-09), joined on GIS_PARCEL_ID to DCAD's parcel polygons (2026-11); both downloaded by hand from dallascad.org. DCAD's own codes are mapped to statewide classes with DCAD's crosswalk. Check: DCAD's taxable land on City of Garland accounts with a polygon is $6.5228B vs $6.5228B kept here.",
+    "City limits: Census TIGER/Line 2025 place 4829000; DCAD's City of Garland jurisdiction agrees on all but 11 / 8 accounts.",
+    "Exempt land dropped: DCAD's totally exempt accounts (1,345, which include every named public owner: City of Garland, Garland ISD, Dallas County, DART). 30 personal-property and 15 utility records are left off.",
+    "Condos: DCAD maps each condo unit onto the complex polygon, and those records are summed there (100 polygons, 1,644 records; Faulkner Point: 252 units). 499 leftover nominal common areas (343 ac) dropped like exempt land.",
+    "41 sub-500 sqft remnants hidden. Singularity sweep: 3 of 67,706 parcels, all genuine appraiser values (at most 4.6x the neighbourhood); land $/sqft tops out at $47.",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only): 71 lots, 109.1 acres, $34.8M est. land value. OSM parking coverage in Garland is thin, so this undercounts. apply_parking_category.py tagged 1 parcel 'Parking Lot'.",
+    "Links: DCAD's account page for the account's division (dallascad.org/AcctDetailRes.aspx?ID=<account> for residential, AcctDetailCom.aspx for commercial)."
+  ],
+  "displayName": "Garland",
+  "state": "tx",
+  "filename": "garland-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "garland-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "garland-tx",
+    "garland_tx"
+  ],
+  "coords": [
+    -96.6389,
+    32.9126
+  ]
+}
