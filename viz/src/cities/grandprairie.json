@@ -6,7 +6,7 @@
     "City limits: Census TIGER/Line 2025 place 4830464; the counties' Grand Prairie codes agree on all but 45 / 80 accounts.",
     "Exempt land dropped: DCAD's totally exempt accounts, TAD's $0 city-taxable signal, Ellis's EX flags, plus class X and named public owners (1,300 records). 1,160 leased-space mobile homes (personal property) and 69 utility records are left off.",
     "Mobile-home parks and co-ops: every space or share is a DCAD account carrying an interest in the park's land (Sherwood Village: 427 accounts; Avion Village co-op: 300 shares of 1/300), summed onto the park polygon (239 polygons, 1,722 records). Condos: 18 units in 5 developments merged onto their land; 344 leftover nominal common areas (342 ac) dropped like exempt land.",
-    "Land size: appraiser acreage when within 25% of the polygon; 103 parcels drawn as fragments of their roll area use the appraiser's area; 32 sub-500 sqft remnants hidden.",
+    "Land size: appraiser acreage when within 25% of the polygon; 103 parcels drawn as fragments of their roll area use the appraiser's area; 32 sub-500 sqft remnants hidden, plus 1 vacant 665 sqft strip DCAD prices at a full lot's flat $55,000 (Greenwood No 2, lot 9R.1, $83/sqft; the matching strip on the other side is $100).",
     "Singularity sweep: 54 of 54,805 parcels, all genuine appraiser values: e.g. Westchester lots at $12/sqft next to Lakeside 1 & 2, an old paper subdivision of 1,100 sqft lots DCAD values at a flat $500 each.",
     "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only): 140 lots, 168.2 acres, $25.7M est. land value. apply_parking_category.py tagged 13 parcels 'Parking Lot'.",

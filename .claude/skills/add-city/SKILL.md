@@ -500,3 +500,8 @@ Don't add data columns or re-bake for values you can compute client-side.
 - **A tower that shows only in hex form, never as a parcel:** besides the pool bug above,
   check for parcels whose polygon has no usable area. The parcel layer can't draw them, but
   the hex aggregate keeps their value against ~0 acres. `tx_pipeline` flags them `likely_remnant`.
+- **Vacant strips priced as whole lots** (DCAD flat-prices a 665 sqft strip, lot 9R.1, at the full
+  $55,000 lot price = $83/sqft): after the sweep, `tx_pipeline` hides parcels that are < 1,000 sqft,
+  vacant, non-condo, >= 4x their neighbourhood and < 1/4 of the median lot within 300 m (cause
+  "strip <1000 sqft with a lot-size value (hidden)"). Vacant townhome lots in a new PUD and built
+  small lots stay visible.

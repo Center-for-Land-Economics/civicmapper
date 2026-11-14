@@ -257,6 +257,32 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
         return "other (review)"
 
     sing["cause"] = [_cause(i) for i in sing.index]
+    # Small VACANT strips carrying a lot-size value: an appraiser's flat per-lot price applied to a
+    # sliver account (Grand Prairie: DCAD prices lot 9R.1, a 665 sqft strip beside a house lot, at
+    # the full-lot $55,000 = $83/sqft, while the matching 64 sqft strip is $100). Under 1,000 sqft
+    # and >= 4x the neighbourhood, non-condo: hidden like the sub-500 slivers (value kept in
+    # the parquet; off the map and out of the hexes).
+    strip = (sing["footprint_sqft"] < 1000) & sing["cause"].str.startswith("small fee-simple")
+    strip &= ~legal_f.str.contains(CONDO_LEGAL_RE, regex=True)
+    # Vacant only: built small lots (townhome footprint lots: Ridglea Place, Portside PUD) are real.
+    strip &= pd.to_numeric(final.loc[sing.index, "improvement_value"], errors="coerce").fillna(0).le(0)
+    # ...and a sliver among its neighbours (< 1/4 of the median lot within 300 m): vacant townhome
+    # lots in a new PUD (Portside Phase 3) sit among lots their own size and stay.
+    if strip.any():
+        m3 = final.geometry.to_crs(3857)
+        rel = {}
+        for i in sing.index[strip]:
+            nb = ex.loc[m3.distance(m3.loc[i]).lt(300) & (m3.index != i), "geom_area_sqft"]
+            rel[i] = sing.loc[i, "footprint_sqft"] / nb.median() if len(nb) else np.nan
+        strip &= pd.Series(rel).reindex(sing.index).lt(0.25).fillna(False)
+    if strip.any():
+        idx = sing.index[strip]
+        final.loc[idx, "likely_remnant"] = 1
+        sing.loc[idx, "cause"] = "strip <1000 sqft with a lot-size value (hidden)"
+        final.to_parquet(out, index=False)
+        final.to_parquet(DATA_DIR / f"{CITY}-{STATE}-parcels_{datetime.now():%Y_%m_%d}.parquet", index=False)
+        log(f"Strips <1,000 sqft carrying lot-size values, hidden: {int(strip.sum())} "
+            f"(${sing.loc[idx, 'land_value'].sum():,.0f} land); remnants now {int(final['likely_remnant'].sum()):,}")
     sing["account"] = ex.loc[sing.index, "acct"].values
     sing["county"] = ex.loc[sing.index, "COUNTYNAME"].values
     sing["legal"] = legal_f.values
