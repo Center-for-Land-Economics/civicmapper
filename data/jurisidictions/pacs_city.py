@@ -71,6 +71,7 @@ class PacsCounty:
     gis_values: dict | None = None
     gis_zip: str | None = None                   # local district parcel shapefile zip (data dir)
     gis_id_field: str = "PROP_ID"                # its prop_id column (Ellis CAD: "pid")
+    gis_oid_field: str = "ObjectID_1"            # the layer's object-id field (BIS layers)
 
 
 @dataclass
@@ -284,7 +285,7 @@ def _county_rows(cfg: PacsCity, c: PacsCounty, boundary, data_dir: Path, *, gcac
     elif c.gis_layer:
         # The district's own web-map layer, pre-filtered to the city outline (+200 m).
         pre = gpd.GeoSeries([boundary], crs=4326).to_crs(3857).buffer(200).simplify(50).to_crs(4326).iloc[0]
-        gis = fetch_arcgis_geojson(c.gis_layer, polygon=pre, cache=gcache, id_field="ObjectID_1")
+        gis = fetch_arcgis_geojson(c.gis_layer, polygon=pre, cache=gcache, id_field=c.gis_oid_field)
     else:
         z = data_dir / c.gis_zip if c.gis_zip else _download(gis_url, data_dir / f"{cfg.city}-{cfg.state}-gis.zip")
         shp = next(n for n in zipfile.ZipFile(z).namelist() if n.lower().endswith(".shp"))
