@@ -24,6 +24,7 @@
     button { background:#2a2f38; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 9px;
       font:inherit; cursor:pointer; }
     button:hover { border-color:var(--accent); }
+    button:disabled { opacity:.45; cursor:default; }
     button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
     button.primary { background:#2e7d32; border-color:#2e7d32; width:100%; padding:9px; font-weight:600; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
@@ -63,6 +64,7 @@
 
       <h2>Square</h2>
       <div class="meta" id="sqmeta">—</div>
+      <button id="gmaps" style="margin-top:6px;width:100%" title="Opens this spot on Google Maps satellite in a new tab: for checking whether a lot still exists or what it is. Do not trace from it.">Open here in Google Maps ↗ <kbd>M</kbd></button>
 
       <h2>Draw</h2>
       <div class="grid2">
@@ -71,6 +73,8 @@
         <button id="tool-select">Edit <kbd>E</kbd></button>
         <button id="tool-delete">Delete <kbd>Del</kbd></button>
         <button id="tool-parcel" title="Click inside a dotted parcel outline to turn it into a shape of the current class">From parcel <kbd>G</kbd></button>
+        <button id="undo" title="Undo (Ctrl+Z)">Undo <kbd>Ctrl Z</kbd></button>
+        <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)">Redo <kbd>Ctrl Y</kbd></button>
         <button id="tool-snap" title="Snap corners to other shapes, parcels and the square edge. Hold Alt to place freely.">Snap <kbd>S</kbd></button>
       </div>
       <p class="meta" style="margin:6px 0 0">
@@ -168,7 +172,7 @@
       <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>

@@ -247,7 +247,63 @@ async function main() {
   draw.on('finish', (id, ctx) => {
     if ((ctx as any)?.action === 'draw') draw.updateFeatureProperties(id, { class: state.cls });
     queueFills();
+    record();
   });
+
+  // ---- undo / redo: snapshots of the finished shapes (geometry + class), one per edit ---------
+  const undoStack = { past: [] as string[], future: [] as string[], restoring: false };
+  function snapshotShapes(): string {
+    return JSON.stringify(draw.getSnapshot()
+      .filter((f) => f.geometry.type === 'Polygon' && !f.properties?.currentlyDrawing)
+      .map((f) => {
+        const { selected: _s, ...props } = f.properties;
+        return { id: f.id, type: 'Feature', geometry: f.geometry, properties: props };
+      }));
+  }
+  function updateUndoButtons() {
+    ($('undo') as HTMLButtonElement).disabled = undoStack.past.length < 2;
+    ($('redo') as HTMLButtonElement).disabled = undoStack.future.length === 0;
+  }
+  function record() {
+    if (undoStack.restoring || draw.getModeState() === 'drawing') return;
+    const snap = snapshotShapes();
+    if (undoStack.past.at(-1) === snap) return;
+    undoStack.past.push(snap);
+    if (undoStack.past.length > 300) undoStack.past.shift();
+    undoStack.future = [];
+    updateUndoButtons();
+  }
+  function resetHistory() {
+    undoStack.past = [snapshotShapes()];
+    undoStack.future = [];
+    updateUndoButtons();
+  }
+  function restore(snap: string) {
+    undoStack.restoring = true;
+    for (const f of draw.getSnapshot().filter((x) => x.properties?.selected)) draw.deselectFeature(f.id as string);
+    draw.clear();
+    draw.addFeatures(JSON.parse(snap));
+    undoStack.restoring = false;
+    queueFills();
+    updateUndoButtons();
+  }
+  function undo() {
+    if (draw.getModeState() === 'drawing') { toast('Finish or cancel (Esc) the shape in progress first'); return; }
+    if (undoStack.past.length < 2) { toast('Nothing to undo'); return; }
+    undoStack.future.push(undoStack.past.pop()!);
+    restore(undoStack.past.at(-1)!);
+  }
+  function redo() {
+    if (draw.getModeState() === 'drawing') return;
+    const snap = undoStack.future.pop();
+    if (!snap) { toast('Nothing to redo'); return; }
+    undoStack.past.push(snap);
+    restore(snap);
+  }
+  // Edits in Edit mode (corner drags, midpoint inserts) end on pointer-up; deletions arrive as
+  // change events. Record after either; identical snapshots are ignored.
+  window.addEventListener('pointerup', () => setTimeout(record, 0));
+  draw.on('change', (_ids, type) => { if (type === 'delete') setTimeout(record, 0); });
 
   const polygons = () => draw.getSnapshot().filter((f) => f.geometry.type === 'Polygon');
 
@@ -353,8 +409,10 @@ async function main() {
   }
   function setClass(c: Cls) {
     setClassButtons(c);
-    for (const f of selected()) draw.updateFeatureProperties(f.id as string, { class: c });
+    const sel = selected();
+    for (const f of sel) draw.updateFeatureProperties(f.id as string, { class: c });
     queueFills();
+    if (sel.length) record();
   }
 
   function loadShapes(features: GeoJSON.Feature[], fromPrefill: boolean) {
@@ -375,6 +433,7 @@ async function main() {
       }
     }
     const res = draw.addFeatures(feats);
+    record();
     const bad = res.filter((r) => !r.valid).length;
     if (bad) toast(`${bad} shape(s) could not be loaded for editing`);
   }
@@ -439,6 +498,7 @@ async function main() {
       loadShapes(pre.features, true);
       toast(`${pre.features.length} existing lot(s) pre-loaded — fix, delete or add`);
     }
+    resetHistory(); // undo never reaches back into the previous square or past the loaded shapes
   }
 
   async function refreshProgress() {
@@ -546,8 +606,10 @@ async function main() {
       const { selected: _s, ...props } = f.properties;
       return { ...f, properties: props } as GeoJSONStoreFeatures;
     });
+    undoStack.restoring = true;
     draw.clear();
     draw.addFeatures(snap);
+    undoStack.restoring = false;
   };
   const deleteSelected = () => {
     const ids = selected().map((f) => f.id as string);
@@ -565,6 +627,15 @@ async function main() {
   $('tool-rect').onclick = () => setTool('angled-rectangle');
   $('tool-select').onclick = () => setTool('select');
   $('tool-parcel').onclick = () => setTool('parcel');
+  $('undo').onclick = undo;
+  $('redo').onclick = redo;
+  // Reference only: shows where you are on Google's newer imagery. Never trace from it (licence).
+  const openGoogleMaps = () => {
+    const c = map.getCenter();
+    const z = Math.min(21, Math.round(map.getZoom() + 1)); // MapLibre's 512 px tiles sit one level below Google's
+    window.open(`https://www.google.com/maps/@${c.lat.toFixed(6)},${c.lng.toFixed(6)},${z}z/data=!3m1!1e3`, '_blank', 'noopener');
+  };
+  $('gmaps').onclick = openGoogleMaps;
   const toggleSnap = () => {
     state.snap = !state.snap;
     $('tool-snap').classList.toggle('on', state.snap);
@@ -604,6 +675,12 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     if (t.closest('input, textarea, select') || ($('guide') as HTMLDialogElement).open) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+      else if (k === 'y') { e.preventDefault(); redo(); }
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
     if (k === '?') { ($('guide') as HTMLDialogElement).showModal(); return; }
@@ -618,6 +695,7 @@ async function main() {
     else if (k === 'r' || k === 'R') setTool('angled-rectangle');
     else if (k === 'e' || k === 'E') setTool('select');
     else if (k === 'g' || k === 'G') setTool('parcel');
+    else if (k === 'm' || k === 'M') openGoogleMaps();
     else if (k === 's' || k === 'S') toggleSnap();
     else if (k === 'Delete' || k === 'Backspace') { deleteSelected(); e.preventDefault(); }
     else if (k === 'c' || k === 'C') toggleCir();
