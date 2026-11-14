@@ -14,7 +14,7 @@
   "state": "tx",
   "filename": "elpaso-tx-parcels.parquet",
   "pmtilesFilename": "elpaso-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-15-refresh",
+  "pmtilesVersion": "2026-11-15-condoarea",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "elpaso-tx-parking-lots.parquet",

@@ -15,7 +15,7 @@
   "state": "tx",
   "filename": "corpuschristi-tx-parcels.parquet",
   "pmtilesFilename": "corpuschristi-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-15-refresh",
+  "pmtilesVersion": "2026-11-15-condoarea",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "corpuschristi-tx-parking-lots.parquet",
