@@ -13,7 +13,7 @@ Usage:
   python data/scripts/label_sync.py --pull          # download only (never upload)
   python data/scripts/label_sync.py --dry-run
 
-Credentials: AZURE_LABELS_CONNECTION_STRING (environment or data/.env), either a bare SAS token or
+Credentials: AZURE_PARKING_LABELS_CONNECTION_STRING (environment or data/.env), either a bare SAS token or
 a connection string, scoped to the parking-labels-dev container with read, add, create, write and list permissions. Falls back to
 AZURE_STORAGE_CONNECTION_STRING when that is an account-level key (the parquets-dev SAS is scoped
 to its own container and cannot reach this one).
@@ -33,13 +33,15 @@ ENV_FILE = ROOT / "data" / ".env"
 CAMPAIGN_FILES = ["campaign.json", "squares.geojson", "prefill.geojson", "parcels.geojson"]
 CONTAINER = os.environ.get("LABELS_CONTAINER", "parking-labels-dev")
 ACCOUNT = os.environ.get("AZURE_STORAGE_ACCOUNT", "landeconomics")
-CREDENTIAL_VARS = ["AZURE_LABELS_CONNECTION_STRING", "AZURE_LABEL_CONNECTION_STRING", "AZURE_LABELS_SAS",
+# AZURE_LABELS_CONNECTION_STRING holds the claude-dev token in the cloud environment; it is only a
+# fallback here because some machines may still keep a parking-labels-dev token under that name.
+CREDENTIAL_VARS = ["AZURE_PARKING_LABELS_CONNECTION_STRING", "AZURE_LABELS_CONNECTION_STRING",
                    "AZURE_STORAGE_CONNECTION_STRING"]
 
 
 def load_env(path: Path) -> None:
-    if not path.exists():
-        sys.exit(f"Missing {path}\nCreate it with: AZURE_STORAGE_CONNECTION_STRING=...")
+    if not path.exists():  # optional: the token may come from the environment instead
+        return
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if line and not line.startswith("#") and "=" in line:
@@ -106,7 +108,7 @@ def main() -> int:
             print(f"  {n}: refused ({type(e).__name__})")
     if cc is None:
         sys.exit(f"No credential could list container {CONTAINER!r} (tried {', '.join(tried) or 'none'}). Set "
-                 "AZURE_LABELS_CONNECTION_STRING to a SAS token or connection string for that container "
+                 "AZURE_PARKING_LABELS_CONNECTION_STRING to a SAS token or connection string for that container "
                  "(permissions: read, add, create, write, list).")
     remote_campaigns = {n.split("/", 1)[0] for n in remote_names if "/" in n}
     local_campaigns = {p.name for p in LABELS.glob("*") if (p / "campaign.json").exists()} if LABELS.exists() else set()
