@@ -32,6 +32,12 @@ export default defineConfig(() => {
         }
       }
     },
+    // Vite pre-bundles only the dependencies it finds from the build inputs. The dev-only label
+    // page (label.html) is deliberately not an input, so list its libraries here; otherwise Vite
+    // discovers them mid-session, re-optimizes, and the page fails with "504 Outdated Optimize Dep".
+    optimizeDeps: {
+      include: ['terra-draw', 'terra-draw-maplibre-gl-adapter', 'polygon-clipping']
+    },
     // Dev server proxies
     server: {
       proxy: {
