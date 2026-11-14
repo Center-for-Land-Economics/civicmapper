@@ -9,6 +9,7 @@ Existing scripts are left as they are (they ship as-is); new cities import from 
 """
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -172,7 +173,10 @@ def categorize_sptb(code) -> str:
 
 def owner_is_public(owner: pd.Series, extra: list[str] = ()) -> pd.Series:
     kw = [k for k in (*PUBLIC_OWNER_KEYWORDS, *extra) if k]
-    pat = "|".join(pd.Series(kw).str.replace(r"([.()&+?*\[\]^$|\\])", r"\\\1", regex=True))
+    # Short keywords must end on a word boundary: " ISD" is a school district, not owner
+    # ISDELL / ISDARELY. Long ones stay prefixes ("...IMPROVEMENT CORP" -> "CORPORATION").
+    pat = "|".join(k + (r"\b" if len(raw.strip()) <= 5 and re.search(r"\w$", raw) else "")
+                   for raw, k in zip(kw, pd.Series(kw).str.replace(r"([.()&+?*\[\]^$|\\])", r"\\\1", regex=True)))
     return owner.fillna("").astype(str).str.upper().str.contains(pat, regex=True)
 
 

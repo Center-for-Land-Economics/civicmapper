@@ -13,14 +13,23 @@ Sources:
 City limits: Census TIGER/Line 2025 place 4817000, cross-checked with the roll's City of
 Corpus Christi taxing entity (C03).
 
-Corpus Christi also reaches into San Patricio County (47 parcels, ~$75M land, mostly
-north-shore industrial land and Port of Corpus Christi tracts), Kleberg County (4 tracts,
-3 public) and Aransas County (water only). As of 2026-11 these are not included; Nueces
-holds ~120k of the city's parcels.
+Corpus Christi also reaches into:
+- San Patricio County (north shore: ~47 parcels, mostly industrial land and Port of Corpus
+  Christi tracts): San Patricio County Appraisal District's 2026 certified export ("As of
+  Supplement", exported 2026-07-27), downloaded by hand to
+    data/jurisidictions/data/corpuschristi/sanpatricio-certified-export.zip
+  joined to SanPatricioCADWebService; the city's entity code there is CCC.
+- Kleberg County (4 tracts on the south end, 3 of them public): NOT included until a Kleberg
+  CAD certified export is found (its web-map values are the 2027 work-in-progress roll).
+  Link pattern when it is: esearch.kleberg-cad.org/Property/View/<prop_id>.
+- Aransas County: water only, no parcels.
+
+Links: the districts' True Automation eSearch pages, pinned to the 2026 roll year
+(esearch.nuecescad.net/Property/View/<id>?year=2026; patterns confirmed by the user).
 
 Pipeline shared with Brownsville and El Paso: pacs_city.py + tx_pipeline.py.
 """
-from pacs_city import PacsCity, build
+from pacs_city import PacsCity, PacsCounty, build
 
 CONFIG = PacsCity(
     city="corpuschristi", state="tx", county="Nueces",
@@ -30,8 +39,7 @@ CONFIG = PacsCity(
     export_url="https://nuecescad.net/",   # manual download (not reachable from the build host)
     tiger_geoid="4817000",
     city_entity="C03",
-    # Placeholder until a working per-parcel URL is confirmed.
-    link=lambda prop_id: f"https://nuecescad.net/?prop_id={prop_id}",
+    link=lambda prop_id: f"https://esearch.nuecescad.net/Property/View/{prop_id}?year=2026",
     gis_values={"land": ["land_val"], "impr": ["imprv_val"], "market": "market"},
     public_names=["CITY OF CORPUS CHRISTI", "CORPUS CHRISTI CITY OF", "NUECES COUNTY",
                   "COUNTY OF NUECES", "PORT OF CORPUS CHRISTI", "PORT OF CORPUS CHRISTI AUTHORITY",
@@ -41,7 +49,17 @@ CONFIG = PacsCity(
                   "LONDON INDEPENDENT SCHOOL", "DEL MAR COLLEGE", "TEXAS A&M UNIVERSITY",
                   "TEXAS A & M UNIVERSITY", "CORPUS CHRISTI HOUSING AUTHORITY",
                   "HOUSING AUTHORITY OF THE CITY OF CORPUS CHRISTI", "NUECES COUNTY HOSPITAL",
-                  "STATE OF TEXAS", "UNITED STATES OF AMERICA", "UNITED STATES GOVERNMENT"],
+                  "STATE OF TEXAS", "UNITED STATES OF AMERICA", "UNITED STATES GOVERNMENT",
+                  "SAN PATRICIO COUNTY", "COUNTY OF SAN PATRICIO"],
+    extra_counties=[PacsCounty(
+        county="San Patricio",
+        gis_layer=("https://services8.arcgis.com/EPyTHdGc5BhnbNty/arcgis/rest/services/"
+                   "SanPatricioCADWebService/FeatureServer/0"),
+        export_file="sanpatricio-certified-export.zip",
+        city_entity="CCC",
+        link=lambda prop_id: f"https://esearch.sanpatcad.org/Property/View/{prop_id}?year=2026",
+        gis_values={"land": ["land_val"], "impr": ["imprv_val"], "market": "market"},
+    )],
 )
 
 if __name__ == "__main__":

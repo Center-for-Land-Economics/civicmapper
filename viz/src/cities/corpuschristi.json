@@ -1,0 +1,35 @@
+{
+  "notes": [
+    "City of Corpus Christi, TX, within city limits: Nueces County plus the north-shore piece in San Patricio County. Built by data/jurisidictions/run_corpuschristi.py (pacs_city.py + tx_pipeline.py). 113,221 parcels, $8.55B land (Nueces $8.52B, San Patricio $33.2M).",
+    "Values: Nueces Central Appraisal District's 2026 certified export, 'As of Supplement' (exported 2026-10-09, PACS layout 8.0.34), and San Patricio County Appraisal District's 2026 certified export (2026-07-27). Both were downloaded by hand (the districts' sites are not reachable from the build host). Check: the roll's City of Corpus Christi (C03) land is $10.22B including exempt land, vs $10.01B on the district's July certified totals report (supplements since).",
+    "Geometry: each district's own web-map service (NuecesCADWebService, SanPatricioCADWebService), joined on prop_id. Those maps follow the 2027 parcel fabric, so 8,200 taxable 2026 records ($280M land) have no polygon of their own. 1,641 are placed onto a matching polygon ($101M county-wide: identical legal description, e.g. undivided-interest shares of one tract; condo units onto their own development; or a unique address on a polygon re-IDed since certification). The rest (~$175M in the city, ~2% of taxable land; mostly condo towers such as Sandpiper, Sea Gull and Beach Club, which the district does not draw at all) are left off.",
+    "Not included: Kleberg County (4 tracts on the south end, 3 public; no Kleberg CAD export reachable yet). Aransas County's part of the city is water. City limits: Census TIGER/Line 2025 place 4817000; taxing-entity codes (Nueces C03, San Patricio CCC) agree on all but 104 / 26 accounts.",
+    "Exemptions: the rolls' EX flags (EX-XV etc.) plus named public owners: 3,997 records dropped (Port of Corpus Christi, city, county, school districts, TAMU-CC, housing authority). 19 possessory-interest leaseholds and 19 utility records are left off.",
+    "Condo and common-interest developments merged onto their land: 1,954 units in 130 developments (mostly the unit hull grown into unparcelled ground), plus 5 footprint-lot townhome PUDs. 586 polygons carry stacked records (undivided interests, re-IDed accounts), summed.",
+    "Land area: on 630 parcels the polygon is a fragment of the roll's acreage and the appraiser's area is used. 54 GIS slivers (e.g. King Estates and The Coves at Lago Vista lots drawn as 3-7 sqft) are hidden.",
+    "Singularity sweep: 182 of 113,221 parcels, all genuine appraiser values (Commodores Cove / Ports O'Call waterfront lots at $40-53/sqft next to $70 canal lots, commercial frontage) or hidden slivers, plus 4 small condo units (Whiteley Cove, Cruiser Townhomes, Mustang Island Beach Bungalows) at 4-8x their neighbours.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 368 lots, 291.1 acres, $82.4M est. land value. apply_parking_category.py tagged 81 parcels 'Parking Lot'.",
+    "Links: the districts' eSearch pages pinned to 2026 (esearch.nuecescad.net/Property/View/<id>?year=2026; esearch.sanpatcad.org/Property/View/<id>?year=2026); patterns from working examples, not checked from the build host."
+  ],
+  "displayName": "Corpus Christi",
+  "state": "tx",
+  "filename": "corpuschristi-tx-parcels.parquet",
+  "pmtilesFilename": "corpuschristi-tx-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-14-ncad2026",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "corpuschristi-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "corpus-christi",
+    "corpus_christi",
+    "corpuschristi-tx",
+    "corpus-christi-tx"
+  ],
+  "coords": [
+    -97.3964,
+    27.8006
+  ]
+}
