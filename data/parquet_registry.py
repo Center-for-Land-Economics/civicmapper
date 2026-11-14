@@ -91,6 +91,8 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "fortworth": CityParquet(city="fortworth", state="tx", legacy_filename="fortworth-tx-parcels.parquet"),
     # City of Brownsville, TX (Cameron County).
     "brownsville": CityParquet(city="brownsville", state="tx", legacy_filename="brownsville-tx-parcels.parquet"),
+    # City of El Paso, TX (El Paso County).
+    "elpaso": CityParquet(city="elpaso", state="tx", legacy_filename="elpaso-tx-parcels.parquet"),
     "rockville": CityParquet(
         city="rockville", state="md", legacy_filename="rockville-md-parcels.parquet"
     ),

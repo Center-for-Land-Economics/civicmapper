@@ -30,7 +30,7 @@ from typing import Callable
 import geopandas as gpd
 import pandas as pd
 
-from tx_common import fix_geometry, log
+from tx_common import fetch_arcgis_geojson, fix_geometry, log
 from tx_pipeline import process
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +64,8 @@ class PacsCity:
     city: str
     state: str
     county: str                                  # COUNTYNAME label
-    gis_url: str                                 # district GIS parcels zip (shapefile)
+    gis_url: str | None                          # district GIS parcels zip (shapefile), or
+                                                 # None and set gis_layer (ArcGIS FeatureServer)
     export_url: str                              # certified appraisal export zip
     tiger_geoid: str                             # TIGER/Line 2025 place GEOID for city limits
     city_entity: str                             # taxing-entity code for the city (cross-check)
@@ -73,6 +74,7 @@ class PacsCity:
     # District GIS value columns, used ONLY for roll records whose certified values are
     # placeholders (market value == prop_id): {"land": [...], "impr": [...], "market": col}.
     gis_values: dict | None = None
+    gis_layer: str | None = None                 # ArcGIS layer URL with a prop_id field
     public_names: list[str] = field(default_factory=list)
     tiger_url: str = "https://www2.census.gov/geo/tiger/TIGER2025/PLACE/tl_2025_48_place.zip"
 
@@ -102,13 +104,33 @@ def load_certified_roll(cfg: PacsCity, data_dir: Path) -> pd.DataFrame:
     sups = pd.to_numeric(d["sup_num"], errors="coerce").value_counts().to_dict()
     log(f"Certified roll: {len(d):,} real-property records; years {years}; sup_num {sups}")
     assert set(years) == {cfg.expected_year}, f"unexpected roll years {years}"
-    d = d[pd.to_numeric(d["sup_num"], errors="coerce").eq(0)]
+    # Certified exports carry sup_num 0; "As of Supplement" exports (El Paso) carry each
+    # property's latest supplement instead. Keep the latest supplement per property + owner.
+    d["_sup"] = pd.to_numeric(d["sup_num"], errors="coerce").fillna(0)
+    d = d.sort_values("_sup").drop_duplicates(["prop_id", "py_owner_name"], keep="last").drop(columns="_sup")
     for c in VALUE_COLS:
         d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0)
     d["prop_id"] = pd.to_numeric(d["prop_id"], errors="coerce").astype("Int64")
     d["pct"] = pd.to_numeric(d["ownership_pct"], errors="coerce")
     d.to_parquet(cache, index=False)
     return d
+
+
+def load_state_codes(export_zip: Path) -> pd.DataFrame:
+    """The district's APPRAISAL_STATE_CODE table: local code -> statewide (PTD) category.
+
+    Local codes differ by district (El Paso: C2 = colonia lots, C10 = commercial vacant lot,
+    X21-X23 = ranch improvements on ag land = statewide D2, not exempt), so classes are mapped
+    through this table rather than read from the local code's first letter.
+    """
+    with zipfile.ZipFile(export_zip) as zf:
+        name = next((n for n in zf.namelist() if n.upper().endswith("STATE_CODE.TXT")), None)
+        if name is None:
+            return pd.DataFrame(columns=["code", "desc", "ptd", "ptd_desc"])
+        lines = zf.read(name).decode("latin-1").splitlines()
+    rows = [(l[0:10].strip().upper(), l[10:60].strip(), l[60:70].strip().upper(), l[70:120].strip())
+            for l in lines if l.strip()]
+    return pd.DataFrame(rows, columns=["code", "desc", "ptd", "ptd_desc"]).drop_duplicates("code")
 
 
 def collapse_owners(d: pd.DataFrame) -> pd.DataFrame:
@@ -147,6 +169,10 @@ def build(cfg: PacsCity) -> None:
     gcache = data_dir / f"{cfg.city}-{cfg.state}-geometry.parquet"
     if gcache.exists():
         gis = gpd.read_parquet(gcache)
+    elif cfg.gis_layer:
+        # The district's own web-map layer, pre-filtered to the city outline (+200 m).
+        pre = gpd.GeoSeries([boundary], crs=4326).to_crs(3857).buffer(200).simplify(50).to_crs(4326).iloc[0]
+        gis = fetch_arcgis_geojson(cfg.gis_layer, polygon=pre, cache=gcache, id_field="ObjectID_1")
     else:
         z = _download(cfg.gis_url, data_dir / f"{cfg.city}-{cfg.state}-gis.zip")
         shp = next(n for n in zipfile.ZipFile(z).namelist() if n.lower().endswith(".shp"))
@@ -164,8 +190,18 @@ def build(cfg: PacsCity) -> None:
     acres = pd.to_numeric(roll["land_acres"], errors="coerce") / 10000.0
     legal = pd.to_numeric(roll["legal_acreage"], errors="coerce") / 10000.0
     roll["LAND_ACRE"] = acres.where(acres > 0, legal.where(legal > 0))
-    roll["STATE_USE_CODE"] = roll["land_state_cd"].fillna("").str.strip().where(
-        roll["land_state_cd"].fillna("").str.strip().ne(""), roll["imprv_state_cd"])
+    local = roll["land_state_cd"].fillna("").str.strip().where(
+        roll["land_state_cd"].fillna("").str.strip().ne(""), roll["imprv_state_cd"].fillna("").str.strip()).str.upper()
+    sc = load_state_codes(data_dir / f"{cfg.city}-{cfg.state}-certified-export.zip").set_index("code")
+    ptd = local.map(sc["ptd"]).where(lambda s: s.fillna("").ne(""), local)
+    # Vacant land whose local code says COMMERCIAL keeps that distinction (categorize_sptb
+    # reads "C1C" as Vacant Commercial); every other code is read as its statewide category.
+    commercial_vacant = ptd.str.startswith("C") & local.map(sc["desc"]).fillna("").str.upper().str.contains("COMMERCIAL")
+    roll["LOCAL_STATE_CODE"] = local
+    roll["STATE_USE_CODE"] = ptd.where(~commercial_vacant, "C1C")
+    unmapped = local[local.ne("") & ~local.isin(sc.index)].value_counts()
+    log(f"State codes: {local.nunique():,} local codes mapped to statewide categories via the district's "
+        f"table ({len(sc):,} entries); unmapped: {unmapped.head(8).to_dict()}")
     roll["roll_exempt"] = roll[EX_FLAGS].fillna("").apply(lambda s: s.str.strip().str.upper().eq("T")).any(axis=1)
     log(f"Roll EX-flag total exemptions: {int(roll['roll_exempt'].sum()):,} "
         f"({ {f: int(roll[f].fillna('').str.strip().eq('T').sum()) for f in EX_FLAGS if roll[f].fillna('').str.strip().eq('T').any()} })")

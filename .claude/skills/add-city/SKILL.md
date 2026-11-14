@@ -455,6 +455,27 @@ Don't add data columns or re-bake for values you can compute client-side.
 - **Placeholder values exist in certified rolls:** Cameron 2026 had market == prop_id on 50 new
   builder lots. Check `value == id` before trusting a roll; Brownsville took those from the
   district's GIS copy.
+- **Map local state codes through the district's own APPRAISAL_STATE_CODE table** (ships in the
+  PACS export; `pacs_city.load_state_codes`). Local codes differ: El Paso C2 = COLONIA lots
+  (statewide C2, residential - not "commercial vacant"), C10 = commercial vacant, X21-X23 = ranch
+  improvements on ag land (statewide D2, NOT exempt). Never classify on a local code's first letter.
+- **"As of Supplement" exports** carry each property's latest sup_num, not 0: keep the latest
+  supplement per property (pacs_city does).
+- **Condo legals vary by CAD.** `tx_common.development_key` handles Tarrant ("... BLOCK x LOT y &
+  .002 OF COMMON AREA"), El Paso ("... CONDO #1 SOUTH (1895 SQ FT) & 11.46 UND% IN COMMON AREA",
+  "UNT D32 BLD D PIAZZA ESCONDIDA ... PLUS 2.5 % INT IN COM AREA", "UND 1/50 INT IN COMMON AREA",
+  "... REPLAT A 30 ...", "SURV 12 TR 2-C-4"). Units are clustered spatially (150 m) per name, so a
+  repeated name never hulls distant units. Two separately drawn units are enough to merge.
+- **Fragment polygons:** when the drawn polygon is 1/1000-2/3 of the parcel's OWN roll acreage,
+  the polygon is a fragment - use the appraiser's area. But a parent tract's acreage repeated on
+  every lot of a subdivision (El Paso: 12.129 ac on 0.04-ac lots) is not the parcel's own: skip
+  acreages shared by >= 3 accounts that are mostly "fragments". Watch the sweep's neighbour medians:
+  a wrong denominator on many neighbours shows up as absurd ratios on the parcels next to them.
+- **A lot drawn both on its own polygon and on a shared one** (El Paso: lots 1/5/7/9 attached to
+  one polygon, lot 7 also drawn alone) - drop its shared row before stacking, or it double-counts.
+- **Manual-download CADs (browser challenge, e.g. epcad.org):** the user downloads the certified
+  export; Google Drive works if drive.google.com + drive.usercontent.google.com are allowlisted
+  (download by file id with `drive.usercontent.google.com/download?id=...&confirm=t`).
 - **Parking without Overpass: `parking_lot_extraction.py --overture-only`.** OSM parking comes from
   Overture (`base/infrastructure` class=parking, OSM tags in `source_tags`), gas stations from
   Overture places, buildings via pyarrow (`data/scripts/overture_source.py`; no DuckDB extensions).

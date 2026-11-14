@@ -14,11 +14,11 @@
   "state": "tx",
   "filename": "fortworth-tx-parcels.parquet",
   "pmtilesFilename": "fortworth-tx-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-13-tad2026",
+  "pmtilesVersion": "2026-11-14-round3",
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "fortworth-tx-parking-lots.parquet",
-  "parkingVersion": "2026-11-13-overture",
+  "parkingVersion": "2026-11-14-overture",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [

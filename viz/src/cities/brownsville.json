@@ -16,7 +16,7 @@
   "hideUnderutilized": true,
   "hideRemnants": true,
   "parkingFilename": "brownsville-tx-parking-lots.parquet",
-  "parkingVersion": "2026-11-14-overture",
+  "parkingVersion": "2026-11-14-overture-b",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [

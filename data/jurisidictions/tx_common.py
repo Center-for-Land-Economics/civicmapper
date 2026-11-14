@@ -150,7 +150,9 @@ def categorize_sptb(code) -> str:
     if raw.startswith("B"):
         return "Multifamily"
     if raw.startswith("C"):
-        return "Vacant Commercial" if raw.startswith("C1C") or raw.startswith("C2") else "Vacant Residential"
+        # Local "...C" codes (TAD's C1C / C2C) mark commercial vacant land. Statewide C2 is
+        # COLONIA lots (residential), so a bare C2 is residential (El Paso: 97k colonia lots).
+        return "Vacant Commercial" if raw in ("C1C", "C2C") or raw.startswith(("C1C", "C2C")) else "Vacant Residential"
     if raw[0] in ("D", "E"):
         return "Agricultural / Rural"
     if raw.startswith("F"):
@@ -264,9 +266,14 @@ def clip_centroid_within(gdf: gpd.GeoDataFrame, boundary) -> gpd.GeoDataFrame:
 # Condo regime = condo wording or a FRACTIONAL share of the common element ("& .0129585 OF
 # COMMON AREA", "14.095% COMMON AREA", "33.14% IN CE"). Plain "& PART OF COMMON AREA" is a
 # fee-simple lot in a planned development and is excluded (see CONDO_EXCLUDE_RE).
-CONDO_LEGAL_RE = r"CONDO|CONDMINIUM|[0-9.]+\s*%?\s*(?:OF\s+)?(?:COMMON AREA|CE)\b|% IN CE|\bCE\b"
+CONDO_LEGAL_RE = (r"CONDO|CONDMINIUM|[0-9.]+\s*%?\s*(?:OF\s+)?(?:COMMON AREA|CE)\b|% IN CE|\bCE\b"
+                  # El Paso phrasings: "& 15.30 UND% IN COMMON AREA", "PLUS 8.75 % INT IN COM AREA",
+                  # "& UND 2.11% INT IN CMN AREA"
+                  r"|UND\s*%\s+IN\s+(?:COMMON|COM|CMN)\b|%\s*(?:UND\s+)?INT\s+IN\s+(?:THE\s+)?(?:COMMON|COM|CMN)\b"
+                  # fractional shares: "& UND 1/50 INT IN COMMON AREA"
+                  r"|UND\s+\d+/\d+\s+INT\s+IN\s+(?:THE\s+)?(?:COMMON|COM|CMN)\b")
 CONDO_EXCLUDE_RE = r"PART OF (?:THE )?(?:COMMON AREA|CE)\b"
-DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+SITE|\s+OFFICE CENTER|"
+DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|\s+SITE|\s+TR\b|\s+TRACT\b|\s+REPLAT\b|\s+OFFICE CENTER|"
                 r"\s+APT|\s+COMMON|\s+ALL UNITS|$)")
 
 # Public road right-of-way half-widths (m) by Overture road class, used to keep a gap fill out
@@ -274,6 +281,35 @@ DEV_SPLIT_RE = (r"^(.*?)(?:\s+BLDG|\s+BUILDING|\s+BLOCK|\s+LOT|\s+UNIT|\s+SUITE|
 # INSIDE a site.
 ROW_HALF_WIDTH_M = {"motorway": 30, "trunk": 25, "primary": 18, "secondary": 15, "tertiary": 12,
                     "residential": 9, "unclassified": 9, "living_street": 7, "unknown": 7}
+
+
+def development_key(legal: pd.Series) -> pd.Series:
+    """Development name from a condo / subdivision legal description, across CAD formats.
+
+    Tarrant: "CLOISTERS CONDOMINIUMS, THE BLOCK S LOT 1212 & .0020829 OF COMMON AREA"
+    El Paso: "NORTH MESA PROF CTR CONDO #1 SOUTH (1895.00 SQ FT) & 11.46 UND% IN COMMON AREA",
+             "UNT D32 BLD D PIAZZA ESCONDIDA CONDOMINIUMS PLUS 2.526 % INT IN COM AREA",
+             "A PLACITAS DE ZARAGOSA OFFICE CONDOS 1 #A-1 (2722.00 SQ FT) & 12.70% UND INT ..."
+    Drops parentheticals, the share clause (& ... / PLUS ...), unit / building / suite tokens,
+    '#' unit numbers, a lone leading building letter and trailing compass words, then cuts at
+    BLOCK / LOT / UNIT / ... as before. Phase numbers stay (separate regimes, separate common areas).
+    """
+    s = legal.fillna("").astype(str).str.upper()
+    s = s.str.replace(r"\([^)]*\)", " ", regex=True)
+    s = s.str.split(r"\s&\s|\s&$|\sPLUS\s", n=1, regex=True).str[0]
+    # Leading unit / building tokens only (El Paso "UNT D32 BLD D PIAZZA ..."); trailing ones
+    # ("... CONDOS BLDG F UNIT 1101-8") are cut by DEV_SPLIT_RE below.
+    s = s.str.replace(r"^(?:(?:UNT|UNIT|BLD|BLDG|BUILDING|SUITE|STE|APT)\s+[A-Z0-9-]+\s*)+", " ", regex=True)
+    s = s.str.replace(r"#\s*\S+", " ", regex=True)
+    s = s.str.replace(r"\s+", " ", regex=True).str.strip()
+    s = s.str.extract(DEV_SPLIT_RE)[0].fillna("").str.strip()
+    s = s.str.replace(r"^[A-Z]\s+(?=\S{3,})", "", regex=True)
+    s = s.str.replace(r"^\d+\s+(?=[A-Z]{3,})", "", regex=True)   # leading block number ("105 VISTA DEL SOL")
+    s = s.str.replace(r"(?:\s+(?:NORTH|SOUTH|EAST|WEST|N|S|E|W))+$", "", regex=True)
+    # Trailing unit codes with letters ("... CONDOMINIUMS F-1", "G9", "C-6"); bare numbers stay
+    # because they are phases ("PLACITAS DE ZARAGOSA OFFICE CONDOS 1" vs "... 2").
+    s = s.str.replace(r"\s+[A-Z]{1,2}-?\d+[A-Z]?$", "", regex=True)
+    return s.str.replace(r"\s+", " ", regex=True).str.strip()
 
 
 def road_row_polygons(bounds: tuple, release: str | None = None) -> gpd.GeoDataFrame:
@@ -304,7 +340,7 @@ def _fill_holes(geom):
 
 def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str],
                       area_col: str | None = None, stub_max_sqft: float = 3000.0,
-                      min_units: int = 3, nominal_land: float = 1000.0,
+                      min_units: int = 2, nominal_land: float = 1000.0,
                       blockers: gpd.GeoDataFrame | None = None,
                       roads: gpd.GeoDataFrame | None = None, fill_m: float = 40.0,
                       footprint_lot_sqft: float = 1500.0) -> gpd.GeoDataFrame:
@@ -337,7 +373,7 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
     is_common = legal.str.contains(r"COMMON|OPEN SPACE", regex=True) & (land <= nominal_land)
     is_condo = legal.str.contains(CONDO_LEGAL_RE, regex=True) \
         & ~legal.str.contains(CONDO_EXCLUDE_RE, regex=True) & ~is_common
-    g["_dev"] = legal.str.extract(DEV_SPLIT_RE)[0].str.strip()
+    g["_dev"] = development_key(legal)
     # A development qualifies by unit-outline stubs OR by having its own nominal common-area
     # parcel near its condo records (catches complexes whose units were already summed onto one
     # polygon, and developments of large unit outlines: Crestgrove, Crestbluff, Chelsea Park).
@@ -386,7 +422,18 @@ def merge_condo_stubs(gdf: gpd.GeoDataFrame, legal_col: str, sum_cols: list[str]
     rd = roads.to_crs(utm) if roads is not None else None
     ridx = rd.sindex if rd is not None else None
     new_rows, drop_idx, how = [], set(unit_idx), {"common_area_parcel": 0, "nominal_parent": 0, "unit_hull_fill": 0}
-    for dev, units in g.loc[unit_idx].groupby("_dev"):
+    # Split each development name into spatial clusters (units within 150 m of each other), so a
+    # name that repeats across the city never hulls units kilometres apart into one parcel.
+    ug = g.loc[unit_idx]
+    cluster = pd.Series(index=ug.index, dtype=object)
+    for dev, units in ug.groupby("_dev"):
+        blobs = unary_union(list(units.geometry.buffer(75)))
+        blobs = list(getattr(blobs, "geoms", [blobs]))
+        pts = units.geometry.representative_point()
+        for i, b in enumerate(blobs):
+            cluster.loc[pts[pts.within(b)].index] = f"{dev}#{i}"
+    for dev_c, units in ug.groupby(cluster):
+        dev = dev_c.rsplit("#", 1)[0]
         ugeom = unary_union(list(units.geometry))
         pts = units.geometry.representative_point()
         commons = others[(others["_dev"] == dev) & is_common.loc[others.index]

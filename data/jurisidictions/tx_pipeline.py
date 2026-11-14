@@ -90,6 +90,17 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
         parcel = parcel[~nov].copy()
 
     # ── 4. Stacked records summed onto their footprint, then account dedup ───
+    # An account drawn both on a polygon of its own AND on a polygon shared with other accounts
+    # (El Paso: lots 1/5/7/9 of Cimarron Canyon blk 15 attached to one polygon, lot 7 also drawn
+    # alone) would be counted twice. Drop its row on the shared polygon; keep its own.
+    gk = parcel.geometry.apply(lambda g: g.wkb_hex if g is not None else "")
+    shared = gk.map(parcel.groupby(gk)["acct"].nunique()) > 1
+    has_own = parcel["acct"].map(parcel.loc[~shared].groupby("acct").size()).fillna(0) > 0
+    drop_shared = shared & has_own
+    if drop_shared.any():
+        log(f"Dropping {int(drop_shared.sum()):,} rows on shared polygons for accounts that also "
+            f"have their own polygon")
+        parcel = parcel[~drop_shared].copy()
     parcel = merge_stacked_footprints(parcel, "acct", ["LAND_VAL", "IMPR_VAL", "MARKET_VALUE"],
                                       area_col="LAND_ACRE", dup_subset=["OWNER_NAME"])
     parcel = dedup_accounts(parcel, "acct", ["LAND_VAL", "IMPR_VAL", "MARKET_VALUE", "STATE_USE_CODE"])
@@ -133,6 +144,23 @@ def process(raw: gpd.GeoDataFrame, off_roll: gpd.GeoDataFrame, boundary, *, city
     # LAND_ACRE agrees with the polygon for the vast majority, but on a few percent it holds
     # square feet, tiny fractions or a partial area; trust it only within 25% of the polygon.
     use_reported = (ex["reported_sqft"] > 0) & (ratio.sub(1).abs() <= 0.25)
+    # Polygon much SMALLER than a sane roll acreage (1/1000 < drawn/roll < 2/3) on a whole-parcel
+    # source: the polygon is a fragment (El Paso prop 94560: 3.52 ac on the roll, 2,359 sqft
+    # drawn -> $226/sqft), so the appraiser's land area is the denominator. Below 1/1000 is a
+    # units mix-up (square feet in the acres field) and the polygon is used. Clipped county parts
+    # (not home_county) are prorated below instead.
+    home = ex["COUNTYNAME"].eq(home_county) if home_county else pd.Series(True, index=ex.index)
+    # ... but only if that acreage is the parcel's OWN: El Paso repeats a parent tract's acreage
+    # (12.129 ac) on every lot of a subdivision, which would spread each lot over 12 acres.
+    # A repeated acreage is a tract figure when MOST accounts carrying it look like fragments
+    # (a real repeated lot size mostly matches its polygons).
+    cand = home & (ratio < 1 / 1.5) & (ratio > 1 / 1000) & (ex["reported_sqft"] > 0)
+    key = ex["reported_sqft"].round(0)
+    rep_n = key.map(key.value_counts())
+    cand_share = cand.groupby(key).transform("mean")
+    fragment = cand & ~((rep_n >= 3) & (cand_share >= 0.5))
+    use_reported = use_reported | fragment
+    log(f"Polygon is a fragment of the roll's land area: {int(fragment.sum()):,} parcels use the appraiser's area")
     ex["land_area_sqft"] = np.where(use_reported, ex["reported_sqft"], ex["geom_area_sqft"])
     ex["area_source"] = np.where(use_reported, "reported", "gis")
     # Non-Tarrant rows (Denton/Parker/Wise/Johnson parts of Fort Worth) are drawn only where
