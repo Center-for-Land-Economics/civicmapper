@@ -109,6 +109,29 @@ function validRing(ring) {
       Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90);
 }
 
+// Paint grid (label page "Paint" tool): one cell per NAIP pixel across the square, row-major from
+// the top-left corner; values 0 none, 1 paved, 2 unpaved, 3 structure, 4 unsure, 5 cut-out;
+// rle = "value:count,…". Painted cells override polygons at export; painted cut-outs clear them.
+const MAX_PAINT_CELLS = 2000 * 2000;
+function validatePaint(p, errors) {
+  if (p === undefined || p === null) return null;
+  const ok = p && typeof p === "object" && Number.isInteger(p.width) && Number.isInteger(p.height) &&
+    p.width > 0 && p.height > 0 && p.width * p.height <= MAX_PAINT_CELLS &&
+    Number.isFinite(p.cell_m) && p.cell_m > 0 && p.cell_m <= 10 &&
+    Array.isArray(p.corners) && p.corners.length === 4 &&
+    p.corners.every((c) => Array.isArray(c) && c.length === 2 && c.every(Number.isFinite)) &&
+    typeof p.rle === "string" && /^[0-5]:\d+(,[0-5]:\d+)*$/.test(p.rle);
+  if (!ok) { errors.push("paint"); return null; }
+  let total = 0, classes = false;
+  for (const run of p.rle.split(",")) {
+    const [v, n] = run.split(":").map(Number);
+    total += n;
+    if (v >= 1 && v <= 4 && n > 0) classes = true;
+  }
+  if (total !== p.width * p.height) { errors.push("paint: run lengths do not match the grid"); return null; }
+  return { classes, value: { width: p.width, height: p.height, cell_m: p.cell_m, corners: p.corners, rle: p.rle } };
+}
+
 export function validateLabel(body, squareIds) {
   const errors = [];
   const b = body && typeof body === "object" ? body : {};
@@ -131,9 +154,11 @@ export function validateLabel(body, squareIds) {
     polygons.push({ type: "Feature", geometry: { type: "Polygon", coordinates: g.coordinates },
       properties: { class: cls, ...(f.properties.from_prefill ? { from_prefill: true } : {}) } });
   }
-  if (b.outcome === "labeled" && !polygons.some((p) => p.properties.class !== "cutout")) {
-    errors.push("labeled needs at least one polygon that is not a cut-out");
+  const paint = validatePaint(b.paint, errors);
+  if (b.outcome === "labeled" && !polygons.some((p) => p.properties.class !== "cutout") && !paint?.classes) {
+    errors.push("labeled needs at least one polygon or painted cell that is not a cut-out");
   }
+  if (b.outcome !== "labeled" && paint) errors.push(`${b.outcome} takes no paint`);
   if (b.outcome !== "labeled" && polygons.length > 0) errors.push(`${b.outcome} takes no polygons`);
   const flags = Array.isArray(b.flags) ? b.flags.filter((f) => FLAGS.includes(f)) : [];
   const note = typeof b.note === "string" ? b.note.slice(0, 1000) : "";
@@ -144,7 +169,8 @@ export function validateLabel(body, squareIds) {
   return {
     label: {
       square_id: b.square_id, labeler, outcome: b.outcome, mode: b.mode, polygons, flags, note,
-      seconds, naip_year: naipYear, imagery
+      seconds, naip_year: naipYear, imagery,
+      ...(paint ? { paint: paint.value } : {})
     }
   };
 }

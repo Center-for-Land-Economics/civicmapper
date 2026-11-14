@@ -38,6 +38,10 @@
     .warn { color:#ffb74d; }
     #toast { position:absolute; left:50%; top:12px; transform:translateX(-50%); background:#000c; padding:6px 12px;
       border-radius:6px; display:none; z-index:5; }
+    #brush { position:absolute; z-index:3; border:1.5px solid #fff; border-radius:50%; pointer-events:none;
+      box-shadow:0 0 0 1px #0008; }
+    #brush-size { position:absolute; left:50px; top:12px; z-index:3; background:#000b; padding:3px 8px; border-radius:5px;
+      font-size:12px; }
     #map-hint { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); z-index:4; max-width:420px;
       text-align:center; background:#000b; padding:14px 18px; border-radius:8px; font-size:15px; }
     #blocked { padding:40px; max-width:560px; }
@@ -51,6 +55,7 @@
 <body>
   <div id="app" hidden>
     <div id="map"><div id="toast"></div>
+      <div id="brush" hidden></div><div id="brush-size" hidden></div>
       <div id="map-hint">Type your name in the box on the right and press <kbd>Enter</kbd> to load your first square.</div></div>
     <aside id="side">
       <h1>Surface parking labels <span class="meta">(dev)</span></h1>
@@ -72,6 +77,7 @@
         <button id="tool-rect">Rectangle <kbd>R</kbd></button>
         <button id="tool-select">Edit <kbd>E</kbd></button>
         <button id="tool-delete">Delete <kbd>Del</kbd></button>
+        <button id="tool-paint" title="Paint pixels with the current class. Right- or Alt-drag erases, Space+drag pans, [ ] brush size.">Paint <kbd>B</kbd></button>
         <button id="tool-parcel" title="Click inside a dotted parcel outline to turn it into a shape of the current class">From parcel <kbd>G</kbd></button>
         <button id="undo" title="Undo (Ctrl+Z)">Undo <kbd>Ctrl Z</kbd></button>
         <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)">Redo <kbd>Ctrl Y</kbd></button>
@@ -82,7 +88,8 @@
         <b>Rectangle:</b> click two corners along one edge, then click to set the width.
         Drag to pan, scroll to zoom, <kbd>Esc</kbd> cancels a shape in progress.
         <b>Edit:</b> click a shape (the smallest under the pointer; click again to reach the one beneath), drag
-        its corners, then change its class or delete it. <b>From parcel:</b> click inside a dotted parcel to copy it
+        its corners, then change its class or delete it. <b>Paint:</b> drag to paint pixels with the current class (cut-out paint clears); right- or Alt-drag erases,
+        Space+drag pans, <kbd>[</kbd> <kbd>]</kbd> brush size. Paint overrides shapes. <b>From parcel:</b> click inside a dotted parcel to copy it
         as a shape. <b>Snap</b> pulls corners onto shapes, parcels and the square edge; hold <kbd>Alt</kbd> to place freely.</p>
       <h2>Class (new / selected shape)</h2>
       <div class="grid2">
@@ -172,7 +179,7 @@
       <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · B paint ([ ] brush, right/Alt-drag erase, Space pan) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>

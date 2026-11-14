@@ -61,6 +61,13 @@ test("rejects bad campaign names and invalid labels", async () => {
   const cut = { ...poly, properties: { class: "cutout" } };
   assert.equal((await post({ labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [cut] })).status, 400,
     "a label of only cut-outs is rejected");
+  const paint = { width: 4, height: 4, cell_m: 0.6, corners: [[0, 0.002], [0.002, 0.002], [0.002, 0], [0, 0]] };
+  const ids = new Set(["demo-0001"]);
+  const lbl = { labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [] };
+  assert.ok(validateLabel({ ...lbl, paint: { ...paint, rle: "0:14,1:2" } }, ids).label.paint, "paint-only label accepted");
+  assert.ok(validateLabel({ ...lbl, paint: { ...paint, rle: "0:14,5:2" } }, ids).errors, "cut-out-only paint rejected");
+  assert.ok(validateLabel({ ...lbl, paint: { ...paint, rle: "0:10,1:2" } }, ids).errors, "short run lengths rejected");
+  assert.ok(validateLabel({ ...lbl, paint: { ...paint, rle: "0:14,9:2" } }, ids).errors, "unknown paint value rejected");
   const bad = { ...poly, properties: { class: "lawn" } };
   assert.ok(validateLabel({ labeler: "A", square_id: "demo-0001", outcome: "labeled", mode: "blind", polygons: [bad] },
     new Set(["demo-0001"])).errors);

@@ -11,11 +11,10 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import * as maplibregl from 'maplibre-gl';
 import '../maplibre-worker';
 import {
-  TerraDraw, TerraDrawAngledRectangleMode, TerraDrawPolygonMode, TerraDrawSelectMode,
+  TerraDraw, TerraDrawAngledRectangleMode, TerraDrawPolygonMode, TerraDrawRenderMode, TerraDrawSelectMode,
   type GeoJSONStoreFeatures, type HexColor
 } from 'terra-draw';
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
-import polygonClipping, { type MultiPolygon as ClipMulti, type Polygon as ClipPoly } from 'polygon-clipping';
 import { is3DPrintEnabled as isLocalDev } from '../print3d';
 
 // 'cutout' = a hole: subtracted from the parking shapes it overlaps when labels are exported
@@ -35,6 +34,13 @@ const TILER = 'https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/We
 const MAX_ITEMS = 4;
 const COLORS: Record<Cls, HexColor> = { paved: '#ff4d6d', unpaved: '#f4a259', structure: '#b388ff', unsure: '#ffe066',
   cutout: '#ffffff' };
+const CELL_M = 0.6; // paint grid cell = one NAIP pixel
+const SCALE = 2;    // canvas pixels per grid cell (smoother polygon edges)
+const CODES: Record<Cls, number> = { paved: 1, unpaved: 2, structure: 3, unsure: 4, cutout: 5 };
+const CUTOUT_CODE = 5;
+const hexRgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const CODE_RGB: Record<number, number[]> = Object.fromEntries(
+  (Object.keys(CODES) as Cls[]).map((c) => [CODES[c], hexRgb(COLORS[c])]));
 const CLASS_KEYS: Record<string, Cls> = { '1': 'paved', '2': 'unpaved', '3': 'structure', '4': 'unsure', '5': 'cutout',
   x: 'cutout', X: 'cutout' };
 
@@ -84,6 +90,7 @@ function closedRing(ring: number[][]): number[][] {
 }
 
 type Pt = [number, number];
+type Tool = 'polygon' | 'angled-rectangle' | 'select' | 'parcel' | 'paint';
 function pointInRing(pt: Pt, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -124,7 +131,8 @@ async function main() {
     parcels: true,
     shapesHidden: false,
     busy: false,
-    tool: 'polygon' as 'polygon' | 'angled-rectangle' | 'select' | 'parcel',
+    tool: 'polygon' as Tool,
+    brushM: 1.5,
     snap: true,
     parcels_fc: { type: 'FeatureCollection', features: [] } as GeoJSON.FeatureCollection
   };
@@ -172,12 +180,75 @@ async function main() {
     outlineOpacity: () => (state.shapesHidden ? 0 : 1),
     outlineWidth: 2
   };
-  map.addSource('label-fill', { type: 'geojson', data: empty });
-  map.addLayer({ id: 'label-fill', type: 'fill', source: 'label-fill', paint: {
-    'fill-color': ['match', ['get', 'class'], 'unpaved', COLORS.unpaved, 'structure', COLORS.structure,
-      'unsure', COLORS.unsure, COLORS.paved],
-    'fill-opacity': 0.3
-  } });
+  // Fills and paint share one canvas laid over the sample square: one grid cell per NAIP pixel
+  // (0.6 m), drawn SCALE canvas pixels wide. Polygons are rasterised into it (cut-outs erase),
+  // then painted cells override them (paint cut-out clears).
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 2;
+  canvas.style.display = 'none';
+  document.body.appendChild(canvas);
+  const ctx2d = canvas.getContext('2d', { willReadFrequently: true })!;
+  map.addSource('label-canvas', { type: 'canvas', canvas, animate: false,
+    coordinates: [[-96.71, 33.01], [-96.69, 33.01], [-96.69, 32.99], [-96.71, 32.99]] });
+  map.addLayer({ id: 'label-canvas', type: 'raster', source: 'label-canvas',
+    paint: { 'raster-opacity': 0.35, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } });
+  const canvasSource = () => map.getSource('label-canvas') as maplibregl.CanvasSource;
+
+  const grid = { n: 0, cells: new Uint8Array(0), tl: [0, 0] as Pt, kx: 1, inv: [0, 0, 0, 0], corners: [] as Pt[],
+    painted: false };
+  function setupGrid(sq: Square) {
+    const ring = sq.geometry.coordinates[0].slice(0, 4) as Pt[];
+    const byLat = [...ring].sort((a, b) => b[1] - a[1]);
+    const [tl, tr] = byLat.slice(0, 2).sort((a, b) => a[0] - b[0]);
+    const [bl, br] = byLat.slice(2).sort((a, b) => a[0] - b[0]);
+    const kx = Math.cos((tl[1] * Math.PI) / 180);
+    const ex = [(tr[0] - tl[0]) * kx, tr[1] - tl[1]], ey = [(bl[0] - tl[0]) * kx, bl[1] - tl[1]];
+    const det = ex[0] * ey[1] - ey[0] * ex[1];
+    const n = Math.max(1, Math.round((Math.hypot(ex[0], ex[1]) * 111320) / CELL_M));
+    Object.assign(grid, { n, cells: new Uint8Array(n * n), tl, kx, corners: [tl, tr, br, bl], painted: false,
+      inv: [ey[1] / det, -ey[0] / det, -ex[1] / det, ex[0] / det] });
+    canvas.width = canvas.height = n * SCALE;
+    canvasSource().setCoordinates([tl, tr, br, bl] as any);
+  }
+  /** lng/lat -> (u, v) in [0, 1] across the square (u east-ish, v south-ish). */
+  function toUV(lng: number, lat: number): Pt {
+    const dx = (lng - grid.tl[0]) * grid.kx, dy = lat - grid.tl[1];
+    return [grid.inv[0] * dx + grid.inv[1] * dy, grid.inv[2] * dx + grid.inv[3] * dy];
+  }
+  function stamp(u: number, v: number, val: number) {
+    const n = grid.n, r = state.brushM / CELL_M;
+    const ci = u * n, cj = v * n;
+    for (let j = Math.max(0, Math.floor(cj - r)); j <= Math.min(n - 1, Math.ceil(cj + r)); j++) {
+      for (let i = Math.max(0, Math.floor(ci - r)); i <= Math.min(n - 1, Math.ceil(ci + r)); i++) {
+        if ((i + 0.5 - ci) ** 2 + (j + 0.5 - cj) ** 2 <= r * r) grid.cells[j * n + i] = val;
+      }
+    }
+    if (val) grid.painted = true;
+  }
+  function paintRle(): string | null {
+    const c = grid.cells;
+    if (!c.some((x) => x)) return null;
+    const out: string[] = [];
+    let cur = c[0], run = 0;
+    for (let k = 0; k < c.length; k++) {
+      if (c[k] === cur) run++;
+      else { out.push(`${cur}:${run}`); cur = c[k]; run = 1; }
+    }
+    out.push(`${cur}:${run}`);
+    return out.join(',');
+  }
+  function loadRle(rle: string | null | undefined) {
+    grid.cells.fill(0);
+    grid.painted = false;
+    if (!rle) return;
+    let k = 0;
+    for (const part of rle.split(',')) {
+      const [v, nRun] = part.split(':').map(Number);
+      grid.cells.fill(v, k, Math.min(grid.cells.length, k + nRun));
+      k += nRun;
+    }
+    grid.painted = grid.cells.some((x) => x);
+  }
   // Snapping (polygon drawing and corner dragging): vertices first, then edges, of the other
   // shapes, the parcels and the sample square. Toggle with S; hold Alt to place freely.
   const rings = (g: GeoJSON.Geometry | null | undefined): number[][][] =>
@@ -226,6 +297,8 @@ async function main() {
     }),
     modes: [
       new TerraDrawPolygonMode({ styles: polyStyles, snapping }),
+      // Idle mode while painting: shapes stay visible but ignore the pointer.
+      new TerraDrawRenderMode({ modeName: 'idle', styles: {} }),
       new TerraDrawAngledRectangleMode({ styles: polyStyles }),
       new TerraDrawSelectMode({
         // Selection is ours (map click below): Terra Draw picks the top shape, which made a cut-out
@@ -253,7 +326,10 @@ async function main() {
   // ---- undo / redo: snapshots of the finished shapes (geometry + class), one per edit ---------
   const undoStack = { past: [] as string[], future: [] as string[], restoring: false };
   function snapshotShapes(): string {
-    return JSON.stringify(draw.getSnapshot()
+    return JSON.stringify({ p: paintRle(), s: shapeList() });
+  }
+  function shapeList() {
+    return (draw.getSnapshot()
       .filter((f) => f.geometry.type === 'Polygon' && !f.properties?.currentlyDrawing)
       .map((f) => {
         const { selected: _s, ...props } = f.properties;
@@ -282,7 +358,9 @@ async function main() {
     undoStack.restoring = true;
     for (const f of draw.getSnapshot().filter((x) => x.properties?.selected)) draw.deselectFeature(f.id as string);
     draw.clear();
-    draw.addFeatures(JSON.parse(snap));
+    const { s: shapesSnap, p: paintSnap } = JSON.parse(snap);
+    draw.addFeatures(shapesSnap);
+    loadRle(paintSnap);
     undoStack.restoring = false;
     queueFills();
     updateUndoButtons();
@@ -307,26 +385,48 @@ async function main() {
 
   const polygons = () => draw.getSnapshot().filter((f) => f.geometry.type === 'Polygon');
 
-  // Fills = every non-cut-out shape minus the cut-outs, redrawn (once per frame) on any change.
+  // Canvas = polygons (cut-outs erase) + painted cells on top; redrawn once per frame on change.
   let fillQueued = false;
   function renderFills() {
     fillQueued = false;
+    if (!grid.n) return;
+    const W = grid.n * SCALE;
+    ctx2d.globalCompositeOperation = 'source-over';
+    ctx2d.clearRect(0, 0, W, W);
     const shapes = polygons().map((f) => ({
       cls: (f.properties?.class as Cls) || (f.properties?.currentlyDrawing ? state.cls : 'paved'),
-      rings: f.geometry.coordinates as ClipPoly
-    })).filter((s) => s.rings[0]?.length >= 4);
-    const cuts = shapes.filter((s) => s.cls === 'cutout').map((s) => s.rings);
-    const feats: GeoJSON.Feature[] = [];
-    for (const s of shapes) {
-      if (s.cls === 'cutout') continue;
-      let geom: ClipMulti = [s.rings];
-      if (cuts.length) {
-        try { geom = polygonClipping.difference(s.rings, ...cuts); } catch { /* mid-edit self-intersection: show unclipped */ }
+      ring: (f.geometry.coordinates as number[][][])[0]
+    })).filter((x) => x.ring?.length >= 4);
+    const fillRing = (ring: number[][]) => {
+      ctx2d.beginPath();
+      ring.forEach((c, i) => { const [u, v] = toUV(c[0], c[1]); i ? ctx2d.lineTo(u * W, v * W) : ctx2d.moveTo(u * W, v * W); });
+      ctx2d.closePath();
+      ctx2d.fill();
+    };
+    for (const x of shapes) if (x.cls !== 'cutout') { ctx2d.fillStyle = COLORS[x.cls]; fillRing(x.ring); }
+    ctx2d.globalCompositeOperation = 'destination-out';
+    ctx2d.fillStyle = '#000000';
+    for (const x of shapes) if (x.cls === 'cutout') fillRing(x.ring);
+    ctx2d.globalCompositeOperation = 'source-over';
+    if (grid.painted) {
+      const img = ctx2d.getImageData(0, 0, W, W);
+      const d = img.data, n = grid.n;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const v = grid.cells[j * n + i];
+        if (!v) continue;
+        const rgb = CODE_RGB[v];
+        for (let b = 0; b < SCALE; b++) for (let a = 0; a < SCALE; a++) {
+          const o = ((j * SCALE + b) * W + (i * SCALE + a)) * 4;
+          if (v === CUTOUT_CODE) d[o + 3] = 0;
+          else { d[o] = rgb[0]; d[o + 1] = rgb[1]; d[o + 2] = rgb[2]; d[o + 3] = 255; }
+        }
       }
-      if (geom.length) feats.push({ type: 'Feature', properties: { class: s.cls },
-        geometry: { type: 'MultiPolygon', coordinates: geom } });
+      ctx2d.putImageData(img, 0, 0);
     }
-    (map.getSource('label-fill') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: feats });
+    // A static canvas source is only re-read while playing: play for two frames, then pause.
+    const src = canvasSource();
+    src.play();
+    requestAnimationFrame(() => requestAnimationFrame(() => src.pause()));
   }
   const queueFills = () => {
     if (!fillQueued) { fillQueued = true; requestAnimationFrame(renderFills); }
@@ -334,9 +434,14 @@ async function main() {
   draw.on('change', queueFills);
   const selected = () => polygons().filter((f) => f.properties?.selected);
 
-  function setTool(mode: 'polygon' | 'angled-rectangle' | 'select' | 'parcel') {
+  function setTool(mode: Tool) {
+    if (state.tool === 'paint' && mode !== 'paint') { map.dragPan.enable(); map.boxZoom.enable(); }
     state.tool = mode;
-    draw.setMode(mode === 'parcel' ? 'select' : mode);
+    draw.setMode(mode === 'parcel' ? 'select' : mode === 'paint' ? 'idle' : mode);
+    if (mode === 'paint') { map.dragPan.disable(); map.boxZoom.disable(); }
+    $('tool-paint').classList.toggle('on', mode === 'paint');
+    $('brush').hidden = mode !== 'paint';
+    $('brush-size').hidden = mode !== 'paint';
     if (mode === 'parcel') for (const f of selected()) draw.deselectFeature(f.id as string);
     $('tool-polygon').classList.toggle('on', mode === 'polygon');
     $('tool-rect').classList.toggle('on', mode === 'angled-rectangle');
@@ -396,6 +501,76 @@ async function main() {
     queueFills();
     toast(`Parcel added as ${state.cls === 'cutout' ? 'a cut-out' : state.cls}`);
   }
+
+  // ---- paint tool: left-drag paints the current class, right- or Alt-drag erases, Space+drag pans,
+  // [ and ] change the brush. Each stroke is one undo step.
+  let painting: { val: number; last: Pt } | null = null;
+  let spaceHeld = false;
+  const metresPerPx = () => (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
+  function moveBrush(px?: Pt) {
+    const b = $('brush');
+    const d = (2 * state.brushM) / metresPerPx();
+    b.style.width = b.style.height = `${d}px`;
+    if (px) { b.style.left = `${px[0] - d / 2}px`; b.style.top = `${px[1] - d / 2}px`; }
+    $('brush-size').textContent = `Brush ${state.brushM < 1 ? state.brushM.toFixed(1) : Math.round(state.brushM * 10) / 10} m · [ ]`;
+  }
+  function strokeTo(lng: number, lat: number) {
+    if (!painting || !grid.n) return;
+    const [u, v] = toUV(lng, lat);
+    const [u0, v0] = painting.last;
+    const steps = Math.max(1, Math.ceil((Math.hypot(u - u0, v - v0) * grid.n) / 0.5));
+    for (let k = 1; k <= steps; k++) stamp(u0 + ((u - u0) * k) / steps, v0 + ((v - v0) * k) / steps, painting.val);
+    painting.last = [u, v];
+    queueFills();
+  }
+  // Raw pointer events, captured before Terra Draw and MapLibre: a drag that starts on a shape
+  // would otherwise be claimed by Terra Draw and stop reporting moves.
+  const container = map.getCanvasContainer();
+  const pointAt = (e: PointerEvent): Pt => {
+    const r = container.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
+  container.addEventListener('pointerdown', (e) => {
+    if (state.tool !== 'paint' || spaceHeld || !grid.n) return;
+    if (e.button !== 0 && e.button !== 2) return;
+    e.stopPropagation(); e.preventDefault();
+    container.setPointerCapture(e.pointerId);
+    const ll = map.unproject(pointAt(e));
+    const uv = toUV(ll.lng, ll.lat);
+    painting = { val: e.button === 2 || e.altKey ? 0 : CODES[state.cls], last: uv };
+    stamp(uv[0], uv[1], painting.val);
+    queueFills();
+  }, true);
+  container.addEventListener('pointermove', (e) => {
+    if (state.tool !== 'paint') return;
+    const px = pointAt(e);
+    moveBrush(px);
+    if (!painting) return;
+    e.stopPropagation();
+    const ll = map.unproject(px);
+    strokeTo(ll.lng, ll.lat);
+  }, true);
+  const endStroke = (e: PointerEvent) => {
+    if (!painting) return;
+    e.stopPropagation();
+    painting = null;
+    if (container.hasPointerCapture(e.pointerId)) container.releasePointerCapture(e.pointerId);
+    record();
+  };
+  container.addEventListener('pointerup', endStroke, true);
+  container.addEventListener('pointercancel', endStroke, true);
+  container.addEventListener('pointerleave', () => { if (state.tool === 'paint') moveBrush([-999, -999]); });
+  map.on('zoom', () => { if (state.tool === 'paint') moveBrush(); });
+  container.addEventListener('contextmenu', (e) => { if (state.tool === 'paint') e.preventDefault(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && state.tool === 'paint' && !e.repeat && !(e.target as HTMLElement).closest('input, textarea')) {
+      spaceHeld = true; map.dragPan.enable(); e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space' && spaceHeld) { spaceHeld = false; if (state.tool === 'paint') map.dragPan.disable(); }
+  });
+  const setBrush = (m: number) => { state.brushM = Math.min(15, Math.max(0.3, m)); moveBrush(); };
 
   map.on('click', (e) => {
     const px: Pt = [e.point.x, e.point.y];
@@ -468,7 +643,9 @@ async function main() {
       `<b>${p.id}</b> · ${p.stratum}${p.double ? ' · <span class="warn">double-labelled</span>' : ''}<br>` +
       `Imagery: <b>NAIP ${p.naip_year ?? '—'}</b>${p.imagery_date ? ` (flown ${p.imagery_date})` : ''}` +
       `${p.naip_year && p.naip_year < 2024 ? ' <span class="warn">older imagery</span>' : ''}${done}`;
+    setupGrid(sq);
     draw.clear();
+    queueFills();
     (document.querySelectorAll<HTMLInputElement>('#flags input')).forEach((i) => (i.checked = false));
     ($('note') as HTMLTextAreaElement).value = '';
     state.startedAt = Date.now();
@@ -490,6 +667,7 @@ async function main() {
     const last = mine.labels.filter((l) => l.outcome !== 'skip').at(-1);
     if (last) {
       loadShapes(last.polygons, false);
+      if (last.paint && last.paint.width === grid.n) { loadRle(last.paint.rle); queueFills(); }
       document.querySelectorAll<HTMLInputElement>('#flags input').forEach((i) => (i.checked = last.flags.includes(i.value)));
       ($('note') as HTMLTextAreaElement).value = last.note || '';
       toast(`Loaded your earlier label (${last.outcome}); resubmitting replaces it`, 3500);
@@ -535,12 +713,15 @@ async function main() {
     if (state.busy || !state.square) return;
     if (!state.labeler) { toast('Enter your name first'); $('labeler').focus(); return; }
     const shapes = outcome === 'labeled' ? polygons() : [];
-    if (outcome === 'labeled' && !shapes.some((f) => clsOf(f) !== 'cutout')) {
-      toast('No shapes drawn — use “No parking” (N) if the square has none');
+    const rle = outcome === 'labeled' ? paintRle() : null;
+    const paintsClass = grid.cells.some((v) => v > 0 && v !== CUTOUT_CODE);
+    if (outcome === 'labeled' && !shapes.some((f) => clsOf(f) !== 'cutout') && !paintsClass) {
+      toast('Nothing drawn or painted — use “No parking” (N) if the square has none');
       return;
     }
-    if (outcome !== 'labeled' && polygons().length &&
-        !confirm(`Discard the ${polygons().length} shape(s) and submit “${outcome.replace('_', ' ')}”?`)) return;
+    const work = polygons().length + (grid.painted ? 1 : 0);
+    if (outcome !== 'labeled' && work &&
+        !confirm(`Discard your shapes/paint and submit “${outcome.replace('_', ' ')}”?`)) return;
     const p = state.square.properties;
     const body = {
       labeler: state.labeler, square_id: p.id, outcome, mode: state.mode,
@@ -553,7 +734,10 @@ async function main() {
       note: ($('note') as HTMLTextAreaElement).value.trim(),
       seconds: Math.round((Date.now() - state.startedAt) / 1000),
       naip_year: p.naip_year ?? null,
-      imagery: p.imagery_date ?? null
+      imagery: p.imagery_date ?? null,
+      // Paint grid: one cell per NAIP pixel across the square, row-major from the top-left corner;
+      // values 0 none, 1 paved, 2 unpaved, 3 structure, 4 unsure, 5 cut-out; run-length "v:count,…".
+      paint: rle ? { width: grid.n, height: grid.n, cell_m: CELL_M, corners: grid.corners, rle } : null
     };
     state.busy = true;
     try {
@@ -600,7 +784,7 @@ async function main() {
     if (draw.getModeState() === 'drawing') return; // re-adding features would drop a shape in progress
     state.shapesHidden = !state.shapesHidden;
     $('view-shapes').classList.toggle('on', state.shapesHidden);
-    map.setLayoutProperty('label-fill', 'visibility', state.shapesHidden ? 'none' : 'visible');
+    map.setLayoutProperty('label-canvas', 'visibility', state.shapesHidden ? 'none' : 'visible');
     // Re-add the features so Terra Draw restyles them.
     const snap = polygons().map((f) => {
       const { selected: _s, ...props } = f.properties;
@@ -627,6 +811,7 @@ async function main() {
   $('tool-rect').onclick = () => setTool('angled-rectangle');
   $('tool-select').onclick = () => setTool('select');
   $('tool-parcel').onclick = () => setTool('parcel');
+  $('tool-paint').onclick = () => setTool('paint');
   $('undo').onclick = undo;
   $('redo').onclick = redo;
   // Reference only: shows where you are on Google's newer imagery. Never trace from it (licence).
@@ -695,6 +880,9 @@ async function main() {
     else if (k === 'r' || k === 'R') setTool('angled-rectangle');
     else if (k === 'e' || k === 'E') setTool('select');
     else if (k === 'g' || k === 'G') setTool('parcel');
+    else if (k === 'b' || k === 'B') setTool('paint');
+    else if (k === '[') setBrush(state.brushM * 0.75);
+    else if (k === ']') setBrush(state.brushM / 0.75);
     else if (k === 'm' || k === 'M') openGoogleMaps();
     else if (k === 's' || k === 'S') toggleSnap();
     else if (k === 'Delete' || k === 'Backspace') { deleteSelected(); e.preventDefault(); }
