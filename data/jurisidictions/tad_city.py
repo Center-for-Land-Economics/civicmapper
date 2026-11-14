@@ -146,9 +146,19 @@ def build(cfg: TadCity) -> None:
     CITY, STATE = cfg.city, cfg.state
     DATA_DIR = ROOT / "data" / "jurisidictions" / "data" / CITY
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    # ── 1. Boundary + parcels ─────────────────────────────────────────────────
     boundary = cfg.load_boundary(DATA_DIR)
+    raw, off_roll, coded, tad_exempt = tad_rows(cfg, boundary, DATA_DIR)
+    process(raw, off_roll, boundary, city=CITY, state=STATE, data_dir=DATA_DIR,
+            public_names=[*TARRANT_PUBLIC, *cfg.public_names], exempt_fn=tad_exempt,
+            link_fn=lambda county, acct: COUNTY_LINKS.get(county, tad_link)(acct),
+            coded=coded, home_county="Tarrant")
+
+
+def tad_rows(cfg: TadCity, boundary, DATA_DIR: Path):
+    """The Fort Worth-hosted Tarrant (+ neighbouring county) layer, filled from TAD's export,
+    as standard tx_pipeline rows -> (raw, off_roll, coded, exempt_fn)."""
+    CITY, STATE = cfg.city, cfg.state
+    # ── 1. Parcels ─────────────────────────────────────────────────────────────
     # Spatial pre-filter = the city outline buffered ~200 m and simplified (not its bounding
     # box, which for Fort Worth is most of Tarrant County). The exact clip happens in step 2.
     pre = gpd.GeoSeries([boundary], crs=4326).to_crs(3857).buffer(200).simplify(50).to_crs(4326).iloc[0]
@@ -204,7 +214,4 @@ def build(cfg: TadCity) -> None:
             f"{int((taxable0 & residential & ~by_value).sum()):,}")
         return by_value
 
-    process(raw, off_roll, boundary, city=CITY, state=STATE, data_dir=DATA_DIR,
-            public_names=[*TARRANT_PUBLIC, *cfg.public_names], exempt_fn=tad_exempt,
-            link_fn=lambda county, acct: COUNTY_LINKS.get(county, tad_link)(acct),
-            coded=coded, home_county="Tarrant")
+    return raw, off_roll, coded, tad_exempt

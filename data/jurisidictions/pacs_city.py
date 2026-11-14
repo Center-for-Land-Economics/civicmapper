@@ -63,11 +63,14 @@ VALUE_COLS = ["land_hstd_val", "land_non_hstd_val", "imprv_hstd_val", "imprv_non
 class PacsCounty:
     """A further county of a multi-county city: its own district export + GIS layer."""
     county: str                                  # COUNTYNAME label (also the account prefix)
-    gis_layer: str                               # ArcGIS layer URL with a prop_id field
+    gis_layer: str | None                        # ArcGIS layer URL with a prop_id field, or None
+                                                 # and set gis_zip
     export_file: str                             # export zip name in the city's data dir
     city_entity: str                             # the city's taxing-entity code in this roll
     link: Callable[[str], str]
     gis_values: dict | None = None
+    gis_zip: str | None = None                   # local district parcel shapefile zip (data dir)
+    gis_id_field: str = "PROP_ID"                # its prop_id column (Ellis CAD: "pid")
 
 
 @dataclass
@@ -283,11 +286,13 @@ def _county_rows(cfg: PacsCity, c: PacsCounty, boundary, data_dir: Path, *, gcac
         pre = gpd.GeoSeries([boundary], crs=4326).to_crs(3857).buffer(200).simplify(50).to_crs(4326).iloc[0]
         gis = fetch_arcgis_geojson(c.gis_layer, polygon=pre, cache=gcache, id_field="ObjectID_1")
     else:
-        z = _download(gis_url, data_dir / f"{cfg.city}-{cfg.state}-gis.zip")
+        z = data_dir / c.gis_zip if c.gis_zip else _download(gis_url, data_dir / f"{cfg.city}-{cfg.state}-gis.zip")
         shp = next(n for n in zipfile.ZipFile(z).namelist() if n.lower().endswith(".shp"))
-        gis = gpd.read_file(f"zip://{z}!{shp}").to_crs(4326)
+        src = gpd.read_file(f"zip://{z}!{shp}", rows=1)
+        bb = gpd.GeoSeries([boundary], crs=4326).to_crs(src.crs).buffer(650).iloc[0]
+        gis = gpd.read_file(f"zip://{z}!{shp}", bbox=tuple(bb.bounds)).to_crs(4326)
         gis.to_parquet(gcache, index=False)
-    gid = next(c for c in gis.columns if c.upper() == "PROP_ID")
+    gid = next(col for col in gis.columns if col.upper() in (c.gis_id_field.upper(), "PROP_ID"))
     gis["prop_id"] = pd.to_numeric(gis[gid], errors="coerce").astype("Int64")
     gis = fix_geometry(gis[gis["prop_id"].notna()].copy())
     log(f"GIS parcels: {len(gis):,}")

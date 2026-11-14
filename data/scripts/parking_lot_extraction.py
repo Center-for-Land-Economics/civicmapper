@@ -103,6 +103,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "brownsville": "Brownsville, Texas, USA",
     "elpaso": "El Paso, Texas, USA",
     "corpuschristi": "Corpus Christi, Texas, USA",
+    "grandprairie": "Grand Prairie, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",

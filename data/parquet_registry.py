@@ -94,6 +94,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     # City of El Paso, TX (El Paso County).
     "elpaso": CityParquet(city="elpaso", state="tx", legacy_filename="elpaso-tx-parcels.parquet"),
     "corpuschristi": CityParquet(city="corpuschristi", state="tx", legacy_filename="corpuschristi-tx-parcels.parquet"),
+    "grandprairie": CityParquet(city="grandprairie", state="tx", legacy_filename="grandprairie-tx-parcels.parquet"),
     "rockville": CityParquet(
         city="rockville", state="md", legacy_filename="rockville-md-parcels.parquet"
     ),
