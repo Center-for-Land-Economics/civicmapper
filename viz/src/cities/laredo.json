@@ -1,12 +1,12 @@
 {
   "notes": [
-    "City of Laredo, TX (Webb County), within city limits. PROVISIONAL: built from the City of Laredo's public parcel layer, which predates some recent subdivisions; about 13% of the city's taxable land (mostly newer industrial parks and subdivisions in north Laredo, and large unplatted tracts) has no polygon yet. Built by data/jurisidictions/run_laredo.py (webb_county.py, shared runner tx_multicounty.py). 72,382 parcels, $9.48B land. All values 2026.",
-    "Values: Webb County Appraisal District's 2026 certified export (PACS 8.0.33, exported 2026-08-06; downloaded by hand). Geometry: the City of Laredo's public parcel layer (PARCEL_LANDUSE_ST_CODES, 78,803 polygons) joined on Webb CAD's geo number; 99% of its polygons match a certified record. Check: Webb CAD's taxable land on City of Laredo accounts (C1) is $10.90B vs $9.48B mapped here.",
-    "City limits: Census TIGER/Line 2025 place 4841464; the City of Laredo entity (C1) agrees on all but 53 / 19 accounts.",
-    "Exempt land dropped: the roll's EX flags (EX-XV etc.; every named public owner carries one): 2,701 records. 205 utility records left off.",
-    "Condos and undivided interests: 1,613 undivided-interest groups summed; 3,121 condo / townhome units in 217 developments merged onto their land.",
-    "Land size: on 570 parcels the polygon is a fragment of the roll's acreage and the appraiser's area is used; 188 slivers hidden.",
-    "Singularity sweep: 48 of 72,382 parcels, all at most 7x the neighbourhood or hidden slivers; 2 condo units (Plantation Square II, Brooklyn Condominiums) at 4.6-6.6x.",
+    "City of Laredo, TX (Webb County), within city limits. Built by data/jurisidictions/run_laredo.py (webb_county.py, shared runner tx_multicounty.py). 78,791 parcels, $10.68B land. All values 2026.",
+    "Values: Webb County Appraisal District's 2026 certified export (PACS 8.0.33, exported 2026-08-06; downloaded by hand). Geometry: TxGIO StratMap 2026 land parcels for Webb County (collected from Webb CAD 2026-08-01), joined on prop_id. Check: Webb CAD's taxable land on City of Laredo accounts (C1) is $10.90B vs $10.68B mapped here (98%); the rest is on accounts with no 2026 polygon.",
+    "City limits: Census TIGER/Line 2025 place 4841464; the City of Laredo entity (C1) agrees on all but 61 / 85 accounts.",
+    "Exempt land dropped: the roll's EX flags (EX-XV etc.; every named public owner carries one): 2,804 records. 205 utility records left off.",
+    "Condos and undivided interests: 1,613 undivided-interest groups summed; 3,278 condo / townhome units in 226 developments merged onto their land. StratMap draws commercial condo units (office and retail plazas) as unit outlines, so 56 of them ($49M land) remain 5-13x their neighbours after merging onto their unit hull (e.g. Masterson Road Condominiums, River South Center Condos).",
+    "Land size: on 464 parcels the polygon is a fragment of the roll's acreage and the appraiser's area is used; 193 slivers hidden.",
+    "Singularity sweep: outside the commercial condo units above, every flagged parcel is at most 7x its neighbourhood or a hidden sliver.",
     "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 169 lots, 82.7 acres, $35.3M est. land value. OSM parking coverage in Laredo is thin, so this undercounts. apply_parking_category.py tagged 24 parcels 'Parking Lot'.",
     "Links: Webb CAD's property page pinned to 2026 (webbcad.org/property-detail/<prop_id>/2026; confirmed by the user)."
