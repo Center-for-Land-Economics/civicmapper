@@ -144,7 +144,11 @@ async function main() {
     }
   };
   const draw = new TerraDraw({
-    adapter: new TerraDrawMapLibreGLAdapter({ map }),
+    // Terra Draw's default treats >1 px of pointer movement before the first corner as a drag, so
+    // an ordinary click with a little mouse/trackpad jitter pans the map instead of placing a point.
+    adapter: new TerraDrawMapLibreGLAdapter({
+      map, minPixelDragDistance: 8, minPixelDragDistanceDrawing: 10, minPixelDragDistanceSelecting: 6
+    }),
     modes: [
       new TerraDrawPolygonMode({ styles: polyStyles }),
       new TerraDrawAngledRectangleMode({ styles: polyStyles }),
@@ -359,6 +363,7 @@ async function main() {
     map.setLayoutProperty('parcels', 'visibility', state.parcels ? 'visible' : 'none');
   };
   const toggleShapes = () => {
+    if (draw.getModeState() === 'drawing') return; // re-adding features would drop a shape in progress
     state.shapesHidden = !state.shapesHidden;
     $('view-shapes').classList.toggle('on', state.shapesHidden);
     // Re-add the features so Terra Draw restyles them.
@@ -409,6 +414,11 @@ async function main() {
   nameInput.onkeydown = (e) => { if (e.key === 'Enter') { commitName(); nameInput.blur(); } };
   ($('guide') as HTMLDialogElement).addEventListener('close', () => { if (!state.labeler) nameInput.focus(); });
 
+  // H held = peek under the shapes; released = show them again. The button still toggles.
+  let heldHide = false;
+  window.addEventListener('keyup', (e) => {
+    if ((e.key === 'h' || e.key === 'H') && heldHide) { heldHide = false; if (state.shapesHidden) toggleShapes(); }
+  });
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     if (t.closest('input, textarea, select') || ($('guide') as HTMLDialogElement).open) return;
@@ -428,9 +438,12 @@ async function main() {
     else if (k === 'Delete' || k === 'Backspace') { deleteSelected(); e.preventDefault(); }
     else if (k === 'c' || k === 'C') toggleCir();
     else if (k === 'p' || k === 'P') toggleParcels();
-    else if (k === 'h' || k === 'H') toggleShapes();
+    else if ((k === 'h' || k === 'H') && !e.repeat) { if (!state.shapesHidden) { toggleShapes(); heldHide = true; } }
     else if (k === 'f' || k === 'F') fit();
-    else if (k === 'Enter') submit('labeled');
+    else if (k === 'Enter') {
+      // While a shape is being drawn, Enter closes it (Terra Draw); submit only when idle.
+      if (draw.getModeState() !== 'drawing') submit('labeled');
+    }
     else if (k === 'n' || k === 'N') submit('no_parking');
     else if (k === 't' || k === 'T') submit('cant_tell');
     else if (k === 'k' || k === 'K') submit('skip');

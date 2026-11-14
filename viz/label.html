@@ -70,6 +70,11 @@
         <button id="tool-select">Edit <kbd>E</kbd></button>
         <button id="tool-delete">Delete <kbd>Del</kbd></button>
       </div>
+      <p class="meta" style="margin:6px 0 0">
+        <b>Polygon:</b> click each corner, then click the first corner (or press <kbd>Enter</kbd>) to close.
+        <b>Rectangle:</b> click two corners along one edge, then click to set the width.
+        Drag to pan, scroll to zoom, <kbd>Esc</kbd> cancels a shape in progress.
+        <b>Edit:</b> click a shape, drag its corners, then change its class or delete it.</p>
       <h2>Class (new / selected shape)</h2>
       <div class="grid2">
         <button class="cls" data-c="paved">Paved <kbd>1</kbd></button>
@@ -82,7 +87,7 @@
       <div class="grid2">
         <button id="view-cir">Infrared <kbd>C</kbd></button>
         <button id="view-parcels">Parcels <kbd>P</kbd></button>
-        <button id="view-shapes">Hide shapes <kbd>H</kbd></button>
+        <button id="view-shapes" title="Hold H to peek under your shapes">Hide shapes <kbd>H</kbd></button>
         <button id="view-fit">Recenter <kbd>F</kbd></button>
       </div>
 
@@ -156,7 +161,7 @@
     </ul>
     <h3>Keys</h3>
     <p class="meta">D polygon · R rectangle · E edit · Del delete selected · 1–4 class · C infrared · P parcels ·
-      H hide shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
+      H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>
 
