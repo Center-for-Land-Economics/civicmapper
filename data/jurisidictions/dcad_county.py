@@ -1,7 +1,8 @@
 """Dallas Central Appraisal District (DCAD) rows for a city that reaches into Dallas County.
 
 Sources (manual downloads from https://www.dallascad.org/DataProducts.aspx; dallascad.org is
-not reachable from the build host), placed in the city's data dir under dcad/:
+not reachable from the build host), shared by every Dallas County city and placed in
+data/jurisidictions/data/dcad/:
 - DCAD2026_CURRENT.zip: the current-year certified appraisal data files (comma delimited;
   certified 2026 values plus supplements). Used: ACCOUNT_APPRL_YEAR (values, SPTD code, city
   jurisdiction, GIS parcel id), ACCOUNT_INFO (owner, situs, legal), LAND (land area by
@@ -25,6 +26,8 @@ import geopandas as gpd
 import pandas as pd
 
 from tx_common import fix_geometry, log
+
+DCAD_DIR = Path(__file__).resolve().parent / "data" / "dcad"
 
 # DCAD's account pages are split by division: AcctDetailRes.aspx (residential) and
 # AcctDetailCom.aspx (commercial); residential pattern confirmed by the user (2026-11-14).
@@ -54,7 +57,7 @@ def statewide_class(code: str) -> str:
 def dcad_rows(boundary, data_dir: Path, *, city_juris: str, year: str = "2026"):
     """Standard tx_pipeline rows for DCAD accounts in and around `boundary`
     -> (raw, off_roll, coded, exempt_fn)."""
-    d = data_dir / "dcad"
+    d = DCAD_DIR
     cache = data_dir / f"dcad-rows-{year}.parquet"
     if cache.exists():
         raw = gpd.read_parquet(cache)

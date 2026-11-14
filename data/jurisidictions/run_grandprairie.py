@@ -9,7 +9,7 @@ Sources, one per county, combined into one tx_pipeline run:
   data files (DCAD2026_CURRENT: certified values + supplements, files of 2026-11-09) joined on
   GIS_PARCEL_ID to DCAD's parcel polygons (PARCEL_GEOM, 2026-11). See dcad_county.py. Manual
   downloads from dallascad.org (not reachable from the build host), placed in
-    data/jurisidictions/data/grandprairie/dcad/
+    data/jurisidictions/data/dcad/ (shared by every Dallas County city)
   City of Grand Prairie accounts: CITY_JURIS_DESC == GRAND PRAIRIE.
 - Tarrant County (62 km2): the Fort Worth-hosted TAD layer, filled from TAD's 2026 export, as
   for Arlington and Fort Worth (tad_city.py). TAD city code 38.

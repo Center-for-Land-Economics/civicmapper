@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "City of Irving, TX (Dallas County), within city limits. Built by data/jurisidictions/run_irving.py (dcad_county.py + tx_pipeline.py). 47,354 parcels, $9.28B land. All values 2026.",
+    "Values: Dallas Central Appraisal District's 2026 certified data files (current certified values with supplements, files of 2026-11-09), joined on GIS_PARCEL_ID to DCAD's parcel polygons (2026-11); both downloaded by hand from dallascad.org. DCAD's own codes are mapped to statewide classes with DCAD's crosswalk. Check: DCAD's taxable land on City of Irving accounts with a polygon is $9.276B vs $9.277B kept here.",
+    "City limits: Census TIGER/Line 2025 place 4837000; DCAD's City of Irving jurisdiction agrees on all but 44 / 10 accounts.",
+    "Exempt land dropped: DCAD's totally exempt accounts (1,724, which include every named public owner: City of Irving, DFW Airport, school districts, DART). 1,177 leased-space mobile homes (personal property) and 51 utility records are left off.",
+    "Condos and mobile-home parks: DCAD maps each condo unit and each park space onto the complex or park polygon, and those records are summed there (125 polygons, 3,023 records; Quail Run: 331 units on 17.2 ac; Las Brisas Hills: 301 units). 13 more units in 6 developments merged onto their land; 375 leftover nominal common areas (225 ac) dropped like exempt land.",
+    "Land size: appraiser acreage when within 25% of the polygon; 48 parcels drawn as fragments of their roll area use the appraiser's area; 42 remnants (incl. 6 with no usable area) hidden.",
+    "Singularity sweep: 65 of 47,354 parcels, all genuine appraiser values (max 6.4x the neighbourhood) or hidden slivers.",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 511 lots, 904.5 acres, $514M est. land value (Las Colinas office parking). apply_parking_category.py tagged 41 parcels 'Parking Lot'.",
+    "Links: DCAD's account page for the account's division (dallascad.org/AcctDetailRes.aspx?ID=<account> for residential, AcctDetailCom.aspx for commercial)."
+  ],
+  "displayName": "Irving",
+  "state": "tx",
+  "filename": "irving-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "irving-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "irving-tx",
+    "irving_tx"
+  ],
+  "coords": [
+    -96.9489,
+    32.814
+  ]
+}

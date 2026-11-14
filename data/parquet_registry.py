@@ -95,6 +95,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "elpaso": CityParquet(city="elpaso", state="tx", legacy_filename="elpaso-tx-parcels.parquet"),
     "corpuschristi": CityParquet(city="corpuschristi", state="tx", legacy_filename="corpuschristi-tx-parcels.parquet"),
     "grandprairie": CityParquet(city="grandprairie", state="tx", legacy_filename="grandprairie-tx-parcels.parquet"),
+    "irving": CityParquet(city="irving", state="tx", legacy_filename="irving-tx-parcels.parquet"),
     "rockville": CityParquet(
         city="rockville", state="md", legacy_filename="rockville-md-parcels.parquet"
     ),
