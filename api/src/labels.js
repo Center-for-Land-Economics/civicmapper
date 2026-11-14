@@ -215,7 +215,7 @@ export function labelsRouter() {
   // Context layers, optionally just one square's features.
   router.get("/:campaign/layer/:layer", (req, res) => {
     const dir = campaignDir(req.params.campaign);
-    if (!dir || !["prefill", "parcels"].includes(req.params.layer)) {
+    if (!dir || !["prefill", "parcels", "buildings"].includes(req.params.layer)) {
       return res.status(404).json({ ok: false, error: "Not found" });
     }
     const fc = readJson(dir, `${req.params.layer}.geojson`) || { type: "FeatureCollection", features: [] };

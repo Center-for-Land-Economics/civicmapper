@@ -162,6 +162,10 @@ async function main() {
   map.addSource('parcels', { type: 'geojson', data: empty });
   map.addLayer({ id: 'parcels', type: 'line', source: 'parcels',
     paint: { 'line-color': '#7fdbff', 'line-width': 1, 'line-opacity': 0.75, 'line-dasharray': [3, 2] } });
+  // Overture buildings: subtracted from parking at export, so lots can be drawn straight across them.
+  map.addSource('buildings', { type: 'geojson', data: empty });
+  map.addLayer({ id: 'buildings', type: 'line', source: 'buildings',
+    paint: { 'line-color': '#ffd166', 'line-width': 1.5, 'line-opacity': 0.9 } });
   map.addSource('square', { type: 'geojson', data: empty });
   map.addLayer({ id: 'square', type: 'line', source: 'square', paint: { 'line-color': '#fff', 'line-width': 2 } });
   map.on('error', (e) => {
@@ -658,10 +662,12 @@ async function main() {
   async function loadContext(sq: Square) {
     const id = encodeURIComponent(sq.properties.id);
     const c = encodeURIComponent(state.campaign);
-    const [parcels, mine] = await Promise.all([
+    const [parcels, mine, buildings] = await Promise.all([
       api<GeoJSON.FeatureCollection>(`/${c}/layer/parcels?square=${id}`),
-      api<{ labels: any[] }>(`/${c}/labels?square=${id}&labeler=${encodeURIComponent(state.labeler)}`)
+      api<{ labels: any[] }>(`/${c}/labels?square=${id}&labeler=${encodeURIComponent(state.labeler)}`),
+      api<GeoJSON.FeatureCollection>(`/${c}/layer/buildings?square=${id}`)
     ]);
+    (map.getSource('buildings') as maplibregl.GeoJSONSource).setData(buildings);
     state.parcels_fc = parcels;
     (map.getSource('parcels') as maplibregl.GeoJSONSource).setData(parcels);
     const last = mine.labels.filter((l) => l.outcome !== 'skip').at(-1);
@@ -780,6 +786,12 @@ async function main() {
     $('view-parcels').classList.toggle('on', state.parcels);
     map.setLayoutProperty('parcels', 'visibility', state.parcels ? 'visible' : 'none');
   };
+  let buildingsOn = true;
+  const toggleBuildings = () => {
+    buildingsOn = !buildingsOn;
+    $('view-buildings').classList.toggle('on', buildingsOn);
+    map.setLayoutProperty('buildings', 'visibility', buildingsOn ? 'visible' : 'none');
+  };
   const toggleShapes = () => {
     if (draw.getModeState() === 'drawing') return; // re-adding features would drop a shape in progress
     state.shapesHidden = !state.shapesHidden;
@@ -831,6 +843,8 @@ async function main() {
   document.querySelectorAll<HTMLButtonElement>('.cls').forEach((b) => (b.onclick = () => setClass(b.dataset.c as Cls)));
   $('view-cir').onclick = toggleCir;
   $('view-parcels').onclick = toggleParcels;
+  $('view-buildings').onclick = toggleBuildings;
+  $('view-buildings').classList.add('on');
   $('view-shapes').onclick = toggleShapes;
   $('view-fit').onclick = fit;
   $('submit').onclick = () => submit('labeled');
@@ -888,6 +902,7 @@ async function main() {
     else if (k === 'Delete' || k === 'Backspace') { deleteSelected(); e.preventDefault(); }
     else if (k === 'c' || k === 'C') toggleCir();
     else if (k === 'p' || k === 'P') toggleParcels();
+    else if (k === 'o' || k === 'O') toggleBuildings();
     else if ((k === 'h' || k === 'H') && !e.repeat) { if (!state.shapesHidden) { toggleShapes(); heldHide = true; } }
     else if (k === 'f' || k === 'F') fit();
     else if (k === 'Enter') {

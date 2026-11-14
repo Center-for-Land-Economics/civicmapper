@@ -104,6 +104,7 @@
       <div class="grid2">
         <button id="view-cir">Infrared <kbd>C</kbd></button>
         <button id="view-parcels">Parcels <kbd>P</kbd></button>
+        <button id="view-buildings" title="Overture building outlines (yellow). They are removed from parking automatically at export.">Buildings <kbd>O</kbd></button>
         <button id="view-shapes" title="Hold H to peek under your shapes">Hide shapes <kbd>H</kbd></button>
         <button id="view-fit">Recenter <kbd>F</kbd></button>
       </div>
@@ -163,6 +164,8 @@
     <h3>How to draw</h3>
     <ul>
       <li>Follow the pavement edge. Include drive aisles inside the lot; stop at the street curb or property driveway.</li>
+      <li><b>Buildings with a yellow outline</b> (Overture, key <kbd>O</kbd>) are removed from parking automatically:
+        draw the lot straight across them. Cut out only buildings, kiosks or sheds with <i>no</i> yellow outline.</li>
       <li>Landscaped islands bigger than about 3 parking spaces: draw the whole lot first, then draw a <b>Cut-out</b>
         (<kbd>5</kbd> or <kbd>X</kbd>) over each island. Cut-outs show dark and are subtracted from the lot when labels
         are exported. Use them for a kiosk or building inside a lot too.</li>
@@ -179,7 +182,7 @@
       <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · B paint ([ ] brush, right/Alt-drag erase, Space pan) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · B paint ([ ] brush, right/Alt-drag erase, Space pan) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>
