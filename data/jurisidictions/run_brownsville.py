@@ -12,8 +12,8 @@ City limits: Census TIGER/Line 2025 place 4810768 (Brownsville city), cross-chec
 roll's City of Brownsville taxing entity (CBR).
 
 The pipeline is shared: pacs_city.py (roll specifics) + tx_pipeline.py (everything after).
-Link: Cameron CAD's True Prodigy portal, property-detail/<prop_id> (same platform and pattern
-as travis.prodigycad.com, which Austin uses; not verified for Cameron from the build host).
+Link: Cameron CAD's True Prodigy portal, property-detail/<prop_id>/<year>, pinned to 2026 (the
+certified year these values come from). Pattern confirmed working by the user (prop 79665).
 """
 from pacs_city import PacsCity, build
 
@@ -24,7 +24,7 @@ CONFIG = PacsCity(
                 "cameron-2026-certified-appraisal-export-20260723.zip"),
     tiger_geoid="4810768",
     city_entity="CBR",
-    link=lambda prop_id: f"https://cameron.prodigycad.com/property-detail/{prop_id}",
+    link=lambda prop_id: f"https://cameron.prodigycad.com/property-detail/{prop_id}/2026",
     gis_values={"land": ["lndHS", "lndNHS", "agMkt"], "impr": ["impHS", "impNHS"], "market": "market"},
     public_names=["CITY OF BROWNSVILLE", "BROWNSVILLE CITY OF", "BROWNSVILLE PUBLIC UTILITY",
                   "BROWNSVILLE PUB UTIL", "BROWNSVILLE NAVIGATION DISTRICT", "PORT OF BROWNSVILLE",
