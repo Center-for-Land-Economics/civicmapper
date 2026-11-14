@@ -100,6 +100,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "harrisonburg": "Harrisonburg, Virginia, USA",
     "arlington": "Arlington, Texas, USA",
     "fortworth": "Fort Worth, Texas, USA",
+    "brownsville": "Brownsville, Texas, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",

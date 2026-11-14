@@ -442,6 +442,19 @@ Don't add data columns or re-bake for values you can compute client-side.
 - **Big ArcGIS pulls: resolve the spatial filter to object IDs once, then fetch by ID chunks**
   (`fetch_arcgis_geojson`, chunk-cached, resumable). Offset paging over a polygon query timed out
   past ~60k rows; ID chunks pulled Fort Worth's 344k rows in one minute.
+- **Shared Texas pipeline: `tx_pipeline.process()`** runs everything after a roll is loaded
+  (exemptions, stacking, condos, area rules, export, sweep). Source modules only load + map
+  columns: `tad_city.py` (Tarrant roll), `pacs_city.py` (district GIS + PACS certified export).
+- **Prefer the district's own certified PACS export over GIS copies of the roll.** Many CADs
+  (Cameron, Travis, ...) publish `cad/exports/certified/<year>/...appraisal-export...zip` (Legacy
+  8.0.33 fixed-width; the layout workbook is inside). A GIS layer with `pyear` = next year is the
+  WORK-IN-PROGRESS roll, not certified values. Use certified records only (sup_num 0).
+- **PACS specifics:** land market = land hstd + non-hstd + ag_market + timber_market. Undivided
+  interests are one record per owner with values prorated by `ownership_pct` → SUM (repeated
+  100% records → take once). Total exemptions = the roll's EX flags (ex_exempt, EX-XV, EX-XG, ...).
+- **Placeholder values exist in certified rolls:** Cameron 2026 had market == prop_id on 50 new
+  builder lots. Check `value == id` before trusting a roll; Brownsville took those from the
+  district's GIS copy.
 - **Parking without Overpass: `parking_lot_extraction.py --overture-only`.** OSM parking comes from
   Overture (`base/infrastructure` class=parking, OSM tags in `source_tags`), gas stations from
   Overture places, buildings via pyarrow (`data/scripts/overture_source.py`; no DuckDB extensions).

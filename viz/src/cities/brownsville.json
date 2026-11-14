@@ -1,0 +1,30 @@
+{
+  "notes": [
+    "City of Brownsville, TX (Cameron County), within city limits. Built by data/jurisidictions/run_brownsville.py (pacs_city.py + tx_pipeline.py). 61,931 parcels, $4.71B land.",
+    "Values: Cameron Appraisal District's CERTIFIED 2026 appraisal export (exported 2026-07-23, sup 0). The district states 2026 is certified and 2027 is a work in progress, so the City of Brownsville's newer GIS copy (pyear 2027) is not used for values. Geometry: the district's own GIS parcels, joined on PROP_ID (185,093 of 188,017 polygons have a certified record).",
+    "50 certified records carry placeholder values (market value == prop_id; 49 Zagar Builders lots in Woods Country Subdivision, e.g. $441,207 on prop 441207). Those take the values in the district's GIS copy (Sept 2026, e.g. $69,713 land per lot) instead.",
+    "City limits: Census TIGER/Line 2025 place 4810768; the roll's City of Brownsville taxing entity (CBR) agrees on all but 116 / 176 of ~64k accounts.",
+    "Exemptions come from the roll's own EX flags (EX-XV public property, EX-XG, EX-XJ schools, EX-XR, EX-XA...), plus class X and named public owners: 2,117 records dropped. Undivided interests (one record per owner, values prorated by ownership %) are summed: 1,659 properties, every group totalling 100%. Land market value includes ag/timber market value.",
+    "3 tiny GIS polygons carry whole-tract values (prop 129824: 2.6 ac on the roll, 3.5 sqft drawn) and are hidden as slivers. Singularity sweep: 24 of 61,931 parcels, all genuine appraiser values or those slivers.",
+    "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
+    "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only): 66 lots, 152.5 acres, $36.0M est. land value. OSM parking coverage in Brownsville is thin (365 polygons in the whole bbox), so this undercounts. apply_parking_category.py tagged 12 parcels 'Parking Lot'.",
+    "link: Cameron CAD's True Prodigy portal (cameron.prodigycad.com/property-detail/<prop_id>), the same pattern as Travis CAD's; not verified for Cameron from the build host."
+  ],
+  "displayName": "Brownsville",
+  "state": "tx",
+  "filename": "brownsville-tx-parcels.parquet",
+  "hideUnderutilized": true,
+  "hideRemnants": true,
+  "parkingFilename": "brownsville-tx-parking-lots.parquet",
+  "parkingVersion": "2026-11-14-overture",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "brownsville-tx",
+    "brownsville_tx"
+  ],
+  "coords": [
+    -97.4975,
+    25.9017
+  ]
+}
