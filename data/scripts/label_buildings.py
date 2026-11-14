@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Add Overture building footprints to parking-label campaigns (data/labels/<campaign>/buildings.geojson).
+Add Overture building footprints (buildings.geojson) and public road centrelines (roads.geojson) to
+parking-label campaigns (data/labels/<campaign>/).
+
+Roads: Overture transportation segments of subtype road, excluding service roads, parking aisles,
+driveways and paths (those are on-site circulation that counts as parking). The export removes
+labelled parking that is both outside every parcel and within a road's half-width, i.e. the public
+street, without touching parking on land whose parcel is merely missing from our data.
 
 The label page shows them as an overlay (key O), and the export (label_export.py) subtracts them
 from labelled parking, so labellers can draw lots straight across mapped buildings and only cut out
@@ -58,6 +64,34 @@ def campaign_buildings(squares: gpd.GeoDataFrame, release: str | None = None) ->
     return out[cols + ["release"]]
 
 
+PUBLIC_ROAD_HALF_WIDTH_M = {"motorway": 15, "trunk": 12, "primary": 12, "secondary": 10, "tertiary": 8,
+                            "residential": 6, "unclassified": 6, "living_street": 5}
+
+
+def campaign_roads(squares: gpd.GeoDataFrame, release: str) -> gpd.GeoDataFrame:
+    """Public road centrelines near each square (square_id, class, half_width_m, geometry)."""
+    segs = overture_source.read("transportation", "segment", tuple(squares.total_bounds), release=release,
+                                columns=["subtype", "class", "geometry"])
+    segs = segs[(segs["subtype"] == "road") & segs["class"].isin(PUBLIC_ROAD_HALF_WIDTH_M)]
+    parts = []
+    if len(segs):
+        idx = segs.sindex
+        utm = squares.estimate_utm_crs()
+        for _, sq in squares.iterrows():
+            area = gpd.GeoSeries([sq.geometry], crs=4326).to_crs(utm).buffer(30).to_crs(4326).iloc[0]
+            r = segs.iloc[idx.query(area, predicate="intersects")].copy()
+            if r.empty:
+                continue
+            r["geometry"] = r.geometry.intersection(area)
+            r["square_id"] = sq["id"]
+            parts.append(r)
+    out = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=4326) if parts else \
+        gpd.GeoDataFrame(columns=["square_id", "class", "geometry"], geometry="geometry", crs=4326)
+    out["half_width_m"] = out["class"].map(PUBLIC_ROAD_HALF_WIDTH_M)
+    out["release"] = release
+    return out[["square_id", "class", "half_width_m", "release", "geometry"]]
+
+
 def write_geojson(gdf: gpd.GeoDataFrame, path: Path) -> None:
     feats = []
     for geom, (_, row) in zip(gdf.geometry, gdf.drop(columns="geometry").iterrows()):
@@ -80,11 +114,14 @@ def main() -> int:
         squares = gpd.read_file(d / "squares.geojson")
         b = campaign_buildings(squares, release)
         write_geojson(b, d / "buildings.geojson")
+        roads = campaign_roads(squares, release)
+        write_geojson(roads, d / "roads.geojson")
         meta = json.loads((d / "campaign.json").read_text())
         meta["buildings"] = {"source": "Overture Maps", "release": release, "count": int(len(b))}
+        meta["roads"] = {"source": "Overture Maps", "release": release, "count": int(len(roads))}
         (d / "campaign.json").write_text(json.dumps(meta, indent=2, default=str))
         print(f"{name}: {len(b):,} building parts in {b['square_id'].nunique() if len(b) else 0} squares "
-              f"(Overture {release})")
+              f"and {len(roads):,} public road pieces (Overture {release})")
     return 0
 
 

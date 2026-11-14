@@ -8,7 +8,11 @@ mask on a 0.6 m grid (NAIP's pixel size) in the square's UTM zone, in this order
   2. cut-out polygons clear what they cover;
   3. Overture buildings (buildings.geojson, see label_buildings.py) clear paved / unpaved / unsure
      (garage/roof "structure" labels are kept: they mark structured parking to exclude);
-  4. paint overrides everything: painted classes set the cell, painted cut-out clears it.
+  4. public streets are cleared: cells outside every parcel AND within a public road's half-width
+     (roads.geojson, see label_buildings.py), so labellers need not stop exactly at the curb.
+     Requiring both keeps parking on land whose parcel is merely missing from our data; such
+     parking is reported as off_parcel_m2 (a large value points at a parcel-data gap);
+  5. paint overrides everything: painted classes set the cell, painted cut-out clears it.
 
 Mask values: 0 not parking, 1 paved, 2 unpaved (gravel/caliche/dirt), 3 structure (garage or
 rooftop parking, never surface), 4 unsure (ignore in training/scoring).
@@ -101,11 +105,12 @@ def square_grid(sq_utm) -> tuple[rasterio.Affine, int, int]:
     return from_origin(x0, y1, CELL, CELL), w, h
 
 
-def build_mask(label: dict, sq_utm, utm, buildings_utm: list, transform, w: int, h: int) -> tuple[np.ndarray, int]:
-    """-> (mask, cells removed as Overture buildings)."""
+def build_mask(label: dict, sq_utm, utm, buildings_utm: list, street: np.ndarray | None,
+               transform, w: int, h: int) -> tuple[np.ndarray, int, int]:
+    """-> (mask, cells removed as Overture buildings, cells removed as public street)."""
     mask = np.zeros((h, w), dtype=np.uint8)
     if label["outcome"] != "labeled":
-        return mask, 0
+        return mask, 0, 0
 
     def utm_geom(g):
         return gpd.GeoSeries([shape(g)], crs=4326).to_crs(utm).iloc[0].buffer(0)
@@ -123,6 +128,11 @@ def build_mask(label: dict, sq_utm, utm, buildings_utm: list, transform, w: int,
         hit = b & np.isin(mask, (1, 2, 4))
         removed = int(hit.sum())
         mask[hit] = 0
+    row_removed = 0
+    if street is not None:
+        off = street & (mask > 0)
+        row_removed = int(off.sum())
+        mask[off] = 0
     if label.get("paint"):
         cols, rows = np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5)
         xs, ys = transform * (cols, rows)
@@ -130,7 +140,7 @@ def build_mask(label: dict, sq_utm, utm, buildings_utm: list, transform, w: int,
         p = paint_lookup(label["paint"], np.asarray(lng), np.asarray(lat))
         mask = np.where((p >= 1) & (p <= 4), p, mask)
         mask[p == 5] = 0
-    return mask.astype(np.uint8), removed
+    return mask.astype(np.uint8), removed, row_removed
 
 
 def main() -> int:
@@ -151,6 +161,10 @@ def main() -> int:
     buildings = gpd.read_file(bpath).to_crs(utm) if bpath.exists() else None
     if buildings is None:
         print("! no buildings.geojson: run label_buildings.py first; buildings are NOT subtracted")
+    rpath = d / "roads.geojson"
+    roads = gpd.read_file(rpath).to_crs(utm) if rpath.exists() else None
+    if roads is None:
+        print("! no roads.geojson: run label_buildings.py first; public streets are NOT removed")
 
     labels = latest_labels(d / "labels.jsonl")
     rows, feats = [], []
@@ -163,7 +177,18 @@ def main() -> int:
         sq = sq_utm.loc[sid].geometry
         transform, w, h = square_grid(sq)
         b_utm = list(buildings[buildings.square_id == sid].geometry) if buildings is not None else []
-        mask, removed = build_mask(lab, sq, utm, b_utm, transform, w, h)
+        pg = parcels[parcels.square_id == sid]
+        parcel_land = (rasterize([(g, 1) for g in pg.geometry], out_shape=(h, w), transform=transform, fill=0,
+                                 dtype="uint8") == 1) if len(pg) else np.zeros((h, w), bool)
+        street = None
+        if roads is not None:
+            rs = roads[roads.square_id == sid]
+            if len(rs):
+                road = rasterize([(g.buffer(hw), 1) for g, hw in zip(rs.geometry, rs.half_width_m)],
+                                 out_shape=(h, w), transform=transform, fill=0, dtype="uint8") == 1
+                street = road & ~parcel_land
+        mask, removed, row_removed = build_mask(lab, sq, utm, b_utm, street, transform, w, h)
+        off_parcel = int((np.isin(mask, PARKING) & ~parcel_land).sum())
         inside = rasterize([(sq, 1)], out_shape=(h, w), transform=transform, fill=0, dtype="uint8") == 1
         mask[~inside] = 0
         name = f"{sid}__{slug(lab['labeler'])}"
@@ -203,7 +228,9 @@ def main() -> int:
         rows.append({"square_id": sid, "labeler": lab["labeler"], "outcome": lab["outcome"],
                      "stratum": sq_props.loc[sid, "stratum"], "mode": lab.get("mode"),
                      **{f"{c}_m2": round(v) for c, v in areas.items()},
-                     "buildings_removed_m2": round(removed * cell_m2), "osm_m2": round(osm_m2),
+                     "buildings_removed_m2": round(removed * cell_m2),
+                     "row_removed_m2": round(row_removed * cell_m2),
+                     "off_parcel_m2": round(off_parcel * cell_m2), "osm_m2": round(osm_m2),
                      "osm_overlap_m2": round(hit_m2), "seconds": lab.get("seconds"),
                      "flags": ";".join(lab.get("flags") or []), "imagery": lab.get("imagery")})
 
@@ -220,7 +247,12 @@ def main() -> int:
     print(f"\nArea in labelled squares (net of cut-outs and Overture buildings): "
           f"paved {lab_df.paved_m2.sum():,.0f} m², unpaved {lab_df.unpaved_m2.sum():,.0f} m², "
           f"structure {lab_df.structure_m2.sum():,.0f} m², unsure {lab_df.unsure_m2.sum():,.0f} m²; "
-          f"buildings removed {df.buildings_removed_m2.sum():,.0f} m²")
+          f"buildings removed {df.buildings_removed_m2.sum():,.0f} m²; public streets removed "
+          f"{df.row_removed_m2.sum():,.0f} m²")
+    gaps = df[df.off_parcel_m2 >= 500]
+    if len(gaps):
+        print("Parking kept on land with no parcel in our data (possible parcel gaps): " +
+              ", ".join(f"{r.square_id} {r.off_parcel_m2:,} m²" for r in gaps.itertuples()))
     if drawn_total:
         print(f"Existing OSM/Overture lots cover {osm_hit / drawn_total:.0%} of labelled surface parking "
               f"({osm_hit:,.0f} of {drawn_total:,.0f} m²); {osm_hit / osm_total if osm_total else float('nan'):.0%} "

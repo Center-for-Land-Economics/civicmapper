@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LABELS = ROOT / "data" / "labels"
 ENV_FILE = ROOT / "data" / ".env"
-CAMPAIGN_FILES = ["campaign.json", "squares.geojson", "prefill.geojson", "parcels.geojson", "buildings.geojson"]
+CAMPAIGN_FILES = ["campaign.json", "squares.geojson", "prefill.geojson", "parcels.geojson", "buildings.geojson", "roads.geojson"]
 CONTAINER = os.environ.get("LABELS_CONTAINER", "parking-labels-dev")
 ACCOUNT = os.environ.get("AZURE_STORAGE_ACCOUNT", "landeconomics")
 # AZURE_LABELS_CONNECTION_STRING holds the claude-dev token in the cloud environment; it is only a
