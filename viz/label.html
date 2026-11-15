@@ -28,6 +28,7 @@
     button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
     button.primary { background:#2e7d32; border-color:#2e7d32; width:100%; padding:9px; font-weight:600; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
     .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
     .cls { border-left:5px solid; text-align:left; }
     .cls[data-c=paved]{border-left-color:var(--paved)} .cls[data-c=unpaved]{border-left-color:var(--unpaved)}
@@ -61,9 +62,10 @@
       <h1>Surface parking labels <span class="meta">(dev)</span></h1>
       <label class="row"><select id="campaign"></select></label>
       <label class="row"><input id="labeler" type="text" placeholder="Your name" maxlength="60" autocomplete="name" /></label>
-      <div class="grid2">
+      <div class="grid3">
         <button id="mode-blind" title="Draw everything yourself; existing data hidden">Blind</button>
-        <button id="mode-correction" title="Start from existing OSM/Overture polygons and fix them">Correction</button>
+        <button id="mode-correction" title="Start from existing OSM/Overture polygons and fix them">OSM fix</button>
+        <button id="mode-model" title="Start from the parking model's guesses and fix them (test squares stay blind)">Model fix</button>
       </div>
       <p class="meta" id="progress"></p>
 
@@ -186,7 +188,10 @@
     <h3>Modes</h3>
     <ul>
       <li><b>Blind</b>: draw from scratch. Used to measure what existing map data misses.</li>
-      <li><b>Correction</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
+      <li><b>OSM fix</b>: existing OpenStreetMap/Overture lots are pre-loaded as paved shapes; fix, delete or add.</li>
+      <li><b>Model fix</b>: the parking model's guesses are pre-loaded as paved shapes. Fix the edges, reclassify gravel
+        (2), delete false alarms (bare dirt, roofs, roads) and add what it missed. About a quarter of squares are
+        <i>test squares</i> and always start blank, so the model's accuracy is measured on independent drawings.</li>
     </ul>
     <h3>Keys</h3>
     <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · B paint ([ ] brush, right/Alt-drag erase, Space pan) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·

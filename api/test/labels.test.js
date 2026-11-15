@@ -23,7 +23,7 @@ fs.writeFileSync(path.join(camp, "squares.geojson"),
   JSON.stringify({ type: "FeatureCollection", features: [sq("demo-0001", true), sq("demo-0002", false)] }));
 
 const { app } = await import("../src/server.js");
-const { labelsEnabled, validateLabel } = await import("../src/labels.js");
+const { labelsEnabled, validateLabel, isHoldout } = await import("../src/labels.js");
 
 let server, base;
 before(() => new Promise((resolve) => {
@@ -89,4 +89,16 @@ test("double squares need two labellers; next skips what you already did", async
   const lines = fs.readFileSync(path.join(camp, "labels.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
   assert.equal(lines.length, 2);
   assert.deepEqual(lines[0].flags, ["shadows"]);
+});
+
+test("held-out squares match the training split and accept model mode", async () => {
+  // Same sha1 split as data/scripts/label_finetune.py (checked against Python for these ids).
+  assert.equal(isHoldout({ id: "pilot-laredo-0068" }), true);
+  assert.equal(isHoldout({ id: "pilot-laredo-0001" }), false);
+  assert.equal(isHoldout({ id: "pilot-laredo-0068", targeted: true }), false, "targeted squares are never held out");
+  const ok = validateLabel({ labeler: "A", square_id: "demo-0002", outcome: "no_parking", mode: "model", polygons: [] },
+    new Set(["demo-0002"]));
+  assert.ok(ok.label, "model mode accepted");
+  const sq = await (await fetch(`${base}/api/labels/demo/square/demo-0002`)).json();
+  assert.equal(typeof sq.square.properties.holdout, "boolean");
 });

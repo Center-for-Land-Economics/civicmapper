@@ -75,6 +75,7 @@ def load_examples(campaign: str) -> list[dict]:
         core = np.where(label == 4, IGNORE, np.isin(label, (1, 2)).astype(np.uint8))
         tgt[MARGIN:MARGIN + h, MARGIN:MARGIN + w] = core
         out.append({"square": r.square_id, "stratum": squares[r.square_id]["stratum"], "img": img,
+                    "targeted": bool(squares[r.square_id].get("targeted")),
                     "target": tgt, "label": label})
     return out
 
@@ -150,8 +151,10 @@ def main() -> int:
 
     t0 = time.time()
     examples = load_examples(a.campaign)
-    test = [e for e in examples if is_test(e["square"], a.test_share)]
-    train = [e for e in examples if not is_test(e["square"], a.test_share)]
+    # Targeted squares (label_targets.py: picked where the model looked wrong) are never test squares:
+    # they are not a random sample, so scoring on them would misstate accuracy.
+    test = [e for e in examples if is_test(e["square"], a.test_share) and not e["targeted"]]
+    train = [e for e in examples if e not in test]
     say(f"{a.campaign}: {len(examples)} squares -> train {len(train)}, test {len(test)} "
         f"(imagery ready in {time.time() - t0:.0f}s)")
     processor, model, device, model_id = load_segformer_bundle(use_cpu=a.cpu)

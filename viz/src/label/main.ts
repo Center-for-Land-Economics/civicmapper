@@ -21,11 +21,11 @@ import { is3DPrintEnabled as isLocalDev } from '../print3d';
 // (Terra Draw cannot draw polygons with holes).
 type Cls = 'paved' | 'unpaved' | 'structure' | 'unsure' | 'cutout';
 type Outcome = 'labeled' | 'no_parking' | 'cant_tell' | 'skip';
-type Mode = 'blind' | 'correction';
+type Mode = 'blind' | 'correction' | 'model';
 interface SquareProps {
   id: string; stratum: string; double: boolean; naip_year: number | null; naip_items: string[];
   imagery_date: string | null; center_lng: number; center_lat: number;
-  labels: number; labelers: string[]; complete: boolean;
+  labels: number; labelers: string[]; complete: boolean; holdout?: boolean; targeted?: boolean;
 }
 type Square = GeoJSON.Feature<GeoJSON.Polygon, SquareProps>;
 
@@ -124,6 +124,7 @@ async function main() {
     campaign: '' as string,
     labeler: store('label.labeler') || '',
     mode: (store('label.mode') as Mode) || 'blind',
+    squareMode: 'blind' as Mode, // mode actually used on this square (test squares are always blind)
     cls: 'paved' as Cls,
     square: null as Square | null,
     startedAt: 0,
@@ -660,6 +661,7 @@ async function main() {
   }
 
   async function loadContext(sq: Square) {
+    state.squareMode = state.mode;
     const id = encodeURIComponent(sq.properties.id);
     const c = encodeURIComponent(state.campaign);
     const [parcels, mine, buildings] = await Promise.all([
@@ -681,6 +683,17 @@ async function main() {
       const pre = await api<GeoJSON.FeatureCollection>(`/${c}/layer/prefill?square=${id}`);
       loadShapes(pre.features, true);
       toast(`${pre.features.length} existing lot(s) pre-loaded — fix, delete or add`);
+    } else if (state.mode === 'model') {
+      if (sq.properties.holdout) {
+        state.squareMode = 'blind';
+        toast('Test square: draw it from scratch (model guesses are hidden on test squares)', 4500);
+      } else {
+        const pre = await api<GeoJSON.FeatureCollection>(`/${c}/layer/model_prefill?square=${id}`);
+        loadShapes(pre.features.map((f) => ({ ...f, properties: { ...f.properties, class: 'paved' } })), true);
+        toast(pre.features.length
+          ? `${pre.features.length} model guess(es) pre-loaded as paved — fix edges, reclassify gravel, delete misses`
+          : 'The model found no parking here — add any it missed', 4000);
+      }
     }
     resetHistory(); // undo never reaches back into the previous square or past the loaded shapes
   }
@@ -730,7 +743,7 @@ async function main() {
         !confirm(`Discard your shapes/paint and submit “${outcome.replace('_', ' ')}”?`)) return;
     const p = state.square.properties;
     const body = {
-      labeler: state.labeler, square_id: p.id, outcome, mode: state.mode,
+      labeler: state.labeler, square_id: p.id, outcome, mode: state.squareMode,
       polygons: shapes.map((f) => ({
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: (f.geometry.coordinates as number[][][]).map(closedRing) },
@@ -766,6 +779,7 @@ async function main() {
     store('label.mode', m);
     $('mode-blind').classList.toggle('on', m === 'blind');
     $('mode-correction').classList.toggle('on', m === 'correction');
+    $('mode-model').classList.toggle('on', m === 'model');
   };
   const toggleCir = () => {
     state.cir = !state.cir;
@@ -819,6 +833,7 @@ async function main() {
 
   $('mode-blind').onclick = () => setMode('blind');
   $('mode-correction').onclick = () => setMode('correction');
+  $('mode-model').onclick = () => setMode('model');
   $('tool-polygon').onclick = () => setTool('polygon');
   $('tool-rect').onclick = () => setTool('angled-rectangle');
   $('tool-select').onclick = () => setTool('select');

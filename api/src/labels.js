@@ -11,6 +11,7 @@
 // Sync to the parking-labels-dev Azure container with data/scripts/label_sync.py.
 
 import express from "express";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -87,6 +88,16 @@ function needed(sq) {
   return sq.properties.double ? 2 : 1;
 }
 
+// Held-out test squares: the same stable hash split as data/scripts/label_finetune.py (25%).
+// The label page never pre-fills them with model guesses, so accuracy is measured on squares drawn
+// from scratch. Targeted squares (picked where the model looks wrong) are never held out.
+export const HOLDOUT_SHARE = 0.25;
+export function isHoldout(props) {
+  if (props.targeted) return false;
+  const h = parseInt(crypto.createHash("sha1").update(props.id).digest("hex").slice(0, 8), 16);
+  return h / 0xffffffff < HOLDOUT_SHARE;
+}
+
 function squareStatus(sq, perSquare) {
   const by = perSquare.get(sq.properties.id) || new Map();
   const done = [...by.values()].filter((l) => l.outcome !== "skip");
@@ -94,7 +105,8 @@ function squareStatus(sq, perSquare) {
     labels: done.length,
     labelers: done.map((l) => l.labeler),
     skips: [...by.values()].filter((l) => l.outcome === "skip").length,
-    complete: done.length >= needed(sq)
+    complete: done.length >= needed(sq),
+    holdout: isHoldout(sq.properties)
   };
 }
 
@@ -139,7 +151,7 @@ export function validateLabel(body, squareIds) {
   if (!labeler || labeler.length > 60 || !/^[\p{L}\p{N} ._'-]+$/u.test(labeler)) errors.push("labeler");
   if (!squareIds.has(b.square_id)) errors.push("square_id");
   if (!OUTCOMES.includes(b.outcome)) errors.push("outcome");
-  if (!["blind", "correction"].includes(b.mode)) errors.push("mode");
+  if (!["blind", "correction", "model"].includes(b.mode)) errors.push("mode");
   const feats = Array.isArray(b.polygons) ? b.polygons : [];
   if (feats.length > 500) errors.push("polygons: too many");
   const polygons = [];
@@ -215,7 +227,7 @@ export function labelsRouter() {
   // Context layers, optionally just one square's features.
   router.get("/:campaign/layer/:layer", (req, res) => {
     const dir = campaignDir(req.params.campaign);
-    if (!dir || !["prefill", "parcels", "buildings"].includes(req.params.layer)) {
+    if (!dir || !["prefill", "parcels", "buildings", "roads", "model_prefill"].includes(req.params.layer)) {
       return res.status(404).json({ ok: false, error: "Not found" });
     }
     const fc = readJson(dir, `${req.params.layer}.geojson`) || { type: "FeatureCollection", features: [] };
