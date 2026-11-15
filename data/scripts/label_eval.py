@@ -27,12 +27,14 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import rasterio
+import rasterio.errors
 import requests
 from PIL import Image
 from rasterio.transform import Affine
@@ -56,24 +58,42 @@ if Path("/root/.ccr/ca-bundle.crt").exists():
 _token: dict = {}
 
 
-def signed_href(item_id: str) -> str:
-    if not _token or _token["exp"] < time.time():
+def signed_href(item_id: str, force_new_token: bool = False) -> str:
+    """Item image URL with a Planetary Computer SAS token, renewed 2 minutes before it expires
+    (tokens last about 15 minutes; the expiry comes with the token)."""
+    if force_new_token or not _token or _token["exp"] - 120 < time.time():
         r = requests.get(f"{STAC.replace('/stac/v1', '')}/sas/v1/token/naip", timeout=60).json()
-        _token.update(tok=r["token"], exp=time.time() + 30 * 60)
-    it = requests.get(f"{STAC}/collections/naip/items/{item_id}", timeout=60).json()
-    return f"{it['assets']['image']['href']}?{_token['tok']}"
+        exp = datetime.fromisoformat(r["msft:expiry"].replace("Z", "+00:00")).timestamp() \
+            if r.get("msft:expiry") else time.time() + 10 * 60
+        _token.update(tok=r["token"], exp=exp)
+    if item_id not in _hrefs:
+        it = requests.get(f"{STAC}/collections/naip/items/{item_id}", timeout=60).json()
+        _hrefs[item_id] = it["assets"]["image"]["href"]
+    return f"{_hrefs[item_id]}?{_token['tok']}"
+
+
+_hrefs: dict = {}
+
+
+def _read_item(item: str, crs, transform: Affine, w: int, h: int, force_new_token: bool) -> np.ndarray:
+    with rasterio.open(signed_href(item, force_new_token)) as src, WarpedVRT(
+            src, crs=crs, transform=transform, width=w, height=h,
+            resampling=Resampling.bilinear, nodata=0) as vrt:
+        return vrt.read()
 
 
 def read_naip(items: list[str], crs, transform: Affine, w: int, h: int) -> np.ndarray:
-    """4-band NAIP warped onto the target grid; later items fill gaps left by earlier ones."""
+    """4-band NAIP warped onto the target grid; later items fill gaps left by earlier ones.
+    A failed read is retried once with a fresh token (expired tokens fail mid-read)."""
     out = np.zeros((4, h, w), dtype=np.uint8)
     with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
                       GDAL_HTTP_MAX_RETRY="4", GDAL_HTTP_RETRY_DELAY="2"):
         for item in items:
-            with rasterio.open(signed_href(item)) as src, WarpedVRT(
-                    src, crs=crs, transform=transform, width=w, height=h,
-                    resampling=Resampling.bilinear, nodata=0) as vrt:
-                arr = vrt.read()
+            try:
+                arr = _read_item(item, crs, transform, w, h, False)
+            except rasterio.errors.RasterioIOError:
+                time.sleep(2)
+                arr = _read_item(item, crs, transform, w, h, True)
             empty = out[:3].sum(axis=0) == 0
             out[:, empty] = arr[:, empty]
             if not (out[:3].sum(axis=0) == 0).any():
