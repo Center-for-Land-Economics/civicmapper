@@ -130,6 +130,8 @@ def main() -> int:
     ap.add_argument("--batch", type=int, default=2)
     ap.add_argument("--test-share", type=float, default=0.25)
     ap.add_argument("--freeze-stages", type=int, default=2, help="freeze the first N of 4 encoder stages")
+    ap.add_argument("--amp", action="store_true",
+                    help="mixed precision on CUDA (about half the memory, faster on RTX cards)")
     ap.add_argument("--bench", action="store_true")
     ap.add_argument("--eval-only", action="store_true")
     ap.add_argument("--cpu", action="store_true")
@@ -176,6 +178,11 @@ def main() -> int:
     total = steps_per_epoch * (1 if a.bench else a.epochs)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=total, pct_start=0.1)
     step = 0
+    use_amp = a.amp and device == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    if device == "cuda":
+        say(f"GPU: {torch.cuda.get_device_name(0)}, {torch.cuda.get_device_properties(0).total_memory / 2**30:.0f} GB; "
+            f"mixed precision {'on' if use_amp else 'off'}")
     for epoch in range(1 if a.bench else a.epochs):
         model.train()
         order = [e for e in train for _ in range(a.crops_per_square)]
@@ -187,18 +194,22 @@ def main() -> int:
             ts = time.time()
             inputs = processor(images=[c[0] for c in crops], return_tensors="pt", do_resize=False).to(device)
             tgt = torch.as_tensor(np.stack([c[1] for c in crops]).astype(np.int64)).to(device)
-            logits = model(**inputs).logits
-            up = torch.nn.functional.interpolate(logits, size=tgt.shape[-2:], mode="bilinear", align_corners=False)
+            with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
+                logits = model(**inputs).logits
+            up = torch.nn.functional.interpolate(logits.float(), size=tgt.shape[-2:], mode="bilinear",
+                                                 align_corners=False)
             loss_px = torch.nn.functional.cross_entropy(up, tgt, ignore_index=IGNORE, reduction="none")
             valid = (tgt != IGNORE).float()
             loss = (loss_px * valid).sum() / valid.sum().clamp(min=1)
             opt.zero_grad()
-            loss.backward()
-            opt.step(); sched.step(); step += 1
+            scaler.scale(loss).backward()
+            scaler.step(opt); scaler.update(); sched.step(); step += 1
             losses.append(float(loss))
             if a.bench:
                 say(f"bench: step {k + 1} took {time.time() - ts:.1f}s (batch {a.batch}, "
                     f"{sum(p_.numel() for p_ in params) / 1e6:.0f}M trainable params)")
+                if device == "cuda":
+                    say(f"bench: peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB")
                 if k >= 2:
                     est = (time.time() - ts) * steps_per_epoch
                     say(f"bench: ~{est / 60:.0f} min per epoch ({steps_per_epoch} steps); "
