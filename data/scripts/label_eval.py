@@ -47,8 +47,10 @@ TILE = 512
 NDVI_VEG = 0.20
 OPEN_RADIUS = 3
 THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7]
-os.environ.setdefault("CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
-                      if not Path("/root/.ccr/ca-bundle.crt").exists() else "/root/.ccr/ca-bundle.crt")
+# Behind an intercepting proxy (the cloud sandbox) GDAL needs the proxy's CA bundle; elsewhere
+# (e.g. Windows) leave GDAL's own certificate handling alone.
+if Path("/root/.ccr/ca-bundle.crt").exists():
+    os.environ.setdefault("CURL_CA_BUNDLE", "/root/.ccr/ca-bundle.crt")
 
 
 _token: dict = {}
