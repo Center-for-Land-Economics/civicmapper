@@ -126,6 +126,10 @@ def main() -> int:
     ap.add_argument("--threshold", type=float, default=0.5, help="threshold for the pictures")
     ap.add_argument("--cpu", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--weights", help="fine-tuned state dict (label_finetune.py's model.pt) instead of the original")
+    ap.add_argument("--test-only", action="store_true",
+                    help="only the held-out squares listed in finetune/metrics.json")
+    ap.add_argument("--out", help="output folder name under the campaign (default eval, or eval-finetuned)")
     a = ap.parse_args()
 
     from scipy.ndimage import binary_opening
@@ -135,11 +139,18 @@ def main() -> int:
     exp = d / "export"
     summary = pd.read_csv(exp / "summary.csv")
     squares = {f["properties"]["id"]: f["properties"] for f in json.loads((d / "squares.geojson").read_text())["features"]}
-    out = d / "eval"
+    out = d / (a.out or ("eval-finetuned" if a.weights else "eval"))
     (out / "probs").mkdir(parents=True, exist_ok=True)
     processor, model, device, model_id = load_segformer_bundle(use_cpu=a.cpu)
+    if a.weights:
+        import torch
+        model.load_state_dict(torch.load(a.weights, map_location=device))
+        model_id = f"{model_id} fine-tuned ({a.weights})"
 
     todo = summary[summary.outcome.isin(["labeled", "no_parking"])]
+    if a.test_only:
+        test = set(json.loads((d / "finetune" / "metrics.json").read_text())["test_squares"])
+        todo = todo[todo.square_id.isin(test)]
     if a.limit:
         todo = todo.head(a.limit)
     counts = defaultdict(lambda: np.zeros(3, np.int64))  # key -> [tp, fp, fn]
