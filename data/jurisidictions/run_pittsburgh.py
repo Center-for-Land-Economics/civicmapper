@@ -40,12 +40,12 @@ CLIP
   Baldwin, and Rosslyn Farms. East Pittsburgh (822) was not among them.
 
 EXEMPTION
-  TAXCODE is the county's tax status: T taxable, E exempt, P PURTA (public-utility
-  realty tax, paid to the state rather than the city). exemption_flag = 1 when
-  TAXCODE is E or P, or CLASS is U (utilities). Those parcels are excluded.
-  HOMESTEADFLAG is a partial owner-occupant reduction, not a full exemption, and
-  it is not exported (it is household status). Taxable government (CLASS G and
-  TAXCODE T) stays: the county put it on the tax roll.
+  The county states taxability. TAXCODE T is taxable. TAXCODE E is exempt.
+  TAXCODE P is PURTA, and TAXSUBCODE says whether that PURTA parcel is taxable
+  (T) or exempt (E). exemption_flag follows those fields only. CLASS is a use
+  class, not a tax status, so a CLASS U utility the county marks taxable stays
+  in. HOMESTEADFLAG is a partial owner-occupant reduction, not a full exemption,
+  and it is not exported.
 
 CONDOS
   Assessments are one row per PARID (no duplicate keys). Condo units are separate
@@ -113,7 +113,7 @@ GEOM_FIELDS = "PIN,MUNICODE,MAPBLOCKLO,CALCACREAG"
 ASSESS_COLS = [
     "PARID", "PROPERTYHOUSENUM", "PROPERTYFRACTION", "PROPERTYADDRESS", "PROPERTYCITY",
     "PROPERTYUNIT", "PROPERTYZIP", "MUNICODE", "MUNIDESC", "CLASS", "USECODE", "USEDESC",
-    "TAXCODE", "TAXDESC", "LOTAREA", "HOMESTEADFLAG", "CLEANGREEN", "ABATEMENTFLAG",
+    "TAXCODE", "TAXDESC", "TAXSUBCODE", "LOTAREA", "HOMESTEADFLAG", "CLEANGREEN", "ABATEMENTFLAG",
     "FAIRMARKETBUILDING", "FAIRMARKETLAND", "FAIRMARKETTOTAL", "FINISHEDLIVINGAREA",
     "YEARBLT", "TAXYEAR", "ASOFDATE",
 ]
@@ -350,6 +350,7 @@ def fetch_assessments() -> pd.DataFrame:
     frame.loc[frame["USECODE"].eq(""), "USECODE"] = "0"
     frame["CLASS"] = frame["CLASS"].fillna("").astype(str).str.strip().str.upper()
     frame["TAXCODE"] = frame["TAXCODE"].fillna("").astype(str).str.strip().str.upper()
+    frame["TAXSUBCODE"] = frame["TAXSUBCODE"].fillna("").astype(str).str.strip().str.upper()
     frame["USEDESC"] = frame["USEDESC"].fillna("").astype(str).str.strip()
     log(f"Assessment rows: {len(frame):,}  "
         f"tax year mode {frame['TAXYEAR'].mode().iloc[0] if frame['TAXYEAR'].notna().any() else 'n/a'}  "
@@ -776,11 +777,12 @@ def main() -> None:
     log(f"Joined rows: {len(joined):,}")
     joined = collapse_duplicate_pins(joined)
 
-    # Exemption. Homestead / Clean & Green / abatement are partial reductions and
-    # are already excluded from FAIRMARKET*, so they are not exemption_flag.
-    joined["exemption_flag"] = (
-        joined["TAXCODE"].isin(["E", "P"]) | joined["CLASS"].eq("U")
-    ).astype(int)
+    # Exemption follows the county's stated tax status. CLASS is land use, not
+    # taxability, so a taxable utility stays. Homestead, Clean & Green, and
+    # abatement are partial reductions already absent from FAIRMARKET*.
+    tax = joined["TAXCODE"].fillna("").astype(str).str.strip().str.upper()
+    sub = joined["TAXSUBCODE"].fillna("").astype(str).str.strip().str.upper()
+    joined["exemption_flag"] = (tax.eq("E") | (tax.eq("P") & sub.eq("E"))).astype(int)
     log("Exemption flag before the drop:")
     log(f"  flag 1: {int(joined['exemption_flag'].sum()):,}  "
         f"flag 0: {int((joined['exemption_flag'] == 0).sum()):,}")
@@ -793,7 +795,9 @@ def main() -> None:
     joined = collapse_coincident_cards(joined)
     before = len(joined)
     shipped = joined[joined["exemption_flag"].eq(0)].copy()
-    log(f"Dropped {before - len(shipped):,} exempt/utility parcels -> {len(shipped):,}")
+    kept_utilities = int((shipped["CLASS"].eq("U") & shipped["exemption_flag"].eq(0)).sum())
+    log(f"Dropped {before - len(shipped):,} exempt parcels -> {len(shipped):,}")
+    log(f"  taxable utilities kept (CLASS U, county tax status taxable): {kept_utilities:,}")
     if shipped["exemption_flag"].ne(0).any():
         raise RuntimeError("exempt parcels remained in the shipped set")
 

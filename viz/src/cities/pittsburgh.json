@@ -3,7 +3,7 @@
   "state": "pa",
   "filename": "pittsburgh-pa-parcels.parquet",
   "pmtilesFilename": "pittsburgh-pa-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-16-h3",
+  "pmtilesVersion": "2026-11-16-taxcode",
   "hideRemnants": true,
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
