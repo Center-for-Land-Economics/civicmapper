@@ -14,7 +14,9 @@
 #
 # * transformers MUST be pinned < 5. v5 refactored the SegFormer state-dict keys
 #   (encoder.block.* -> stages.*.blocks.*, attention.self.query -> q_proj), so the
-#   UTEL-UIUC/SegFormer-large-parking checkpoint fails to load on v5. 4.46.x works.
+#   UTEL-UIUC/SegFormer-large-parking checkpoint fails to load on v5. 4.46.x works;
+#   4.57.6 (needed for DINOv3 and SAM 2 in the bake-off, parking_models.py) loads it and gives
+#   bit-identical predictions (checked 2026-11-17).
 #
 # * GDAL command-line tools (gdalwarp, gdalbuildvrt) are required — the NAIP fetch
 #   shells out to them. On Windows the cgohlke "osgeo" wheel bundles the exes; put
@@ -30,7 +32,7 @@
 #   rasterio: pre-build naip_imagery.tif with rasterio, drop it in the output dir,
 #   and run without --overwrite so the pipeline skips its own fetch.
 
-transformers==4.46.3
+transformers==4.57.6
 huggingface_hub
 rasterio
 planetary_computer

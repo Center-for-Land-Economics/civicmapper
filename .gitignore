@@ -53,3 +53,6 @@ data/labels/
 
 # Parking Reform Network downloads, NAIP tile cache and scores (data/scripts/prn_eval.py)
 data/prn/
+
+# Bake-off leaderboards and pictures (data/scripts/bakeoff.py)
+data/bakeoff/

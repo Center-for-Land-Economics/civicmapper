@@ -62,6 +62,24 @@ report both the raw and the "clean" numbers; the label tool's guesses are cleane
 Outputs: masks and summary in `data/labels/<campaign>/export/`, scoring pictures in
 `data/labels/<campaign>/eval*/`, PRN pictures and `results.csv` in `data/prn/`.
 
+## Bake-off (compare model families)
+
+Needs `transformers==4.57.6` (`pip install "transformers==4.57.6"` in `.venv-gpu`; the SegFormer
+results are identical) and, for DINOv3, access to `facebook/dinov3-vitl16-pretrain-sat493m`
+(request it on the Hugging Face model page, then `set HF_TOKEN=...` in the shell; never commit it).
+
+| Step | Command | Time on a 3060 (est.) |
+|---|---|---|
+| SegFormer (pipeline model), fine-tuned | `python data/scripts/label_finetune.py pilot-laredo --amp --batch 4 --epochs 8` | ~6 min |
+| DINOv3 satellite ViT-L + head | `python data/scripts/label_finetune.py pilot-laredo --arch vit --amp --batch 2 --epochs 8` | ~30-45 min |
+| DINOv2-large + head (open stand-in) | `python data/scripts/label_finetune.py pilot-laredo --arch vit --backbone facebook/dinov2-large --amp --batch 2 --epochs 8` | ~30-45 min |
+| Check memory/speed first | add `--bench` to any of the above | ~1 min |
+| Score everything | `python data/scripts/bakeoff.py --models segformer segformer:data/labels/pilot-laredo/finetune/model.pt vit:data/labels/pilot-laredo/finetune-dinov3-vitl16-pretrain-sat493m "sam2:segformer:data/labels/pilot-laredo/finetune/model.pt"` | ~20-40 min |
+
+Add `--transfer pilot-plano` once some Plano squares are labelled in Blind mode. Results:
+`data/bakeoff/leaderboard.md` (paste to Claude) and `compare_<square>.png` (one row per model).
+Each run holds back 15% of its training squares to choose its threshold.
+
 ## Memory and speed notes
 
 - Fine-tuning at `--batch 4 --amp` peaks at ~9 GB; use `--batch 2` on 8 GB cards.
