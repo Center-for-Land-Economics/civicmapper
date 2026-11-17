@@ -482,7 +482,7 @@ Produce the parcel file, then bake PMTiles when the city uses them (see section 
 
 ```bash
 python data/jurisidictions/run_<city>.py
-python data/scripts/parquet_to_pmtiles.py --city <city> --drop-remnants --wsl
+python data/scripts/parquet_to_pmtiles.py --city <city> --drop-remnants
 ```
 
 Copy the two bake outputs into `viz/public/` (Vite serves that folder at the site root):
@@ -495,13 +495,15 @@ Copy the two bake outputs into `viz/public/` (Vite serves that folder at the sit
 Point Vite at those files. Create `viz/env/.env.local` (gitignored; Vite reads env from `viz/env/`, not the package root):
 
 ```bash
-VITE_PMTILES_BASE_URL=http://127.0.0.1:5173
+VITE_PMTILES_BASE_URL=http://localhost:5173
 VITE_PMTILES_LOCAL_PREFIX=<city>-<state>-parcels
 ```
 
-`VITE_PMTILES_BASE_URL` must be the same origin you open in the browser. `VITE_PMTILES_LOCAL_PREFIX` limits the override to that city's `.pmtiles` and `-metadata.json`, so other cities still load from the blob. Restart `npm run dev` after writing the env file, then open `http://127.0.0.1:5173/app.html?city=<city>`.
+`VITE_PMTILES_BASE_URL` must be the same origin you open in the browser. `VITE_PMTILES_LOCAL_PREFIX` limits the override to that city's `.pmtiles` and `-metadata.json`, so other cities still load from the blob. Restart `npm run dev` after writing the env file, then open `http://localhost:5173/app.html?city=<city>`.
 
 A city that does not use PMTiles can skip the bake and the env file. Copy `<city>-<state>-parcels.parquet` into `viz/public/` instead. In dev, the app prefers that local parquet when it is present.
+
+### Pre-deployment checklist
 
 Before deploying, verify:
 
