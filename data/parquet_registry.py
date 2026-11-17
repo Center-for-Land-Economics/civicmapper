@@ -81,7 +81,7 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     ),
     "portland": CityParquet(city="portland", state="or", legacy_filename="portland-or-parcels.parquet"),
     # City of Pittsburgh, PA (Allegheny County wards 101-132), clipped to the
-    # municipal boundary. Not East Pittsburgh borough and not the postal city.
+    # municipal boundary.
     "pittsburgh": CityParquet(
         city="pittsburgh", state="pa", legacy_filename="pittsburgh-pa-parcels.parquet"
     ),
