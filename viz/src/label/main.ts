@@ -152,31 +152,23 @@ async function main() {
   await new Promise<void>((res) => map.once('load', () => res()));
 
   // ---- navigation ---------------------------------------------------------------------------
-  // Left-drag never pans: it draws, paints and edits. Pan with a two-finger touchpad swipe, a
-  // middle-button drag, Space+drag or the arrow keys; zoom with a pinch, a mouse wheel or +/-.
-  // Terra Draw re-enables dragPan after its own drags, so dragPan.enable only works while Space is
-  // held.
+  // Left-drag never pans: it draws, paints and edits. Zoom as usual (scroll / two-finger swipe,
+  // pinch, +/-). Pan with Space+drag, a middle-button drag, Shift+scroll (Shift + two-finger
+  // swipe on a touchpad) or the arrow keys. Terra Draw re-enables dragPan after its own drags, so
+  // dragPan.enable only works while Space is held.
   const nav = map.getCanvasContainer();
   const realEnablePan = map.dragPan.enable.bind(map.dragPan);
   let panAllowed = false;
   map.dragPan.enable = ((...args: any[]) => { if (panAllowed) realEnablePan(...(args as [])); }) as any;
   map.dragPan.disable();
-  map.scrollZoom.disable();
-  // A touchpad's two-finger swipe arrives as small, often fractional wheel deltas (pinch adds
-  // ctrlKey); a mouse wheel as large whole steps or line/page units.
-  const isMouseWheel = (e: WheelEvent) =>
-    e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
-  nav.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const r = nav.getBoundingClientRect();
-    const around = map.unproject([e.clientX - r.left, e.clientY - r.top]);
-    if (e.ctrlKey || isMouseWheel(e)) {
-      const dz = e.ctrlKey ? -e.deltaY * 0.01 : -Math.sign(e.deltaY) * 0.5;
-      map.zoomTo(map.getZoom() + dz, { around, duration: 0 });
-    } else {
-      map.panBy([e.deltaX, e.deltaY], { duration: 0 });
-    }
-  }, { passive: false });
+  // Shift+scroll pans; caught on the outer container in the capture phase so MapLibre's scroll
+  // zoom never sees it. (Some browsers turn Shift+wheel into a horizontal deltaX.)
+  map.getContainer().addEventListener('wheel', (e) => {
+    if (!e.shiftKey) return;
+    e.preventDefault(); e.stopPropagation();
+    const k = e.deltaMode === 1 ? 40 : 1;
+    map.panBy([e.deltaX * k, e.deltaY * k], { duration: 0 });
+  }, { capture: true, passive: false });
   let midPan: [number, number] | null = null;
   nav.addEventListener('pointerdown', (e) => {
     if (e.button !== 1) return;
