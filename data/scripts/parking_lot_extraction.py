@@ -98,6 +98,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "lynchburg": "Lynchburg, Virginia, USA",
     # The independent city (FIPS 51660), not the surrounding Rockingham County.
     "harrisonburg": "Harrisonburg, Virginia, USA",
+    "raleigh": "Raleigh, North Carolina, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "tacoma": "Tacoma, Washington, USA",

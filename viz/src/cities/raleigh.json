@@ -1,0 +1,26 @@
+{
+  "notes": [
+    "City of Raleigh, NC — Wake County portion only. Clipped (centroid-within) to Wake GIS's Dissolved Corporate Limits SHORT_NAME='RAL'; 139,977 of 139,980 parcels in the clip also carry the tax CITY code 'RAL'. The small RTP-area sliver in Durham County is not in Wake's data and is not covered. See run_raleigh.py.",
+    "One-stop source: Wake County's nightly 'Property' layer (maps.wake.gov Property/Parcels/MapServer/0) has geometry + LAND_VAL/BLDG_VAL + type & use + land class + billing class + exemption on one row per REID/PIN (0 duplicate keys, 0 stacked footprints).",
+    "Condos (skill §6c/§6d): units and leasehold improvements have NO polygon. ~13.3k such REIDs (≈$8.0B building value, Nov 2026 roll) are taken from Wake's daily real-estate data file (services.wake.gov/realdata_extracts/RealEstData*.zip, fixed-width) and summed onto their host PIN (first 10 digits of the roll PIN = PIN_NUM, exact key). 641 condo 'MASTER CARD' parcels receive the units. Wake assesses a unit's whole value as building (unit land = $0), so ~616 condo parcels ship with $0 land and the gp-error layer flags them (Providence/Hartford precedent; condos ≈ 6% of taxable value, no land imputed).",
+    "Exempt: billing class 'Exempt' (3,190 parcels: city, state/NCSU, county, schools, churches, PHA, LIHTC) and HOA common areas (3,795; assessed at ~$0 under G.S. 105-277.8) are excluded. State-assessed utilities/railroads dropped as Utility. ~$700M of taxable leasehold buildings sitting on exempt land (NCSU Centennial Campus, convention-center block) are dropped with their host parcels.",
+    "Wake has no surface-parking land use; type-and-use 21/210 (parking decks) are structures and go through the improvement-ratio test.",
+    "link is the Wake County real estate account page (Account.asp?id=<REID>)."
+  ],
+  "displayName": "Raleigh",
+  "state": "nc",
+  "filename": "raleigh-nc-parcels.parquet",
+  "pmtilesFilename": "raleigh-nc-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-17-h3",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "raleigh-nc",
+    "raleigh_nc"
+  ],
+  "coords": [
+    -78.6382,
+    35.7796
+  ]
+}

@@ -104,6 +104,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "lynchburg": CityParquet(
         city="lynchburg", state="va", legacy_filename="lynchburg-va-parcels.parquet"
     ),
+    # City of Raleigh, NC (Wake County portion; the small Durham County sliver is not covered).
+    "raleigh": CityParquet(
+        city="raleigh", state="nc", legacy_filename="raleigh-nc-parcels.parquet"
+    ),
     # City of Harrisonburg, VA — the independent city (FIPS 51660), NOT the surrounding
     # Rockingham County.
     "harrisonburg": CityParquet(
