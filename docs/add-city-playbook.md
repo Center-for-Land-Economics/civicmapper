@@ -469,10 +469,11 @@ Local URLs:
 
 Build them locally, then serve the tiles from `viz/public/`.
 
-Python dependencies, from the repo root:
+Python dependencies and Tippecanoe installation, from the repo root:
 
 ```bash
 python -m pip install -r data/requirements.txt
+python data/scripts/install_tippecanoe.py
 ```
 
 `parquet_to_pmtiles.py` imports `azure.storage.blob` and `h3` even for a local bake with no upload. No Azure connection string is required for that.
@@ -481,7 +482,7 @@ Produce the parcel file, then bake PMTiles when the city uses them (see section 
 
 ```bash
 python data/jurisidictions/run_<city>.py
-python data/scripts/parquet_to_pmtiles.py --city <city> --drop-remnants
+python data/scripts/parquet_to_pmtiles.py --city <city> --drop-remnants --wsl
 ```
 
 Copy the two bake outputs into `viz/public/` (Vite serves that folder at the site root):
