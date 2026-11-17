@@ -799,9 +799,6 @@ def main() -> None:
     joined = collapse_coincident_cards(joined)
     before = len(joined)
     shipped = joined[joined["exemption_flag"].eq(0)].copy()
-    kept_utilities = int((shipped["CLASS"].eq("U") & shipped["exemption_flag"].eq(0)).sum())
-    log(f"Dropped {before - len(shipped):,} exempt parcels -> {len(shipped):,}")
-    log(f"  taxable utilities kept (CLASS U, county tax status taxable): {kept_utilities:,}")
     if shipped["exemption_flag"].ne(0).any():
         raise RuntimeError("exempt parcels remained in the shipped set")
 
