@@ -151,6 +151,58 @@ async function main() {
   map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
   await new Promise<void>((res) => map.once('load', () => res()));
 
+  // ---- navigation ---------------------------------------------------------------------------
+  // Left-drag never pans: it draws, paints and edits. Pan with a two-finger touchpad swipe, a
+  // middle-button drag, Space+drag or the arrow keys; zoom with a pinch, a mouse wheel or +/-.
+  // Terra Draw re-enables dragPan after its own drags, so dragPan.enable only works while Space is
+  // held.
+  const nav = map.getCanvasContainer();
+  const realEnablePan = map.dragPan.enable.bind(map.dragPan);
+  let panAllowed = false;
+  map.dragPan.enable = ((...args: any[]) => { if (panAllowed) realEnablePan(...(args as [])); }) as any;
+  map.dragPan.disable();
+  map.scrollZoom.disable();
+  // A touchpad's two-finger swipe arrives as small, often fractional wheel deltas (pinch adds
+  // ctrlKey); a mouse wheel as large whole steps or line/page units.
+  const isMouseWheel = (e: WheelEvent) =>
+    e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+  nav.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const r = nav.getBoundingClientRect();
+    const around = map.unproject([e.clientX - r.left, e.clientY - r.top]);
+    if (e.ctrlKey || isMouseWheel(e)) {
+      const dz = e.ctrlKey ? -e.deltaY * 0.01 : -Math.sign(e.deltaY) * 0.5;
+      map.zoomTo(map.getZoom() + dz, { around, duration: 0 });
+    } else {
+      map.panBy([e.deltaX, e.deltaY], { duration: 0 });
+    }
+  }, { passive: false });
+  let midPan: [number, number] | null = null;
+  nav.addEventListener('pointerdown', (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault(); e.stopPropagation();
+    midPan = [e.clientX, e.clientY];
+    nav.setPointerCapture(e.pointerId);
+  }, true);
+  nav.addEventListener('pointermove', (e) => {
+    if (!midPan) return;
+    e.stopPropagation();
+    map.panBy([midPan[0] - e.clientX, midPan[1] - e.clientY], { duration: 0 });
+    midPan = [e.clientX, e.clientY];
+  }, true);
+  nav.addEventListener('pointerup', (e) => {
+    if (!midPan || e.button !== 1) return;
+    e.stopPropagation();
+    midPan = null;
+    if (nav.hasPointerCapture(e.pointerId)) nav.releasePointerCapture(e.pointerId);
+  }, true);
+  nav.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no autoscroll
+  const setSpacePan = (on: boolean) => {
+    panAllowed = on;
+    if (on) realEnablePan(); else map.dragPan.disable();
+    nav.style.cursor = on ? 'grab' : '';
+  };
+
   for (const kind of ['rgb', 'cir'] as const) {
     for (let i = 0; i < MAX_ITEMS; i++) {
       map.addSource(`naip-${kind}-${i}`, { type: 'raster', tiles: naipTiles('none', '1,2,3'), tileSize: 256, maxzoom: 19 });
@@ -440,10 +492,10 @@ async function main() {
   const selected = () => polygons().filter((f) => f.properties?.selected);
 
   function setTool(mode: Tool) {
-    if (state.tool === 'paint' && mode !== 'paint') { map.dragPan.enable(); map.boxZoom.enable(); }
+    if (state.tool === 'paint' && mode !== 'paint') map.boxZoom.enable();
     state.tool = mode;
     draw.setMode(mode === 'parcel' ? 'select' : mode === 'paint' ? 'idle' : mode);
-    if (mode === 'paint') { map.dragPan.disable(); map.boxZoom.disable(); }
+    if (mode === 'paint') map.boxZoom.disable();
     $('tool-paint').classList.toggle('on', mode === 'paint');
     $('brush').hidden = mode !== 'paint';
     $('brush-size').hidden = mode !== 'paint';
@@ -568,12 +620,12 @@ async function main() {
   map.on('zoom', () => { if (state.tool === 'paint') moveBrush(); });
   container.addEventListener('contextmenu', (e) => { if (state.tool === 'paint') e.preventDefault(); });
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && state.tool === 'paint' && !e.repeat && !(e.target as HTMLElement).closest('input, textarea')) {
-      spaceHeld = true; map.dragPan.enable(); e.preventDefault();
+    if (e.code === 'Space' && !e.repeat && !(e.target as HTMLElement).closest('input, textarea, button, select')) {
+      spaceHeld = true; setSpacePan(true); e.preventDefault();
     }
   });
   window.addEventListener('keyup', (e) => {
-    if (e.code === 'Space' && spaceHeld) { spaceHeld = false; if (state.tool === 'paint') map.dragPan.disable(); }
+    if (e.code === 'Space' && spaceHeld) { spaceHeld = false; setSpacePan(false); }
   });
   const setBrush = (m: number) => { state.brushM = Math.min(15, Math.max(0.3, m)); moveBrush(); };
 

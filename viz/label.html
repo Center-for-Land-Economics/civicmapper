@@ -79,7 +79,7 @@
         <button id="tool-rect">Rectangle <kbd>R</kbd></button>
         <button id="tool-select">Edit <kbd>E</kbd></button>
         <button id="tool-delete">Delete <kbd>Del</kbd></button>
-        <button id="tool-paint" title="Paint pixels with the current class. Right- or Alt-drag erases, Space+drag pans, [ ] brush size.">Paint <kbd>B</kbd></button>
+        <button id="tool-paint" title="Paint pixels with the current class. Right- or Alt-drag erases, [ ] brush size.">Paint <kbd>B</kbd></button>
         <button id="tool-parcel" title="Click inside a dotted parcel outline to turn it into a shape of the current class">From parcel <kbd>G</kbd></button>
         <button id="undo" title="Undo (Ctrl+Z)">Undo <kbd>Ctrl Z</kbd></button>
         <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)">Redo <kbd>Ctrl Y</kbd></button>
@@ -88,10 +88,11 @@
       <p class="meta" style="margin:6px 0 0">
         <b>Polygon:</b> click each corner, then click the first corner (or press <kbd>Enter</kbd>) to close.
         <b>Rectangle:</b> click two corners along one edge, then click to set the width.
-        Drag to pan, scroll to zoom, <kbd>Esc</kbd> cancels a shape in progress.
+        <b>Pan:</b> two-finger swipe on a touchpad, middle-button drag, or hold <kbd>Space</kbd> and drag (arrow keys work too).
+        <b>Zoom:</b> pinch or mouse wheel. Left-drag never moves the map. <kbd>Esc</kbd> cancels a shape in progress.
         <b>Edit:</b> click a shape (the smallest under the pointer; click again to reach the one beneath), drag
         its corners, then change its class or delete it. <b>Paint:</b> drag to paint pixels with the current class (cut-out paint clears); right- or Alt-drag erases,
-        Space+drag pans, <kbd>[</kbd> <kbd>]</kbd> brush size. Paint overrides shapes. <b>From parcel:</b> click inside a dotted parcel to copy it
+        <kbd>[</kbd> <kbd>]</kbd> brush size. Paint overrides shapes. <b>From parcel:</b> click inside a dotted parcel to copy it
         as a shape. <b>Snap</b> pulls corners onto shapes, parcels and the square edge; hold <kbd>Alt</kbd> to place freely.</p>
       <h2>Class (new / selected shape)</h2>
       <div class="grid2">
@@ -194,7 +195,7 @@
         <i>test squares</i> and always start blank, so the model's accuracy is measured on independent drawings.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · B paint ([ ] brush, right/Alt-drag erase, Space pan) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · Pan: two-finger swipe / middle-drag / Space+drag · Zoom: pinch / wheel · B paint ([ ] brush, right/Alt-drag erase) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>
