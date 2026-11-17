@@ -1,0 +1,16 @@
+{
+  "displayName": "Pittsburgh",
+  "state": "pa",
+  "filename": "pittsburgh-pa-parcels.parquet",
+  "pmtilesFilename": "pittsburgh-pa-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-16-h3",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "coords": [-79.97724, 40.43119],
+  "notes": [
+    "Allegheny County parcels clipped to the City of Pittsburgh boundary (representative point within). Not East Pittsburgh and not the postal city.",
+    "Values are the county's 2012 base-year fair market land and building figures, before homestead, abatement, and Clean & Green reductions.",
+    "Condo units are merged onto their common-area lot. The county records no land value on those lots."
+  ]
+}
