@@ -139,7 +139,7 @@ def score(examples, model, thresholds=(0.3, 0.4, 0.5, 0.6)) -> dict:
 
 def pick_threshold(examples, model) -> tuple[float, float]:
     """Threshold with the best cleaned IoU on validation squares -> (threshold, IoU)."""
-    ts = [round(0.25 + 0.05 * k, 2) for k in range(11)]  # 0.25 .. 0.75
+    ts = [round(0.10 + 0.05 * k, 2) for k in range(15)]  # 0.10 .. 0.80
     r = score(examples, model, thresholds=ts)["clean_by_threshold"]
     best = max(ts, key=lambda t: r[str(t)]["iou"] or 0)
     return best, r[str(best)]["iou"] or 0.0
@@ -272,7 +272,8 @@ def main() -> int:
 
     if val:
         model.threshold, viou = pick_threshold(val, model)
-        say(f"threshold {model.threshold:.2f} chosen on {len(val)} validation squares (clean IoU {viou:.0%})")
+        say(f"threshold {model.threshold:.2f} chosen on {len(val)} validation squares (clean IoU {viou:.0%})"
+            + ("; few validation squares, treat it as approximate" if len(val) < 20 else ""))
     model.save(out, {"campaign": a.campaign, "train_squares": len(train), "validation_squares": len(val)})
     tuned = score(test, model, thresholds=sorted({0.3, 0.4, 0.5, 0.6, model.threshold}))
     metrics = {"campaign": a.campaign, "arch": a.arch, "model": model.name, "threshold": model.threshold,
