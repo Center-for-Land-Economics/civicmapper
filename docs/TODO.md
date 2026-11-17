@@ -2,6 +2,17 @@
 
 Open items found along the way. Newest first; move items out when done.
 
+## Parking model licence: NVIDIA non-commercial terms (found 2026-11-17)
+
+The pipeline's parking model, `UTEL-UIUC/SegFormer-large-parking`, is tagged Apache 2.0 on Hugging
+Face but is a fine-tune of `nvidia/segformer-b5-finetuned-ade-640-640`, whose weights are under the
+NVIDIA Source Code License for SegFormer (github.com/NVlabs/SegFormer/blob/master/LICENSE). Section
+3.3 limits "the Work and any derivative works thereof" to non-commercial use, defined as "research
+or evaluation purposes only". Our own fine-tunes inherit this. Publishing citywide parking maps
+from it may fall outside "research or evaluation"; get a legal read before relying on it.
+Unencumbered replacements to test in the bake-off: DINOv2 (Apache 2.0), Clay (Apache 2.0),
+DINOv3-sat (Meta DINOv3 License: commercial use allowed, attribution and pass-through terms).
+
 ## Houston: impossible parcel land areas (found 2026-11-15)
 
 The hosted `parquets-dev/houston-tx-parcels.parquet` sums to ~15,100 km² of parcel land, about
