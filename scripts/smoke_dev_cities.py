@@ -31,6 +31,7 @@ ALL_CITIES = [
     'stlouis',
     'providence',
     'omaha',
+    'flint',
     'tallinn','copenhagen',
 ]
 DEV = "https://dev.civicmapper.org"

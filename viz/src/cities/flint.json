@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "City of Flint, MICHIGAN (Genesee County seat, pop. ~80k). Flint is its own assessing unit, and the source is the City of Flint GIS org's own parcel layer: services5.arcgis.com/lqqWNtSxx8Akj04A/.../Main_COF_Parcel_view/FeatureServer/0 (54,918 polygons, one per parcel number, geometry + assessor values + Michigan property class + tax status). City-only, so no county clip; Flint Township, Burton and Mt. Morris Twp are not in it. Owner/taxpayer-name fields are never requested. See run_flint.py.",
+    "VALUE BASIS: everything is on Michigan's TRUE CASH VALUE (100% market) basis. Land = the assessor's Land_Value (TCV basis: on vacant x02 parcels SEV is ~0.5 x Land_Value). The layer has no building value for commercial/industrial (Resb_Value is residential-only), so market value is estimated as 2 x State Equalized Value (SEV is by law 50% of TCV) and improvement = that minus land, floored at 0 (fallback where SEV is 0: land + Resb_Value). Taxable Value (the Proposal A-capped base) is not used: it is not published here and is not a market value. SEV is in the popup. Roll year is not stated in the layer (last edited 2025-11-25); taxable SEV totals $1.31B.",
+    "EXEMPT (dropped): every parcel whose Exempt_Cod is not 'TAXABLE' (Detroit precedent): 16,359 of 54,918 parcels, 8,228 acres, $225M land. The largest group is MCL 211.7gg, land bank fast-track authority property, i.e. the Genesee County Land Bank: 12,141 parcels, 1,618 acres, $71.4M land (9,422 are vacant-class). Next is 211.7m (government: city, county, schools, state) at 2,568 parcels / 4,058 acres. So the large Land Bank vacant stock does NOT show on the map; the Vacant layer is 5,664 TAXABLE parcels (5,579 vacant-class plus 85 with no improvement value), ~$63M land.",
+    "CLASSIFICATION: Michigan statewide Prop_Class (x01 improved / x02 vacant; 2xx commercial, 3xx industrial, 4xx residential; no x07 condo classes occur in Flint). 401 with a TWO/THREE/FOUR UNIT building style -> Multifamily; 201 with an APARTMENT economic-condition neighborhood -> Multifamily. Commercial/industrial parcels the City's 2022 condition survey (Inv22) marked 'Parking Lot' -> Parking (76 taxable parcels). No condo stacking (0 stacked footprints) and no duplicate parcel numbers.",
+    "LAND IS CHEAP IN THE ASSESSOR'S BOOKS: citywide land median $1.47/sqft (p99 $4.75); a typical 0.1-acre residential lot carries ~$5,000 of land.",
+    "PARKING is OSM-only AND unclassified: 62 lots, 57.9 acres, $3.6M est. land value (2026-11-17). OSM has only 229 parking polygons in Flint and 167 of them sit outside the shipped (taxable) parcel footprint (UM-Flint, Kettering, Hurley, schools, city and Land Bank land) and are dropped. The surface-vs-structure step failed because the pinned Overture release is no longer on S3, so totals cover all OSM parking. A large undercount; the NAIP+ML pipeline would find far more."
+  ],
+  "displayName": "Flint",
+  "state": "mi",
+  "filename": "flint-mi-parcels.parquet",
+  "hideRemnants": true,
+  "parkingFilename": "flint-mi-parking-lots.parquet",
+  "parkingVersion": "2026-11-17-osm",
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "flint-mi",
+    "flint_mi",
+    "flintmi"
+  ],
+  "coords": [
+    -83.6875,
+    43.0125
+  ]
+}

@@ -76,6 +76,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "bcs": "College Station, Texas, USA",
     "rockville": "Rockville, Maryland, USA",
     "detroit": "Detroit, Michigan, USA",
+    "flint": "Flint, Michigan, USA",
     "provo": "Provo, Utah, USA",
     "lincoln": "Lincoln, Nebraska, USA",
     # The independent city in LA County, not the Culver City neighborhood names in LA proper.
