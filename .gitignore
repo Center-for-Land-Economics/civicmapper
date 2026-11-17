@@ -50,3 +50,6 @@ data/jurisidictions/copenhagen-vurdst-access-email.md
 
 # Parking-label campaigns (local; synced to the parking-labels-dev Azure container)
 data/labels/
+
+# Parking Reform Network downloads, NAIP tile cache and scores (data/scripts/prn_eval.py)
+data/prn/
