@@ -111,7 +111,7 @@ export const STATE_NAMES: Record<string, string> = {
   ca: 'California', co: 'Colorado', ct: 'Connecticut', dc: 'District of Columbia', ga: 'Georgia', il: 'Illinois', in: 'Indiana',
   ma: 'Massachusetts', md: 'Maryland', mi: 'Michigan',
   mn: 'Minnesota', mo: 'Missouri', ne: 'Nebraska', nm: 'New Mexico', ny: 'New York', oh: 'Ohio', ok: 'Oklahoma',
-  or: 'Oregon', ri: 'Rhode Island', tx: 'Texas', ut: 'Utah', va: 'Virginia', wa: 'Washington', wv: 'West Virginia',
+  or: 'Oregon', pa: 'Pennsylvania', ri: 'Rhode Island', tx: 'Texas', ut: 'Utah', va: 'Virginia', wa: 'Washington', wv: 'West Virginia',
   ee: 'Estonia', dk: 'Denmark'
 };
 

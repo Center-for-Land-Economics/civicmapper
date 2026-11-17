@@ -463,6 +463,48 @@ Local URLs:
 - app: `http://localhost:5173/app.html?city=<city>`
 - parking: `http://localhost:5173/parking.html?city=<city>`
 
+### Preview a city that is not on the dev blob yet
+
+`./start-local.sh` proxies `/data` at the dev blob. A city that has not been uploaded 404s, and the app reports that the dataset is not available at the live dev path yet. The parquet and PMTiles are gitignored, so a checkout of the branch does not contain them.
+
+Build them locally, then serve the tiles from `viz/public/`.
+
+Python dependencies and Tippecanoe installation, from the repo root:
+
+```bash
+python -m pip install -r data/requirements.txt
+python data/scripts/install_tippecanoe.py
+```
+
+`parquet_to_pmtiles.py` imports `azure.storage.blob` and `h3` even for a local bake with no upload. No Azure connection string is required for that.
+
+Produce the parcel file, then bake PMTiles when the city uses them (see section 10; on Windows pass `--wsl` so tippecanoe and pmtiles run there):
+
+```bash
+python data/jurisidictions/run_<city>.py
+python data/scripts/parquet_to_pmtiles.py --city <city> --drop-remnants
+```
+
+Copy the two bake outputs into `viz/public/` (Vite serves that folder at the site root):
+
+- `data/jurisidictions/data/<city>/<city>-<state>-parcels.pmtiles`
+- `data/jurisidictions/data/<city>/<city>-<state>-parcels-metadata.json`
+
+`*.pmtiles` is gitignored. The metadata JSON is not, so do not commit the copy under `viz/public/`.
+
+Point Vite at those files. Create `viz/env/.env.local` (gitignored; Vite reads env from `viz/env/`, not the package root):
+
+```bash
+VITE_PMTILES_BASE_URL=http://localhost:5173
+VITE_PMTILES_LOCAL_PREFIX=<city>-<state>-parcels
+```
+
+`VITE_PMTILES_BASE_URL` must be the same origin you open in the browser. `VITE_PMTILES_LOCAL_PREFIX` limits the override to that city's `.pmtiles` and `-metadata.json`, so other cities still load from the blob. Restart `npm run dev` after writing the env file, then open `http://localhost:5173/app.html?city=<city>`.
+
+A city that does not use PMTiles can skip the bake and the env file. Copy `<city>-<state>-parcels.parquet` into `viz/public/` instead. In dev, the app prefers that local parquet when it is present.
+
+### Pre-deployment checklist
+
 Before deploying, verify:
 
 - city appears in selector / city card list
