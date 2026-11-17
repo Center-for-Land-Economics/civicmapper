@@ -339,6 +339,17 @@ def parse_args() -> argparse.Namespace:
             "(roads are the most common false positive)."
         ),
     )
+    parser.add_argument(
+        "--no-remove-buildings",
+        action="store_false",
+        dest="remove_buildings",
+        help=(
+            "Disable Overture building subtraction. By default non-parking building footprints "
+            "are cut out of detected parking (flat rooftops are a common false positive; on "
+            "Parking Reform Network downtowns this raised median IoU 45%% -> 51%%). Buildings "
+            "tagged as parking structures are kept for the surface-vs-structure step."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -2545,6 +2556,22 @@ def main() -> None:
                 print("Step 5a: Removing OSM road overlap from parking polygons")
                 print("=" * 60)
                 parking_gdf = remove_road_overlap(parking_gdf, bbox)
+
+            if args.remove_buildings and len(parking_gdf):
+                print("=" * 60)
+                print("Step 5a2: Removing Overture building footprints from parking polygons")
+                print("=" * 60)
+                try:
+                    from data.scripts import overture_source
+                    from data.scripts.classify_parking_surface import OVERTURE_RELEASE
+                    from data.scripts.parking_postprocess import subtract_buildings
+                    blds = overture_source.buildings(tuple(parking_gdf.to_crs(4326).total_bounds),
+                                                     overture_source.resolve_release(OVERTURE_RELEASE))
+                    before = len(parking_gdf)
+                    parking_gdf = subtract_buildings(parking_gdf, blds)
+                    print(f"  {len(blds):,} buildings; parking polygons {before:,} -> {len(parking_gdf):,}")
+                except Exception as e:  # noqa: BLE001 - best effort, like road removal
+                    print(f"  Building removal skipped ({e})")
 
         # -----------------------------------------------------------------------
         if args.use_osm_supplement:

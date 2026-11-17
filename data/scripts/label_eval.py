@@ -10,7 +10,9 @@ grid with a context margin, runs the same model and windowing as parking_lot_ext
 
 Variants scored at each threshold:
   raw       probability >= threshold
-  pipeline  raw, minus NDVI > 0.20 vegetation, then morphological opening (what the pipeline ships)
+  pipeline  raw, minus NDVI > 0.20 vegetation, then morphological opening
+  clean     pipeline, minus Overture buildings and public streets (parking_postprocess.py; the same
+            rules label_export.py applies to the labels). Pictures and metrics.csv use "clean".
 
 Writes data/labels/<campaign>/eval/: <square>__<labeller>.png (imagery | label | prediction |
 errors: green hit, red false alarm, blue miss), probs/<...>.tif, and metrics.csv. Prints pooled
@@ -126,6 +128,30 @@ def predict(img: np.ndarray, processor, model, device) -> np.ndarray:
     return (acc / np.maximum(wt, 1))[:h, :w]
 
 
+def load_context(campaign_dir: Path) -> dict:
+    """Campaign buildings / roads / parcels (EPSG:4326), for parking_postprocess clean-up."""
+    import geopandas as gpd
+    out = {}
+    for layer in ("buildings", "roads", "parcels"):
+        p = campaign_dir / f"{layer}.geojson"
+        out[layer] = gpd.read_file(p) if p.exists() else None
+    return out
+
+
+def keep_mask(ctx: dict, square_id: str, crs, transform, shape) -> np.ndarray:
+    """Cells NOT removed by the clean-up (Overture buildings, public streets off-parcel) for a square."""
+    from data.scripts.parking_postprocess import clean_mask
+
+    def sel(layer):
+        g = ctx.get(layer)
+        return None if g is None or g.empty else g[g["square_id"] == square_id].to_crs(crs)
+    b, r, pc = sel("buildings"), sel("roads"), sel("parcels")
+    keep, _, _ = clean_mask(np.ones(shape, bool), transform,
+                            buildings=None if b is None else b.geometry, roads=r,
+                            parcels=None if pc is None or pc.empty else pc.geometry)
+    return keep
+
+
 def disk(r: int) -> np.ndarray:
     y, x = np.ogrid[-r:r + 1, -r:r + 1]
     return (x * x + y * y) <= r * r
@@ -159,6 +185,7 @@ def main() -> int:
     exp = d / "export"
     summary = pd.read_csv(exp / "summary.csv")
     squares = {f["properties"]["id"]: f["properties"] for f in json.loads((d / "squares.geojson").read_text())["features"]}
+    ctx = load_context(d)
     out = d / (a.out or ("eval-finetuned" if a.weights else "eval"))
     (out / "probs").mkdir(parents=True, exist_ok=True)
     processor, model, device, model_id = load_segformer_bundle(use_cpu=a.cpu)
@@ -203,10 +230,11 @@ def main() -> int:
         truth = np.isin(label, (1, 2))
         valid = label != 4
         stratum = squares[r.square_id]["stratum"]
+        keep = keep_mask(ctx, r.square_id, crs, tr, (h, w))
         for thr in THRESHOLDS:
             raw = p >= thr
             pipe = binary_opening(raw & ~veg, structure=kernel)
-            for name, pred in (("raw", raw), ("pipeline", pipe)):
+            for name, pred in (("raw", raw), ("pipeline", pipe), ("clean", pipe & keep)):
                 tp = int((pred & truth & valid).sum())
                 fp = int((pred & ~truth & valid).sum())
                 fn = int((~pred & truth & valid).sum())
@@ -215,7 +243,7 @@ def main() -> int:
                 for cls, v in (("paved", 1), ("unpaved", 2)):
                     t = label == v
                     counts[(name, thr, f"class:{cls}")] += (int((pred & t).sum()), 0, int((~pred & t).sum()))
-                if name == "pipeline" and abs(thr - a.threshold) < 1e-9:
+                if name == "clean" and abs(thr - a.threshold) < 1e-9:
                     rows.append({"square_id": r.square_id, "labeler": r.labeler, "stratum": stratum,
                                  "outcome": r.outcome, "label_m2": round(truth.sum() * 0.36),
                                  "pred_m2": round(pred.sum() * 0.36), "tp_m2": round(tp * 0.36),
@@ -223,7 +251,7 @@ def main() -> int:
                                  "precision": tp / (tp + fp) if tp + fp else None})
         # picture: imagery | label | prediction (pipeline @ threshold) | errors
         rgb = img[:3][(slice(None),) + crop].transpose(1, 2, 0)
-        pred = binary_opening((p >= a.threshold) & ~veg, structure=kernel)
+        pred = binary_opening((p >= a.threshold) & ~veg, structure=kernel) & keep
         err = np.zeros_like(label)
         err[pred & truth] = 1
         err[pred & ~truth & valid] = 2
@@ -250,12 +278,12 @@ def main() -> int:
 
     print(f"\nModel {model_id} on {len(rows)} labelled squares ({a.campaign}); surface parking = paved + unpaved")
     print("variant   thr   precision  recall   IoU")
-    for name in ("raw", "pipeline"):
+    for name in ("raw", "pipeline", "clean"):
         for thr in THRESHOLDS:
             prec, rec, iou = fmt(counts[(name, thr, "all")])
             print(f"{name:<9} {thr:.1f}   {prec:8.0%}  {rec:6.0%}  {iou:5.0%}")
-    print(f"\nPipeline @ {a.threshold}: recall by labelled class / precision-recall by stratum")
-    for key in sorted(k for k in counts if k[0] == "pipeline" and abs(k[1] - a.threshold) < 1e-9 and k[2] != "all"):
+    print(f"\nClean @ {a.threshold}: recall by labelled class / precision-recall by stratum")
+    for key in sorted(k for k in counts if k[0] == "clean" and abs(k[1] - a.threshold) < 1e-9 and k[2] != "all"):
         prec, rec, iou = fmt(counts[key])
         if key[2].startswith("class:"):
             print(f"  {key[2]:<22} recall {rec:.0%}")

@@ -34,7 +34,7 @@ from rasterio.transform import Affine
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from data.scripts.label_eval import TILE, predict, read_naip  # noqa: E402
+from data.scripts.label_eval import TILE, keep_mask, load_context, predict, read_naip  # noqa: E402
 
 LABELS = ROOT / "data" / "labels"
 MARGIN = 48
@@ -54,6 +54,7 @@ def load_examples(campaign: str) -> list[dict]:
                for f in json.loads((d / "squares.geojson").read_text())["features"]}
     cache = exp / "naip"
     cache.mkdir(exist_ok=True)
+    ctx = load_context(d)
     out = []
     for r in summary[summary.outcome.isin(["labeled", "no_parking"])].itertuples():
         masks = sorted((exp / "masks").glob(f"{r.square_id}__*.tif"))
@@ -76,6 +77,7 @@ def load_examples(campaign: str) -> list[dict]:
         tgt[MARGIN:MARGIN + h, MARGIN:MARGIN + w] = core
         out.append({"square": r.square_id, "stratum": squares[r.square_id]["stratum"], "img": img,
                     "targeted": bool(squares[r.square_id].get("targeted")),
+                    "keep": keep_mask(ctx, r.square_id, crs, tr, (h, w)),
                     "target": tgt, "label": label})
     return out
 
@@ -96,6 +98,7 @@ def augment(img: np.ndarray, tgt: np.ndarray, rng: random.Random):
 def score(examples, processor, model, device, thresholds=(0.3, 0.4, 0.5, 0.6)) -> dict:
     """Pooled precision/recall/IoU on surface parking, plus paved/unpaved recall and by stratum."""
     res = {t: np.zeros(3, np.int64) for t in thresholds}
+    res_clean = {t: np.zeros(3, np.int64) for t in thresholds}
     cls = {t: {"paved": np.zeros(2, np.int64), "unpaved": np.zeros(2, np.int64)} for t in thresholds}
     strata: dict = {}
     model.eval()
@@ -107,6 +110,9 @@ def score(examples, processor, model, device, thresholds=(0.3, 0.4, 0.5, 0.6)) -
             p = prob >= t
             c = np.array([(p & truth & valid).sum(), (p & ~truth & valid).sum(), (~p & truth & valid).sum()])
             res[t] += c
+            pc = p & ex["keep"]
+            res_clean[t] += np.array([(pc & truth & valid).sum(), (pc & ~truth & valid).sum(),
+                                      (~pc & truth & valid).sum()])
             for name, v in (("paved", 1), ("unpaved", 2)):
                 cls[t][name] += ((p & (lab == v)).sum(), (lab == v).sum())
             if t == 0.5:
@@ -119,7 +125,9 @@ def score(examples, processor, model, device, thresholds=(0.3, 0.4, 0.5, 0.6)) -
                 "iou": tp / (tp + fp + fn) if tp + fp + fn else None}
     return {"by_threshold": {str(t): {**m(res[t]), **{f"recall_{k}": (int(v[0]) / int(v[1]) if v[1] else None)
                                                      for k, v in cls[t].items()}} for t in thresholds},
-            "by_stratum_at_0.5": {s: m(c) for s, c in strata.items()}}
+            "by_stratum_at_0.5": {s: m(c) for s, c in strata.items()},
+            # probability >= threshold minus Overture buildings and public streets (parking_postprocess)
+            "clean_by_threshold": {str(t): m(res_clean[t]) for t in thresholds}}
 
 
 def main() -> int:
@@ -167,6 +175,7 @@ def main() -> int:
         model.load_state_dict(torch.load(out / "model.pt", map_location="cpu"))
         tuned = score(test, processor, model, device)
         say("fine-tuned model on test squares: " + json.dumps(tuned["by_threshold"]["0.5"]))
+        say("  with buildings and streets removed: " + json.dumps(tuned["clean_by_threshold"]["0.5"]))
         return 0
 
     enc = model.segformer.encoder
@@ -230,6 +239,10 @@ def main() -> int:
         b = r["by_threshold"]["0.5"]
         say(f"  {name:<12}                 {b['precision']:8.0%} {b['recall']:6.0%} {b['iou']:5.0%} "
             f"{b['recall_paved'] or 0:6.0%} {b['recall_unpaved'] or 0:7.0%}")
+    for name, r in (("original", base), ("fine-tuned", tuned)):
+        b = r["clean_by_threshold"]["0.5"]
+        say(f"  {name + ' clean':<28} {b['precision']:8.0%} {b['recall']:6.0%} {b['iou']:5.0%}"
+            "   (buildings + streets removed)")
     say(f"Saved {out / 'model.pt'} and metrics.json")
     return 0
 

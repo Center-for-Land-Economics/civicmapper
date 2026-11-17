@@ -8,7 +8,8 @@ everything. Held-out test squares (the same hash split as label_finetune.py) are
 in the tool, so accuracy is always measured on squares drawn from scratch.
 
 Prediction = the pipeline's recipe: probability >= threshold, NDVI > 0.20 vegetation removed,
-morphological opening; polygons are simplified (0.6 m) and pieces under --min-m2 dropped. The
+morphological opening, then Overture buildings and public streets removed (parking_postprocess.py,
+--no-clean to skip); polygons are simplified (0.6 m) and pieces under --min-m2 dropped. The
 model is two-class, so every guess arrives as "paved"; labellers reclassify gravel.
 
 Usage:
@@ -32,7 +33,7 @@ from shapely.geometry import mapping, shape
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from data.scripts.label_eval import NDVI_VEG, OPEN_RADIUS, disk, predict, read_naip  # noqa: E402
+from data.scripts.label_eval import NDVI_VEG, OPEN_RADIUS, disk, keep_mask, load_context, predict, read_naip  # noqa: E402
 
 LABELS = ROOT / "data" / "labels"
 CELL = 0.6
@@ -86,6 +87,7 @@ def main() -> int:
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--min-m2", type=float, default=50.0)
     ap.add_argument("--squares", nargs="*", help="only these squares (others already in the file are kept)")
+    ap.add_argument("--no-clean", action="store_true", help="keep guesses on buildings and public streets")
     ap.add_argument("--cpu", action="store_true")
     a = ap.parse_args()
 
@@ -100,10 +102,13 @@ def main() -> int:
     if a.squares and path.exists():
         keep = [f for f in json.loads(path.read_text())["features"] if f["properties"]["square_id"] not in set(a.squares)]
     feats = list(keep)
+    ctx = None if a.no_clean else load_context(d)
     t0 = time.time()
     for n, r in enumerate(todo.itertuples(), 1):
         items = json.loads(r.naip_items) if isinstance(r.naip_items, str) else list(r.naip_items)
         mask, _p, tr = square_prediction(r.geometry, items, utm, bundle, a.threshold)
+        if ctx is not None:
+            mask = mask & keep_mask(ctx, r.id, utm, tr, mask.shape)
         polys = mask_polygons(mask, tr, utm, r.geometry, a.min_m2)
         ll = gpd.GeoSeries(polys, crs=utm).to_crs(4326) if polys else []
         for g in ll:

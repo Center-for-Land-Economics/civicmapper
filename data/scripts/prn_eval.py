@@ -11,9 +11,10 @@ buildings, mostly tagged parking). Our definition is surface parking only, so PR
 Overture building is ignored in scoring (neither hit nor miss); predictions on other buildings
 still count as false alarms.
 
-Each model is scored twice: as predicted, and with Overture building footprints removed from the
-prediction ("-bldg"), the post-processing the citywide pipeline can apply cheaply (rooftops of
-flat mid-rise buildings are a common false alarm outside Laredo).
+Each model is scored three ways: as predicted; with Overture building footprints removed
+("-bldg"); and with buildings and public streets removed ("-clean", parking_postprocess.py: road
+half-widths off-parcel, using our parcels when data/jurisidictions/data/<city>/ has them, else the
+road buffer alone).
 
 Caveats: downtowns are the hardest terrain (garages, leaning towers, shadows) and not typical of a
 whole city; PRN traced from other imagery at other dates, so a little disagreement is change or
@@ -146,6 +147,22 @@ def main() -> int:
             if len(bl) else np.zeros((H, W), bool)
         ignore = truth & built          # PRN garages / covered parking: not surface parking
         truth = truth & ~built
+        rpath = OUT / city / "roads.parquet"
+        if not rpath.exists():
+            from data.scripts.classify_parking_surface import OVERTURE_RELEASE
+            from data.scripts import overture_source
+            from data.scripts.parking_postprocess import public_roads
+            public_roads(tuple(gpd.GeoSeries([bnd], crs=4326).buffer(0.002).total_bounds),
+                         overture_source.resolve_release(OVERTURE_RELEASE)).to_parquet(rpath)
+        roads = gpd.read_parquet(rpath).to_crs(utm)
+        ours = ROOT / "data" / "jurisidictions" / "data" / city.replace("-tx", "").replace("-", "") / \
+            f"{city.replace('-tx', '').replace('-', '')}-tx-parcels.parquet"
+        parcel_geoms = None
+        if ours.exists():
+            pc = gpd.read_parquet(ours, columns=["geometry"]).to_crs(utm)
+            parcel_geoms = pc[pc.intersects(b_utm.buffer(50))].geometry
+        from data.scripts.parking_postprocess import street_mask
+        street = street_mask((H, W), tr_all, roads, parcel_geoms)
         rgb = np.zeros((H, W, 3), np.uint8)
         preds = {name: np.zeros((H, W), bool) for name, _ in models}
         tpx = int(TILE_M / CELL)
@@ -185,6 +202,7 @@ def main() -> int:
         for name, pred in preds.items():
             variants[name] = pred
             variants[f"{name}-bldg"] = pred & ~built
+            variants[f"{name}-clean"] = pred & ~built & ~street
         for name, pred in variants.items():
             p, t = pred & inside & ~ignore, truth & inside
             tp, fp, fn = int((p & t).sum()), int((p & ~t).sum()), int((~p & t).sum())
