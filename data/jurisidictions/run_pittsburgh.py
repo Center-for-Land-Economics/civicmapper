@@ -17,11 +17,13 @@ SOURCES
   Values, use, and tax status (countywide assessment extract, no owner names):
     https://data.wprdc.org/dataset/property-assessments
     assessments.csv, joined on PARID = PIN.
-    Land / building / total are FAIRMARKETLAND / FAIRMARKETBUILDING / FAIRMARKETTOTAL:
-    the county's 2012 base-year fair market values, before homestead, abatement,
-    and Clean & Green reductions. COUNTY* subtracts those reductions, so it is the
-    wrong figure for a land-value map (it makes owner-occupied houses look cheap).
-    The county's own help file says these are not current market values.
+    Shipped land and building are FAIRMARKETLAND and FAIRMARKETBUILDING.
+    FAIRMARKET* is the 2012 base-year assessed value before any exemption or
+    preferential reduction. Homestead, Clean & Green, and abatement are not
+    applied to FAIRMARKET* at all. Those reductions exist only on COUNTY*
+    (homestead, Clean & Green, and abatement) and LOCAL* (Clean & Green).
+    This ETL does not read COUNTY* or LOCAL*. The county help file says the
+    base-year figures are not current market values.
     Base year: 2012. https://realestate.alleghenycounty.us/help.html
 
   City boundary (authoritative clip):
@@ -113,7 +115,7 @@ GEOM_FIELDS = "PIN,MUNICODE,MAPBLOCKLO,CALCACREAG"
 ASSESS_COLS = [
     "PARID", "PROPERTYHOUSENUM", "PROPERTYFRACTION", "PROPERTYADDRESS", "PROPERTYCITY",
     "PROPERTYUNIT", "PROPERTYZIP", "MUNICODE", "MUNIDESC", "CLASS", "USECODE", "USEDESC",
-    "TAXCODE", "TAXDESC", "TAXSUBCODE", "LOTAREA", "HOMESTEADFLAG", "CLEANGREEN", "ABATEMENTFLAG",
+    "TAXCODE", "TAXDESC", "TAXSUBCODE", "LOTAREA", "HOMESTEADFLAG",
     "FAIRMARKETBUILDING", "FAIRMARKETLAND", "FAIRMARKETTOTAL", "FINISHEDLIVINGAREA",
     "YEARBLT", "TAXYEAR", "ASOFDATE",
 ]
@@ -779,7 +781,9 @@ def main() -> None:
 
     # Exemption follows the county's stated tax status. CLASS is land use, not
     # taxability, so a taxable utility stays. Homestead, Clean & Green, and
-    # abatement are partial reductions already absent from FAIRMARKET*.
+    # abatement are not consulted here. They are not in FAIRMARKET*, which is
+    # the value this file ships. They are applied only on COUNTY* and LOCAL*,
+    # and those columns are not read.
     tax = joined["TAXCODE"].fillna("").astype(str).str.strip().str.upper()
     sub = joined["TAXSUBCODE"].fillna("").astype(str).str.strip().str.upper()
     joined["exemption_flag"] = (tax.eq("E") | (tax.eq("P") & sub.eq("E"))).astype(int)
