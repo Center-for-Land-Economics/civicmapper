@@ -11,6 +11,10 @@ buildings, mostly tagged parking). Our definition is surface parking only, so PR
 Overture building is ignored in scoring (neither hit nor miss); predictions on other buildings
 still count as false alarms.
 
+Each model is scored twice: as predicted, and with Overture building footprints removed from the
+prediction ("-bldg"), the post-processing the citywide pipeline can apply cheaply (rooftops of
+flat mid-rise buildings are a common false alarm outside Laredo).
+
 Caveats: downtowns are the hardest terrain (garages, leaning towers, shadows) and not typical of a
 whole city; PRN traced from other imagery at other dates, so a little disagreement is change or
 misregistration, not model error.
@@ -177,7 +181,11 @@ def main() -> int:
                 preds[name][r:r + h, c:c + w] = binary_opening((p >= a.threshold) & ~veg, structure=kernel)
             if k % 20 == 0:
                 print(f"  {city}: {k}/{len(tiles)} tiles ({time.time() - t0:.0f}s)", flush=True)
+        variants = {}
         for name, pred in preds.items():
+            variants[name] = pred
+            variants[f"{name}-bldg"] = pred & ~built
+        for name, pred in variants.items():
             p, t = pred & inside & ~ignore, truth & inside
             tp, fp, fn = int((p & t).sum()), int((p & ~t).sum()), int((~p & t).sum())
             rows.append({"city": city, "model": name, "naip_years": "/".join(map(str, sorted(years))),
