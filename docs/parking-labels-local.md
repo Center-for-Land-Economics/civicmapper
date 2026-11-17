@@ -55,6 +55,10 @@ want to keep the previous model. Paste the "Test squares" table to Claude to tra
 | Add Overture buildings and roads to a campaign | `python data/scripts/label_buildings.py pilot-laredo` |
 | New campaign for another city | `python data/scripts/label_campaign.py --city plano --name pilot-plano --n 150` |
 
+All model output is cleaned the same way as the labels: Overture buildings and public streets
+(off-parcel road half-widths) are removed (`data/scripts/parking_postprocess.py`). Evaluations
+report both the raw and the "clean" numbers; the label tool's guesses are cleaned by default.
+
 Outputs: masks and summary in `data/labels/<campaign>/export/`, scoring pictures in
 `data/labels/<campaign>/eval*/`, PRN pictures and `results.csv` in `data/prn/`.
 
