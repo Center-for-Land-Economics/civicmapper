@@ -60,7 +60,8 @@ def append_features(path: Path, gdf: gpd.GeoDataFrame) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("campaign")
-    ap.add_argument("--weights", help="fine-tuned model.pt")
+    ap.add_argument("--weights", help="fine-tuned SegFormer model.pt")
+    ap.add_argument("--model", help="any parking_models.py spec (overrides --weights)")
     ap.add_argument("--n", type=int, default=25, help="squares to add")
     ap.add_argument("--candidates", type=int, default=250, help="cells to run the model on")
     ap.add_argument("--min-suspect-share", type=float, default=0.3)
@@ -105,7 +106,7 @@ def main() -> int:
 
     cand_ll = cand.to_crs(4326)
     items = naip_items(tuple(cand_ll.total_bounds))
-    bundle = load_model(a.weights, a.cpu)
+    bundle = load_model(a.weights, a.cpu, a.model)
     sus_parcels = p[p.property_land_use_category.isin(SUSPECT)]
     results = []
     t0 = time.time()
@@ -179,7 +180,7 @@ def main() -> int:
     mp.write_text(json.dumps(mfc))
 
     meta.setdefault("targeted", []).append({
-        "added": time.strftime("%Y-%m-%dT%H:%M:%S"), "squares": new["id"].tolist(), "model": bundle[3],
+        "added": time.strftime("%Y-%m-%dT%H:%M:%S"), "squares": new["id"].tolist(), "model": bundle.name,
         "rule": f"top {len(pick)} of {len(results)} sampled cells with >= {a.min_suspect_share:.0%} vacant / "
                 "agricultural / industrial / unparcelled land, ranked by predicted parking on that land",
         "note": "not a random sample: excluded from test squares and citywide estimates"})

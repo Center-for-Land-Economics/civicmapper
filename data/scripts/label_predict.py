@@ -15,6 +15,7 @@ model is two-class, so every guess arrives as "paved"; labellers reclassify grav
 Usage:
   python data/scripts/label_predict.py pilot-laredo --weights data/labels/pilot-laredo/finetune/model.pt
   python data/scripts/label_predict.py pilot-laredo --weights ... --squares pilot-laredo-0151 pilot-laredo-0152
+  python data/scripts/label_predict.py pilot-laredo --model vit:data/labels/pilot-laredo/finetune-dinov2-large
 """
 from __future__ import annotations
 
@@ -33,33 +34,30 @@ from shapely.geometry import mapping, shape
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from data.scripts.label_eval import NDVI_VEG, OPEN_RADIUS, disk, keep_mask, load_context, predict, read_naip  # noqa: E402
+from data.scripts.label_eval import NDVI_VEG, OPEN_RADIUS, disk, keep_mask, load_context, read_naip  # noqa: E402
 
 LABELS = ROOT / "data" / "labels"
 CELL = 0.6
 MARGIN = 48
 
 
-def load_model(weights: str | None, cpu: bool):
-    from data.scripts.parking_lot_extraction import load_segformer_bundle
-    processor, model, device, model_id = load_segformer_bundle(use_cpu=cpu)
-    if weights:
-        import torch
-        model.load_state_dict(torch.load(weights, map_location=device))
-        model_id = f"{model_id}+finetuned:{Path(weights).parent.parent.name}"
-    model.eval()
-    return processor, model, device, model_id
+def load_model(weights: str | None, cpu: bool, spec: str | None = None):
+    """A parking_models.ParkingModel: --model spec (any architecture), else SegFormer (+ --weights)."""
+    from data.scripts.parking_models import load_spec
+    m = load_spec(spec or (f"segformer:{weights}" if weights else "segformer"), cpu=cpu)
+    m.train(False)
+    return m
 
 
-def square_prediction(geom_utm, items: list[str], utm, bundle, threshold: float):
-    """-> (binary mask on the square's 0.6 m grid, prob, transform). geom_utm: square polygon in UTM."""
+def square_prediction(geom_utm, items: list[str], utm, model, threshold: float):
+    """-> (binary mask on the square's 0.6 m grid, prob, transform). geom_utm: square polygon in UTM;
+    model: parking_models.ParkingModel."""
     from scipy.ndimage import binary_opening
-    processor, model, device, _ = bundle
     x0, y0, x1, y1 = geom_utm.bounds
     w, h = math.ceil((x1 - x0) / CELL - 1e-6), math.ceil((y1 - y0) / CELL - 1e-6)
     tr = from_origin(x0, y1, CELL, CELL)
     img = read_naip(items, utm, tr * Affine.translation(-MARGIN, -MARGIN), w + 2 * MARGIN, h + 2 * MARGIN)
-    prob = predict(img, processor, model, device)
+    prob = model.predict(img)
     nir, red = img[3].astype(np.float32), img[0].astype(np.float32)
     ndvi = np.where(nir + red > 0, (nir - red) / np.maximum(nir + red, 1), 0)
     crop = (slice(MARGIN, MARGIN + h), slice(MARGIN, MARGIN + w))
@@ -83,7 +81,8 @@ def mask_polygons(mask: np.ndarray, tr, utm, clip_utm, min_m2: float) -> list:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("campaign")
-    ap.add_argument("--weights", help="fine-tuned model.pt (default: the original pipeline model)")
+    ap.add_argument("--weights", help="fine-tuned SegFormer model.pt (default: the original pipeline model)")
+    ap.add_argument("--model", help="any parking_models.py spec, e.g. vit:data/labels/pilot-laredo/finetune-dinov2-large")
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--min-m2", type=float, default=50.0)
     ap.add_argument("--squares", nargs="*", help="only these squares (others already in the file are kept)")
@@ -96,7 +95,7 @@ def main() -> int:
     utm = sq.estimate_utm_crs()
     sq_utm = sq.to_crs(utm)
     todo = sq_utm[sq_utm["id"].isin(a.squares)] if a.squares else sq_utm
-    bundle = load_model(a.weights, a.cpu)
+    bundle = load_model(a.weights, a.cpu, a.model)
     path = d / "model_prefill.geojson"
     keep = []
     if a.squares and path.exists():
@@ -117,9 +116,9 @@ def main() -> int:
         if n % 10 == 0 or n == len(todo):
             print(f"  {n}/{len(todo)} squares ({time.time() - t0:.0f}s)", flush=True)
     path.write_text(json.dumps({"type": "FeatureCollection", "features": feats,
-                                "properties": {"model": bundle[3], "threshold": a.threshold}}))
+                                "properties": {"model": bundle.name, "threshold": a.threshold}}))
     meta = json.loads((d / "campaign.json").read_text())
-    meta["model_prefill"] = {"model": bundle[3], "threshold": a.threshold, "polygons": len(feats),
+    meta["model_prefill"] = {"model": bundle.name, "threshold": a.threshold, "polygons": len(feats),
                              "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
     (d / "campaign.json").write_text(json.dumps(meta, indent=2, default=str))
     print(f"{a.campaign}: {len(feats):,} model polygons -> {path.relative_to(ROOT)}")

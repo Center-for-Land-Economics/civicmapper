@@ -137,6 +137,12 @@ def score(examples, model, thresholds=(0.3, 0.4, 0.5, 0.6)) -> dict:
             "clean_by_threshold": {str(t): m(res_clean[t]) for t in thresholds}}
 
 
+# Thresholds picked on a dozen validation squares over-fitted (0.10-0.25) and lost 7-10 points of
+# IoU on the PRN downtowns against a plain 0.5 (bake-off, 2026-11-18). Keep 0.5 unless there are
+# enough validation squares to trust the choice.
+MIN_VAL_FOR_THRESHOLD = 30
+
+
 def pick_threshold(examples, model) -> tuple[float, float]:
     """Threshold with the best cleaned IoU on validation squares -> (threshold, IoU)."""
     ts = [round(0.10 + 0.05 * k, 2) for k in range(15)]  # 0.10 .. 0.80
@@ -270,10 +276,12 @@ def main() -> int:
         say(f"epoch {epoch + 1}/{a.epochs}: mean loss {np.mean(losses):.4f} ({time.time() - t0:.0f}s elapsed)")
         model.save(out, {"campaign": a.campaign})
 
-    if val:
+    if len(val) >= MIN_VAL_FOR_THRESHOLD:
         model.threshold, viou = pick_threshold(val, model)
-        say(f"threshold {model.threshold:.2f} chosen on {len(val)} validation squares (clean IoU {viou:.0%})"
-            + ("; few validation squares, treat it as approximate" if len(val) < 20 else ""))
+        say(f"threshold {model.threshold:.2f} chosen on {len(val)} validation squares (clean IoU {viou:.0%})")
+    elif val:
+        say(f"threshold kept at 0.50: {len(val)} validation squares is too few to choose one "
+            f"(needs {MIN_VAL_FOR_THRESHOLD})")
     model.save(out, {"campaign": a.campaign, "train_squares": len(train), "validation_squares": len(val)})
     tuned = score(test, model, thresholds=sorted({0.3, 0.4, 0.5, 0.6, model.threshold}))
     metrics = {"campaign": a.campaign, "arch": a.arch, "model": model.name, "threshold": model.threshold,
