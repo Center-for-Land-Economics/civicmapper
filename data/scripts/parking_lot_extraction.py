@@ -311,6 +311,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "Parking model spec (data/scripts/parking_models.py), e.g. "
+            "vit:data/labels/pilot-laredo/finetune-dinov2-large-targeted (the bake-off winner, "
+            "Apache-2.0 DINOv2). Default: the original UIUC SegFormer-large-parking (its NVIDIA "
+            "SegFormer weights are licensed for research/evaluation only; see docs/TODO.md)."
+        ),
+    )
+    parser.add_argument(
         "--rethreshold",
         action="store_true",
         help=(
@@ -1000,9 +1010,16 @@ def run_segformer_inference(
     nir_strip: bool = True,
     chunk_size_px: int = 6144,
     batch_size: int = 8,
+    parking_model=None,
 ) -> Path:
     """
-    Run UIUC SegFormer-large-parking model on NAIP imagery.
+    Run the parking segmentation model on NAIP imagery.
+
+    parking_model: a data.scripts.parking_models.ParkingModel (--model spec, e.g. the DINOv2 model
+    chosen by bakeoff.py). Default (None): the original UIUC SegFormer-large-parking. Parking
+    probability = 1 - P(not parking), so two- and three-class models share the threshold; a
+    three-class model (paved / unpaved) also writes parking_unpaved.tif, P(unpaved | parking)
+    0-255, which vectorisation turns into a surface_material attribute.
 
     Streams the raster in spatial chunks so memory stays O(chunk_size_px²)
     regardless of city size, while producing BIT-IDENTICAL output to
@@ -1040,11 +1057,14 @@ def run_segformer_inference(
     TILE_SIZE = 512  # pixels (model was trained on 512x512)
     OVERLAP = 64     # pixel overlap between inference windows to reduce edge artifacts
 
-    if processor is None or model is None or device is None:
+    if parking_model is None and (processor is None or model is None or device is None):
         processor, model, device, _ = load_segformer_bundle(use_cpu=use_cpu)
+    three_class = parking_model is not None and getattr(parking_model, "n_classes", 2) == 3
+    model_tag = parking_model.name if parking_model is not None else "segformer-uiuc"
 
     mask_path = output_dir / "parking_mask.tif"
     probs_path = output_dir / "parking_probs.tif"
+    unpaved_path = output_dir / "parking_unpaved.tif"
 
     with rasterio.open(naip_path) as src:
         width, height, n_bands = src.width, src.height, src.count
@@ -1099,11 +1119,12 @@ def run_segformer_inference(
     # ----------------------------------------------------------------------
     journal_path = output_dir / "inference_chunks_done.txt"
     journal_header = (
-        f"{width}x{height} chunk={chunk_size_px} thr={threshold} nir={int(do_nir)}"
+        f"{width}x{height} chunk={chunk_size_px} thr={threshold} nir={int(do_nir)} model={model_tag}"
     )
     done_chunks: set[tuple[int, int]] = set()
     resume = False
-    if journal_path.exists() and mask_path.exists() and probs_path.exists():
+    if journal_path.exists() and mask_path.exists() and probs_path.exists() and \
+            (unpaved_path.exists() or not three_class):
         journal_lines = journal_path.read_text(encoding="utf-8").splitlines()
         if journal_lines and journal_lines[0] == journal_header:
             for line in journal_lines[1:]:
@@ -1119,6 +1140,7 @@ def run_segformer_inference(
         # Remove stale outputs so GDAL never opens them with a mismatched layout
         mask_path.unlink(missing_ok=True)
         probs_path.unlink(missing_ok=True)
+        unpaved_path.unlink(missing_ok=True)
         journal_path.write_text(journal_header + "\n", encoding="utf-8")
 
     kernel = _disk_kernel(MORPH_OPEN_RADIUS_PX)
@@ -1135,9 +1157,11 @@ def run_segformer_inference(
 
     run_t0 = time.perf_counter()
     chunks_done_run = 0
+    import contextlib
     with rasterio.open(naip_path) as src, \
          _open_out(mask_path, mask_profile) as mask_dst, \
-         _open_out(probs_path, probs_profile) as probs_dst:
+         _open_out(probs_path, probs_profile) as probs_dst, \
+         (_open_out(unpaved_path, probs_profile) if three_class else contextlib.nullcontext()) as unpaved_dst:
         for chunk_idx, (cy, cx) in enumerate(
             [(y, x) for y in y_chunks for x in x_chunks], start=1
         ):
@@ -1174,28 +1198,38 @@ def run_segformer_inference(
             # --------------------------------------------------------------
             full_mask = np.zeros((read_h, read_w), dtype=np.float32)
             weight_mask = np.zeros((read_h, read_w), dtype=np.float32)
+            unpaved_acc = np.zeros((read_h, read_w), dtype=np.float32) if three_class else None
 
             pending: list[tuple[int, int, int, int, np.ndarray]] = []
 
             def flush_batch() -> None:
                 if not pending:
                     return
-                inputs = processor(
-                    images=[p[4] for p in pending], return_tensors="pt", do_resize=False
-                ).to(device)
                 with torch.no_grad():
-                    outputs = model(**inputs)
-                upsampled = torch.nn.functional.interpolate(
-                    outputs.logits,  # (B, num_labels, H/4, W/4)
-                    size=(TILE_SIZE, TILE_SIZE),
-                    mode="bilinear",
-                    align_corners=False,
-                )
-                batch_probs = torch.softmax(upsampled, dim=1)[:, 1].cpu().numpy()
-                for (y0, x0, y1, x1, _), probs in zip(pending, batch_probs):
+                    if parking_model is not None:
+                        logits = parking_model.logits([p[4] for p in pending])
+                    else:
+                        inputs = processor(
+                            images=[p[4] for p in pending], return_tensors="pt", do_resize=False
+                        ).to(device)
+                        logits = model(**inputs).logits
+                    upsampled = torch.nn.functional.interpolate(
+                        logits.float(),  # (B, num_labels, h, w)
+                        size=(TILE_SIZE, TILE_SIZE),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+                    sm = torch.softmax(upsampled, dim=1)
+                    # two classes: P(parking) exactly as before; three: 1 - P(not parking)
+                    batch_probs = (sm[:, 1] if sm.shape[1] == 2 else 1.0 - sm[:, 0]).cpu().numpy()
+                    batch_unp = (sm[:, 2] / (sm[:, 1] + sm[:, 2]).clamp(min=1e-6)).cpu().numpy() \
+                        if three_class else [None] * len(pending)
+                for (y0, x0, y1, x1, _), probs, unp in zip(pending, batch_probs, batch_unp):
                     probs = probs[: y1 - y0, : x1 - x0]
                     full_mask[y0:y1, x0:x1] += probs
                     weight_mask[y0:y1, x0:x1] += 1.0
+                    if three_class:
+                        unpaved_acc[y0:y1, x0:x1] += unp[: y1 - y0, : x1 - x0]
                 pending.clear()
 
             for gy0 in wy:
@@ -1238,6 +1272,9 @@ def run_segformer_inference(
             probs_dst.write(
                 np.rint(avg_probs[inner] * 255).astype(np.uint8), 1, window=out_window
             )
+            if three_class:
+                avg_unp = unpaved_acc / np.where(weight_mask == 0, 1.0, weight_mask)
+                unpaved_dst.write(np.rint(avg_unp[inner] * 255).astype(np.uint8), 1, window=out_window)
 
             binary_chunk = (avg_probs >= threshold).astype(np.uint8)
             px_thresholded += int(binary_chunk[inner].sum())
@@ -1286,6 +1323,8 @@ def run_segformer_inference(
         f"({100 * (px_after_strip - px_after_open) / max(px_after_strip, 1):.1f}% removed)"
     )
     print(f"  Mask written: {mask_path}")
+    if three_class:
+        print(f"  Surface map written: {unpaved_path} (P(unpaved | parking), 0-255)")
     return mask_path
 
 
@@ -1382,6 +1421,7 @@ def run_segformer_inference_on_tiles(
     output_dir: Path,
     use_cpu: bool = False,
     overwrite: bool = False,
+    parking_model=None,
 ) -> gpd.GeoDataFrame:
     """
     Run parking inference tile-by-tile using cached NAIP rasters, persist per-tile
@@ -1399,7 +1439,9 @@ def run_segformer_inference_on_tiles(
     tile_gdfs: list[gpd.GeoDataFrame] = []
     total_tiles = len(tile_paths)
     print(f"  Running tile-first inference across {total_tiles} cached NAIP tiles...")
-    processor, model, device, _ = load_segformer_bundle(use_cpu=use_cpu)
+    processor = model = device = None
+    if parking_model is None:
+        processor, model, device, _ = load_segformer_bundle(use_cpu=use_cpu)
 
     for idx, tile_path in enumerate(tile_paths, start=1):
         tile_name = tile_path.stem
@@ -1422,6 +1464,7 @@ def run_segformer_inference_on_tiles(
             processor=processor,
             model=model,
             device=device,
+            parking_model=parking_model,
         )
 
         if mask_path != tile_mask_path:
@@ -1452,6 +1495,34 @@ def run_segformer_inference_on_tiles(
 # ---------------------------------------------------------------------------
 # Step 5: Vectorize mask → parking polygons with post-processing
 # ---------------------------------------------------------------------------
+
+def attach_surface_material(parking_gdf: gpd.GeoDataFrame, unpaved_path: Path,
+                            unpaved_min_share: float = 0.5) -> gpd.GeoDataFrame:
+    """Three-class models: mean P(unpaved | parking) inside each polygon -> unpaved_share, and
+    surface_material = 'unpaved' (gravel / caliche / dirt) when it is >= unpaved_min_share, else
+    'paved'. No-op when the surface map is absent (two-class model)."""
+    if parking_gdf.empty or not unpaved_path.exists():
+        return parking_gdf
+    import rasterio
+    from rasterio.mask import mask as rio_mask
+    with rasterio.open(unpaved_path) as src:
+        geoms = parking_gdf.to_crs(src.crs).geometry
+        shares = []
+        for g in geoms:
+            try:
+                arr, _ = rio_mask(src, [g], crop=True, filled=False)
+                v = arr[0].compressed()
+                shares.append(float(v.mean()) / 255 if v.size else np.nan)
+            except ValueError:  # polygon outside the raster
+                shares.append(np.nan)
+    out = parking_gdf.copy()
+    out["unpaved_share"] = np.round(shares, 3)
+    out["surface_material"] = np.where(out["unpaved_share"] >= unpaved_min_share, "unpaved", "paved")
+    out.loc[out["unpaved_share"].isna(), "surface_material"] = None
+    print(f"  Surface material: {out['surface_material'].value_counts().to_dict()} "
+          f"(unpaved = mean P(unpaved | parking) >= {unpaved_min_share})")
+    return out
+
 
 def vectorize_mask(
     mask_path: Path,
@@ -2525,7 +2596,12 @@ def main() -> None:
                 )
 
             print("=" * 60)
-            print("Step 4: Running SegFormer-large-parking inference")
+            parking_model = None
+            if args.model:
+                from data.scripts.parking_models import load_spec
+                parking_model = load_spec(args.model, cpu=args.cpu)
+                parking_model.train(False)
+            print(f"Step 4: Running parking inference ({parking_model.name if parking_model else 'UIUC SegFormer-large-parking'})")
             print("=" * 60)
             mask_path = run_segformer_inference(
                 naip_path=naip_path,
@@ -2533,6 +2609,7 @@ def main() -> None:
                 use_cpu=args.cpu,
                 threshold=args.threshold,
                 nir_strip=args.nir_strip,
+                parking_model=parking_model,
             )
         else:
             if not mask_path.exists():
@@ -2547,6 +2624,7 @@ def main() -> None:
             print("Step 5: Vectorizing mask to parking polygons")
             print("=" * 60)
             parking_gdf = vectorize_mask(mask_path, min_area_sqft=MIN_PARKING_AREA_SQFT)
+            parking_gdf = attach_surface_material(parking_gdf, mask_path.parent / "parking_unpaved.tif")
 
             if len(parking_gdf) == 0:
                 print("Warning: No parking polygons detected. Check imagery quality and mask output.")

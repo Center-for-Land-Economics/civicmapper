@@ -3,7 +3,10 @@ Parking segmentation models behind one interface, for training (label_finetune.p
 bake-off (bakeoff.py, prn_eval.py).
 
 Every model maps 4-band NAIP (uint8, bands R,G,B,NIR; any size) to a parking probability map, and
-can be trained on 512 px RGB crops with a 2-class cross-entropy (0 not parking, 1 surface parking).
+can be trained on 512 px RGB crops with cross-entropy. Two-class models: 0 not parking, 1 surface
+parking. Three-class models (n_classes=3, ViT only): 0 not parking, 1 paved, 2 unpaved (gravel,
+caliche, dirt); their parking probability is P(paved) + P(unpaved), so thresholds and scores are
+comparable, and predict_classes() gives the per-class maps.
 
 Specs (strings, used on the command line):
   segformer                      the pipeline's model (UTEL-UIUC/SegFormer-large-parking, B5)
@@ -31,6 +34,10 @@ TILE = 512
 class ParkingModel:
     name = "model"
     threshold = 0.5
+    n_classes = 2
+
+    def predict_classes(self, img: np.ndarray) -> np.ndarray:  # -> (n_classes,H,W) probabilities
+        return sliding_predict_all(img, self.logits)
 
     def predict(self, img: np.ndarray) -> np.ndarray:  # img (4,H,W) uint8 -> prob (H,W) float32
         raise NotImplementedError
@@ -60,8 +67,8 @@ def _device(cpu: bool):
     return "cpu"
 
 
-def sliding_predict(img: np.ndarray, batch_logits, batch: int = 4) -> np.ndarray:
-    """Average parking probability over 512 px windows (64 px overlap), any image size."""
+def sliding_predict_all(img: np.ndarray, batch_logits, batch: int = 4) -> np.ndarray:
+    """Average class probabilities over 512 px windows (64 px overlap), any image size -> (C,H,W)."""
     import torch
     _, h, w = img.shape
     ph, pw = max(h, TILE), max(w, TILE)
@@ -69,7 +76,7 @@ def sliding_predict(img: np.ndarray, batch_logits, batch: int = 4) -> np.ndarray
         img = np.pad(img, ((0, 0), (0, ph - h), (0, pw - w)), mode="reflect")
     ys = sorted({0, max(0, ph - TILE)} | set(range(0, max(1, ph - TILE), TILE - 64)))
     xs = sorted({0, max(0, pw - TILE)} | set(range(0, max(1, pw - TILE), TILE - 64)))
-    acc = np.zeros((ph, pw), np.float32)
+    acc = None
     wt = np.zeros((ph, pw), np.float32)
     patches = [(y, x, img[:3, y:y + TILE, x:x + TILE].transpose(1, 2, 0)) for y in ys for x in xs]
     for k in range(0, len(patches), batch):
@@ -77,11 +84,18 @@ def sliding_predict(img: np.ndarray, batch_logits, batch: int = 4) -> np.ndarray
         with torch.no_grad():
             lg = batch_logits([g[2] for g in group])
             up = torch.nn.functional.interpolate(lg.float(), size=(TILE, TILE), mode="bilinear", align_corners=False)
-            probs = torch.softmax(up, dim=1)[:, 1].cpu().numpy()
+            probs = torch.softmax(up, dim=1).cpu().numpy()
+        if acc is None:
+            acc = np.zeros((probs.shape[1], ph, pw), np.float32)
         for (y, x, _), pr in zip(group, probs):
-            acc[y:y + TILE, x:x + TILE] += pr
+            acc[:, y:y + TILE, x:x + TILE] += pr
             wt[y:y + TILE, x:x + TILE] += 1
-    return (acc / np.maximum(wt, 1))[:h, :w]
+    return (acc / np.maximum(wt, 1))[:, :h, :w]
+
+
+def sliding_predict(img: np.ndarray, batch_logits, batch: int = 4) -> np.ndarray:
+    """Parking probability = 1 - P(not parking) (two- or three-class models)."""
+    return 1.0 - sliding_predict_all(img, batch_logits, batch)[0]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -128,7 +142,7 @@ class SegFormerModel(ParkingModel):
 class ViTSegModel(ParkingModel):
     """Hugging Face ViT backbone (DINOv3 / DINOv2) + light multi-layer fusion head."""
 
-    def __init__(self, backbone: str, cpu: bool = False, layers: int = 4, width: int = 256):
+    def __init__(self, backbone: str, cpu: bool = False, layers: int = 4, width: int = 256, n_classes: int = 2):
         import torch
         from torch import nn
         from transformers import AutoImageProcessor, AutoModel
@@ -145,8 +159,9 @@ class ViTSegModel(ParkingModel):
         self.head = nn.Sequential(
             nn.Conv2d(dim * layers, width, 1), nn.BatchNorm2d(width), nn.GELU(),
             nn.Conv2d(width, width, 3, padding=1), nn.BatchNorm2d(width), nn.GELU(),
-            nn.Conv2d(width, 2, 1)).to(self.device)
-        self.name = f"vit:{backbone.split('/')[-1]}"
+            nn.Conv2d(width, n_classes, 1)).to(self.device)
+        self.n_classes = n_classes
+        self.name = f"vit:{backbone.split('/')[-1]}" + ("-3class" if n_classes == 3 else "")
 
     def _features(self, x):
         import torch
@@ -170,6 +185,9 @@ class ViTSegModel(ParkingModel):
 
     def predict(self, img):
         return sliding_predict(img, self.logits, batch=2)
+
+    def predict_classes(self, img):
+        return sliding_predict_all(img, self.logits, batch=2)
 
     def parameters(self):
         return [p for m in (self.backbone, self.head) for p in m.parameters()]
@@ -203,13 +221,14 @@ class ViTSegModel(ParkingModel):
         torch.save({"backbone": self.backbone.state_dict(), "head": self.head.state_dict()}, out_dir / "model.pt")
         (out_dir / "config.json").write_text(json.dumps({
             "arch": "vit", "backbone": self.backbone_id, "layers": self.layers, "threshold": self.threshold,
+            "n_classes": self.n_classes,
             **(extra or {})}, indent=2))
 
     @classmethod
     def load(cls, run_dir: Path, cpu: bool = False):
         import torch
         cfg = json.loads((run_dir / "config.json").read_text())
-        m = cls(cfg["backbone"], cpu=cpu, layers=cfg.get("layers", 4))
+        m = cls(cfg["backbone"], cpu=cpu, layers=cfg.get("layers", 4), n_classes=int(cfg.get("n_classes", 2)))
         sd = torch.load(run_dir / "model.pt", map_location=m.device)
         m.backbone.load_state_dict(sd["backbone"])
         m.head.load_state_dict(sd["head"])

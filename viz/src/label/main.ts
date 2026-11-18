@@ -90,7 +90,7 @@ function closedRing(ring: number[][]): number[][] {
 }
 
 type Pt = [number, number];
-type Tool = 'polygon' | 'angled-rectangle' | 'select' | 'parcel' | 'paint';
+type Tool = 'polygon' | 'angled-rectangle' | 'select' | 'parcel' | 'paint' | 'segment';
 function pointInRing(pt: Pt, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -211,6 +211,15 @@ async function main() {
   map.addSource('buildings', { type: 'geojson', data: empty });
   map.addLayer({ id: 'buildings', type: 'line', source: 'buildings',
     paint: { 'line-color': '#ffd166', 'line-width': 1.5, 'line-opacity': 0.9 } });
+  // Segment tool (SAM 2.1 via data/scripts/sam_server.py): preview outline + click markers.
+  map.addSource('sam-preview', { type: 'geojson', data: empty });
+  map.addLayer({ id: 'sam-preview-fill', type: 'fill', source: 'sam-preview', filter: ['==', '$type', 'Polygon'],
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.18 } });
+  map.addLayer({ id: 'sam-preview-line', type: 'line', source: 'sam-preview', filter: ['==', '$type', 'Polygon'],
+    paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-dasharray': [2, 1.5] } });
+  map.addLayer({ id: 'sam-points', type: 'circle', source: 'sam-preview', filter: ['==', '$type', 'Point'],
+    paint: { 'circle-radius': 5, 'circle-stroke-width': 2, 'circle-stroke-color': '#000',
+      'circle-color': ['case', ['get', 'include'], '#22c55e', '#ef4444'] } });
   map.addSource('square', { type: 'geojson', data: empty });
   map.addLayer({ id: 'square', type: 'line', source: 'square', paint: { 'line-color': '#fff', 'line-width': 2 } });
   map.on('error', (e) => {
@@ -486,7 +495,10 @@ async function main() {
   function setTool(mode: Tool) {
     if (state.tool === 'paint' && mode !== 'paint') map.boxZoom.enable();
     state.tool = mode;
-    draw.setMode(mode === 'parcel' ? 'select' : mode === 'paint' ? 'idle' : mode);
+    draw.setMode(mode === 'parcel' ? 'select' : (mode === 'paint' || mode === 'segment') ? 'idle' : mode);
+    if (mode !== 'segment') samReset();
+    map.getCanvas().style.cursor = mode === 'segment' ? 'crosshair' : '';
+    $('tool-segment').classList.toggle('on', mode === 'segment');
     if (mode === 'paint') map.boxZoom.disable();
     $('tool-paint').classList.toggle('on', mode === 'paint');
     $('brush').hidden = mode !== 'paint';
@@ -621,10 +633,60 @@ async function main() {
   });
   const setBrush = (m: number) => { state.brushM = Math.min(15, Math.max(0.3, m)); moveBrush(); };
 
+  // ---- Segment tool: click inside a lot (include), right- or Alt-click to exclude, Enter accepts --
+  const sam = { points: [] as [number, number, boolean][], polygon: null as GeoJSON.Polygon | null, busy: false,
+    seq: 0 };
+  function samRender() {
+    const feats: GeoJSON.Feature[] = sam.points.map(([lng, lat, inc]) => ({ type: 'Feature',
+      properties: { include: inc }, geometry: { type: 'Point', coordinates: [lng, lat] } }));
+    if (sam.polygon) feats.push({ type: 'Feature', properties: {}, geometry: sam.polygon });
+    (map.getSource('sam-preview') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: feats });
+  }
+  function samReset() {
+    sam.points = []; sam.polygon = null; sam.seq++;
+    if (map.getSource('sam-preview')) samRender();
+  }
+  async function samClick(lng: number, lat: number, include: boolean) {
+    if (!state.square) return;
+    sam.points.push([lng, lat, include]);
+    samRender();
+    const seq = ++sam.seq;
+    sam.busy = true;
+    try {
+      const r = await api<{ polygon: GeoJSON.Polygon | null; score: number; ms: number }>(
+        `/${encodeURIComponent(state.campaign)}/sam`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ square_id: state.square.properties.id, points: sam.points }) });
+      if (seq !== sam.seq) return; // a newer click or a reset superseded this answer
+      sam.polygon = r.polygon;
+      samRender();
+      toast(r.polygon ? `Outline ready (${r.ms} ms): Enter keeps it as ${state.cls}, more clicks refine, Esc clears`
+        : 'Nothing found there: click elsewhere or add an include point');
+    } catch (err) {
+      sam.points.pop(); samRender();
+      toast(`Segment: ${(err as Error).message}`, 6000);
+    } finally { sam.busy = false; }
+  }
+  function samAccept(): boolean {
+    if (!sam.polygon) return false;
+    loadShapes([{ type: 'Feature', geometry: sam.polygon, properties: { class: state.cls } }], false);
+    queueFills();
+    samReset();
+    toast(`Added as ${state.cls}`);
+    return true;
+  }
+  map.getCanvasContainer().addEventListener('contextmenu', (e) => {
+    if (state.tool !== 'segment') return;
+    e.preventDefault();
+    const r = map.getCanvasContainer().getBoundingClientRect();
+    const ll = map.unproject([e.clientX - r.left, e.clientY - r.top]);
+    void samClick(ll.lng, ll.lat, false);
+  });
+
   map.on('click', (e) => {
     const px: Pt = [e.point.x, e.point.y];
     if (state.tool === 'select') selectAt(px);
     else if (state.tool === 'parcel') parcelToShape(px);
+    else if (state.tool === 'segment') void samClick(e.lngLat.lng, e.lngLat.lat, !e.originalEvent.altKey);
   });
 
   function setClassButtons(c: Cls) {
@@ -693,6 +755,7 @@ async function main() {
       `Imagery: <b>NAIP ${p.naip_year ?? '—'}</b>${p.imagery_date ? ` (flown ${p.imagery_date})` : ''}` +
       `${p.naip_year && p.naip_year < 2024 ? ' <span class="warn">older imagery</span>' : ''}${done}`;
     setupGrid(sq);
+    samReset();
     draw.clear();
     queueFills();
     (document.querySelectorAll<HTMLInputElement>('#flags input')).forEach((i) => (i.checked = false));
@@ -883,6 +946,7 @@ async function main() {
   $('tool-select').onclick = () => setTool('select');
   $('tool-parcel').onclick = () => setTool('parcel');
   $('tool-paint').onclick = () => setTool('paint');
+  $('tool-segment').onclick = () => setTool('segment');
   $('undo').onclick = undo;
   $('redo').onclick = redo;
   // Reference only: shows where you are on Google's newer imagery. Never trace from it (licence).
@@ -954,6 +1018,8 @@ async function main() {
     else if (k === 'e' || k === 'E') setTool('select');
     else if (k === 'g' || k === 'G') setTool('parcel');
     else if (k === 'b' || k === 'B') setTool('paint');
+    else if (k === 'a' || k === 'A') setTool('segment');
+    else if (k === 'Escape' && state.tool === 'segment') samReset();
     else if (k === '[') setBrush(state.brushM * 0.75);
     else if (k === ']') setBrush(state.brushM / 0.75);
     else if (k === 'm' || k === 'M') openGoogleMaps();
@@ -965,7 +1031,9 @@ async function main() {
     else if ((k === 'h' || k === 'H') && !e.repeat) { if (!state.shapesHidden) { toggleShapes(); heldHide = true; } }
     else if (k === 'f' || k === 'F') fit();
     else if (k === 'Enter') {
-      // While a shape is being drawn, Enter closes it (Terra Draw); submit only when idle.
+      // Segment tool: Enter keeps the outline. While a shape is being drawn, Enter closes it
+      // (Terra Draw). Otherwise it submits the square.
+      if (state.tool === 'segment' && samAccept()) return;
       if (draw.getModeState() !== 'drawing') submit('labeled');
     }
     else if (k === 'n' || k === 'N') submit('no_parking');

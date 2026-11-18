@@ -80,6 +80,28 @@ Add `--transfer pilot-plano` once some Plano squares are labelled in Blind mode.
 `data/bakeoff/leaderboard.md` (paste to Claude) and `compare_<square>.png` (one row per model).
 Each run holds back 15% of its training squares to choose its threshold.
 
+## Segment tool (SAM 2.1) in the label page
+
+Run the helper next to `start-local.bat`, in the GPU environment (first run downloads ~320 MB):
+```
+python data/scripts/sam_server.py
+```
+In the label page press **A** (Segment), click inside a lot: SAM outlines it. Click more places to
+grow it, right- or Alt-click to exclude, **Enter** keeps it as the current class (an ordinary
+editable shape), **Esc** clears. Without the helper the page says so and the other tools still work.
+
+## Three-class model (paved / unpaved) and the citywide pipeline
+
+| Step | Command |
+|---|---|
+| Train DINOv2 with separate gravel class (~8 min) | `python data/scripts/label_finetune.py pilot-laredo --arch vit --backbone facebook/dinov2-large --classes 3 --amp --batch 2 --epochs 8` |
+| Score it (adds a gravel-surface column) | `python data/scripts/bakeoff.py --models vit:data/labels/pilot-laredo/finetune-dinov2-large-3class` |
+| Citywide run with any model | `python data/scripts/parking_lot_extraction.py --city laredo --model vit:data/labels/pilot-laredo/finetune-dinov2-large-targeted` |
+
+With a three-class model the pipeline also writes `parking_unpaved.tif` and tags every lot polygon
+with `unpaved_share` and `surface_material` (paved / unpaved). Without `--model` it runs the original
+SegFormer (research/evaluation licence, see docs/TODO.md).
+
 ## Memory and speed notes
 
 - Fine-tuning at `--batch 4 --amp` peaks at ~9 GB; use `--batch 2` on 8 GB cards.

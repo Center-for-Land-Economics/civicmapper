@@ -25,6 +25,7 @@ export const CLASSES = ["paved", "unpaved", "structure", "unsure", "cutout"];
 export const OUTCOMES = ["labeled", "no_parking", "cant_tell", "skip"];
 const FLAGS = ["shadows", "trees", "construction", "imagery_stale", "clouds", "misregistered"];
 const LEASE_MS = 10 * 60 * 1000;
+const SAM_URL = process.env.SAM_URL || "http://127.0.0.1:8765/segment";
 const CAMPAIGN_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 export function labelsEnabled(env = process.env) {
@@ -281,6 +282,31 @@ export function labelsRouter() {
       labels = labels.filter((l) => l.labeler.toLowerCase() === who);
     }
     res.json({ ok: true, labels });
+  });
+
+  // Segment tool: forward clicks to the local SAM 2.1 helper (data/scripts/sam_server.py).
+  router.post("/:campaign/sam", async (req, res) => {
+    const dir = campaignDir(req.params.campaign);
+    if (!dir) return res.status(404).json({ ok: false, error: "No such campaign" });
+    const b = req.body || {};
+    const pt = (p) => Array.isArray(p) && p.length === 3 && Number.isFinite(p[0]) && Number.isFinite(p[1]) &&
+      Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90 && typeof p[2] === "boolean";
+    const points = Array.isArray(b.points) ? b.points : [];
+    const box = Array.isArray(b.box) && b.box.length === 4 && b.box.every(Number.isFinite) ? b.box : null;
+    if (typeof b.square_id !== "string" || points.length > 30 || !points.every(pt) || (!points.length && !box)) {
+      return res.status(400).json({ ok: false, error: "square_id plus 1-30 points [lng, lat, include] or a box" });
+    }
+    try {
+      const r = await fetch(SAM_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign: req.params.campaign, square_id: b.square_id, points, box }),
+        signal: AbortSignal.timeout(120000)
+      });
+      return res.status(r.status).json(await r.json());
+    } catch {
+      return res.status(503).json({ ok: false, error: "Segment server not running: start it with " +
+        "python data/scripts/sam_server.py (GPU environment)" });
+    }
   });
 
   router.post("/:campaign/labels", (req, res) => {

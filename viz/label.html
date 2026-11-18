@@ -79,6 +79,7 @@
         <button id="tool-rect">Rectangle <kbd>R</kbd></button>
         <button id="tool-select">Edit <kbd>E</kbd></button>
         <button id="tool-delete">Delete <kbd>Del</kbd></button>
+        <button id="tool-segment" title="Segment Anything: click inside a lot to outline it; right- or Alt-click to exclude; Enter keeps it. Needs data/scripts/sam_server.py running.">Segment <kbd>A</kbd></button>
         <button id="tool-paint" title="Paint pixels with the current class. Right- or Alt-drag erases, [ ] brush size.">Paint <kbd>B</kbd></button>
         <button id="tool-parcel" title="Click inside a dotted parcel outline to turn it into a shape of the current class">From parcel <kbd>G</kbd></button>
         <button id="undo" title="Undo (Ctrl+Z)">Undo <kbd>Ctrl Z</kbd></button>
@@ -91,7 +92,9 @@
         <b>Zoom:</b> scroll, two-finger swipe or pinch, as usual. <b>Pan:</b> hold <kbd>Space</kbd> and drag, middle-button drag,
         <kbd>Shift</kbd>+scroll (Shift + two-finger swipe), or arrow keys. Left-drag never moves the map. <kbd>Esc</kbd> cancels a shape in progress.
         <b>Edit:</b> click a shape (the smallest under the pointer; click again to reach the one beneath), drag
-        its corners, then change its class or delete it. <b>Paint:</b> drag to paint pixels with the current class (cut-out paint clears); right- or Alt-drag erases,
+        its corners, then change its class or delete it. <b>Segment:</b> click inside a lot and SAM outlines it; click again to add more, right- or Alt-click
+        to exclude, <kbd>Enter</kbd> keeps it as the current class, <kbd>Esc</kbd> clears (needs the segment server).
+        <b>Paint:</b> drag to paint pixels with the current class (cut-out paint clears); right- or Alt-drag erases,
         <kbd>[</kbd> <kbd>]</kbd> brush size. Paint overrides shapes. <b>From parcel:</b> click inside a dotted parcel to copy it
         as a shape. <b>Snap</b> pulls corners onto shapes, parcels and the square edge; hold <kbd>Alt</kbd> to place freely.</p>
       <h2>Class (new / selected shape)</h2>
@@ -195,7 +198,7 @@
         <i>test squares</i> and always start blank, so the model's accuracy is measured on independent drawings.</li>
     </ul>
     <h3>Keys</h3>
-    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · Zoom: scroll / pinch · Pan: Space+drag / middle-drag / Shift+scroll / arrows · B paint ([ ] brush, right/Alt-drag erase) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·
+    <p class="meta">D polygon · R rectangle · E edit · Del delete selected · Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · M Google Maps (reference only) · Zoom: scroll / pinch · Pan: Space+drag / middle-drag / Shift+scroll / arrows · A segment (right/Alt-click exclude, Enter keep, Esc clear) · B paint ([ ] brush, right/Alt-drag erase) · G from parcel · S snap (Alt = no snap) · 1–4 class · 5/X cut-out · C infrared · P parcels · O buildings ·
       H (hold) peek under shapes · F recenter · Enter submit · N no parking · T can't tell · K skip · ? guidelines · Esc cancel</p>
     <form method="dialog" style="text-align:right"><button>Got it</button></form>
   </dialog>

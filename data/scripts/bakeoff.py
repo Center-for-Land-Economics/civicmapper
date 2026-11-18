@@ -122,6 +122,11 @@ def main() -> int:
         c, raw = r["clean_by_threshold"][str(thr)], r["by_threshold"][str(thr)]
         row.update({"home_iou": c["iou"], "home_precision": c["precision"], "home_recall": c["recall"],
                     "home_paved_recall": raw["recall_paved"], "home_gravel_recall": raw["recall_unpaved"]})
+        if "surface_by_threshold" in r:  # three-class models: is each surface type right?
+            sb = r["surface_by_threshold"][str(thr)]
+            row.update({"home_surface_paved_iou": sb["paved"]["iou"], "home_surface_unpaved_iou": sb["unpaved"]["iou"],
+                        "home_surface_unpaved_precision": sb["unpaved"]["precision"],
+                        "home_surface_unpaved_recall": sb["unpaved"]["recall"]})
         for name, exs in transfer.items():
             ts = time.time()
             tr = score(exs, model, thresholds=[thr])["clean_by_threshold"][str(thr)]
@@ -172,7 +177,8 @@ def main() -> int:
     pct = lambda v: f"{v:.0%}" if v is not None and not pd.isna(v) else "-"  # noqa: E731
     cols = ["model", "overall_iou", "home_iou", "home_precision", "home_recall", "home_gravel_recall"] + \
         [f"{n}_iou" for n in transfer] + (["prn_median_iou", "prn_median_precision", "prn_median_recall"]
-                                          if prn_cities else []) + ["threshold", "sec_per_km2"]
+                                          if prn_cities else []) + \
+        (["home_surface_unpaved_iou"] if "home_surface_unpaved_iou" in df.columns else []) + ["threshold", "sec_per_km2"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for _, r in df.iterrows():
         md.append("| " + " | ".join(
