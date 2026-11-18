@@ -786,6 +786,16 @@ def main() -> None:
         joined = joined.drop(columns=["MUNICODE_roll"])
     log(f"Joined rows: {len(joined):,}")
     joined = collapse_duplicate_pins(joined)
+    export_parcels(joined, DATA_DIR, "pittsburgh-pa", center=boundary.geometry.iloc[0])
+
+
+def export_parcels(joined, data_dir: Path, slug: str, *, place_column: str = "ward", center=None) -> None:
+    """Classify, drop exempt parcels, and write the canonical parquet.
+
+    `slug` is `<place>-<state>`, for example `pittsburgh-pa` or `allegheny-pa`.
+    `place_column` is the popup field for MUNIDESC.
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     # Exemption follows the county's stated tax status. CLASS is land use, not
     # taxability, so a taxable utility stays. Homestead, Clean & Green, and
@@ -860,7 +870,7 @@ def main() -> None:
     log(shipped["property_land_use_refined"].value_counts(dropna=False).to_string())
 
     shipped["address"] = _situs(shipped)
-    shipped["ward"] = shipped["MUNIDESC"].fillna("").astype(str).str.strip()
+    shipped[place_column] = shipped["MUNIDESC"].fillna("").astype(str).str.strip()
     shipped["use_description"] = shipped["USEDESC"].fillna("").astype(str).str.strip()
     shipped["link"] = PORTAL + shipped["PIN"].astype(str)
     shipped["value_base_year"] = VALUE_BASE_YEAR
@@ -876,7 +886,7 @@ def main() -> None:
         "improvement_value", "improvement_value_per_sqft",
         "TLLDIMPROV", "IMPR_LAND_RATIO", "IMPR_LAND_PCT", "IMPR_PCT_TOTAL",
         "land_area_acres", "area_source", "link",
-        "PIN", "address", "ward", "use_description", "USECODE",
+        "PIN", "address", place_column, "use_description", "USECODE",
         "assessor_records", "value_base_year", "tax_year",
     ]
     final = shipped[columns].rename(columns={
@@ -893,8 +903,8 @@ def main() -> None:
     if not str(final.crs).endswith("4326"):
         raise RuntimeError(f"CRS is {final.crs}, expected EPSG:4326")
 
-    out = DATA_DIR / "pittsburgh-pa-parcels.parquet"
-    stamped = DATA_DIR / f"pittsburgh-pa-parcels_{datetime.now().strftime('%Y_%m_%d')}.parquet"
+    out = data_dir / f"{slug}-parcels.parquet"
+    stamped = data_dir / f"{slug}-parcels_{datetime.now().strftime('%Y_%m_%d')}.parquet"
     final.to_parquet(out, index=False)
     final.to_parquet(stamped, index=False)
     log(f"SAVED {out} | rows {len(final):,}")
@@ -920,8 +930,12 @@ def main() -> None:
     ))
     log(f"  parcels with interior rings: {int((holes > 0).sum()):,}")
     log(f"  zero land value: {int((final['current_full_land_value'].fillna(0) <= 0).sum()):,}")
-    center = boundary.geometry.iloc[0].representative_point()
-    log(f"  boundary representative point (map center candidate): {center.x:.5f}, {center.y:.5f}")
+    if center is not None and not getattr(center, "is_empty", True):
+        point = center.representative_point()
+        log(f"  boundary representative point (map center candidate): {point.x:.5f}, {point.y:.5f}")
+    else:
+        minx, miny, maxx, maxy = final.total_bounds
+        log(f"  bounds center (map center candidate): {(minx + maxx) / 2:.5f}, {(miny + maxy) / 2:.5f}")
     if not final["link"].str.startswith(LINK_OK_PREFIX).all():
         raise RuntimeError("a parcel link is missing the assessor portal prefix")
 

@@ -1,0 +1,23 @@
+{
+  "displayName": "Allegheny County",
+  "state": "pa",
+  "filename": "allegheny-pa-parcels.parquet",
+  "pmtilesFilename": "allegheny-pa-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-18-county",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "municipality",
+      "label": "Municipality",
+      "defaultMode": "all"
+    }
+  ],
+  "coords": [-80.02555, 40.43537],
+  "notes": [
+    "The full Allegheny County parcel layer, not clipped to the City of Pittsburgh.",
+    "Values are the county's 2012 base-year fair market land and building figures. Homestead, Clean & Green, and abatement are not in those fields.",
+    "Taxability follows TAXCODE and, for PURTA, TAXSUBCODE. Exempt parcels are dropped before coincident cards are collapsed."
+  ]
+}
