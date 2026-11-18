@@ -240,6 +240,12 @@ class Sam2Refined(ParkingModel):
         self.threshold = base.threshold
         self.name = f"sam2({base.name})"
 
+    def train(self, mode=True):
+        self.base.train(mode)  # SAM 2 itself is never trained here
+
+    def parameters(self):
+        return self.base.parameters()
+
     def predict(self, img):
         import torch
         from scipy import ndimage

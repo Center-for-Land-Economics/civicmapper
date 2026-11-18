@@ -122,7 +122,9 @@ def prepare_city(city: str) -> dict:
     truth = truth & ~built
     rpath = OUT / city / "roads.parquet"
     if not rpath.exists():
-        public_roads(tuple(gpd.GeoSeries([bnd], crs=4326).buffer(0.002).total_bounds),
+        x0b, y0b, x1b, y1b = gpd.GeoSeries([bnd], crs=4326).total_bounds
+        pad = 0.002  # ~200 m of margin so roads along the boundary are included
+        public_roads((x0b - pad, y0b - pad, x1b + pad, y1b + pad),
                      overture_source.resolve_release(OVERTURE_RELEASE)).to_parquet(rpath)
     roads = gpd.read_parquet(rpath).to_crs(utm)
     key = city.replace("-tx", "").replace("-", "")

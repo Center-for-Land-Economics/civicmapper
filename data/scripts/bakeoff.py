@@ -83,6 +83,10 @@ def main() -> int:
     ap.add_argument("--prn", nargs="*", default=None, help="PRN city ids (default: our 8 Texas cities; 'none' to skip)")
     ap.add_argument("--examples", type=int, default=4, help="home test squares to picture (most parking first)")
     ap.add_argument("--test-share", type=float, default=0.25)
+    ap.add_argument("--threshold", type=float, default=None,
+                    help="score every model at this threshold instead of its own (e.g. 0.5 for a like-for-like check)")
+    ap.add_argument("--fresh", action="store_true",
+                    help="start a new leaderboard instead of merging into data/bakeoff/leaderboard.csv")
     ap.add_argument("--cpu", action="store_true")
     a = ap.parse_args()
 
@@ -103,12 +107,13 @@ def main() -> int:
           f"transfer {', '.join(f'{k} {len(v)}' for k, v in transfer.items()) or 'none'}; "
           f"PRN {len(prn_cities)} downtowns. Models: {len(specs)}", flush=True)
 
-    rows, strips = [], {}
+    rows, strips, failed = [], {}, []
     for spec in specs:
+      try:
         t0 = time.time()
         model = load_spec(spec, cpu=a.cpu)
-        thr = model.threshold
-        row = {"model": model.name, "spec": spec, "threshold": thr}
+        thr = model.threshold if a.threshold is None else a.threshold
+        row = {"model": model.name + ("" if a.threshold is None else f"@{thr:.2f}"), "spec": spec, "threshold": thr}
         secs, km2 = 0.0, 0.0
         ts = time.time()
         r = score(home, model, thresholds=[thr])
@@ -140,15 +145,29 @@ def main() -> int:
         sets = [v for v in sets if v is not None and not pd.isna(v)]
         row["overall_iou"] = float(np.mean(sets)) if sets else None
         row["sec_per_km2"] = secs / km2 if km2 else None
-        strips[model.name] = example_strip(shown, model, thr)
+        strips[row["model"]] = example_strip(shown, model, thr)
         rows.append(row)
-        print(f"{model.name}: overall IoU {row['overall_iou']:.0%} (home {row['home_iou']:.0%}"
+        print(f"{row['model']}: overall IoU {row['overall_iou']:.0%} (home {row['home_iou']:.0%}"
               + "".join(f", {n} {row[f'{n}_iou']:.0%}" for n in transfer)
               + (f", PRN {row['prn_median_iou']:.0%}" if prn_rows else "")
               + f"); {row['sec_per_km2']:.0f} s/km²; {time.time() - t0:.0f}s", flush=True)
         del model
+      except Exception as e:  # one broken model must not lose the others' results
+        import traceback
+        traceback.print_exc()
+        failed.append(spec)
+        print(f"!! {spec} failed ({type(e).__name__}: {e}); continuing with the other models", flush=True)
 
-    df = pd.DataFrame(rows).sort_values("overall_iou", ascending=False)
+    df = pd.DataFrame(rows)
+    lb = OUT / "leaderboard.csv"
+    if lb.exists() and not a.fresh:  # merge with earlier runs; a re-scored model replaces its old row
+        old = pd.read_csv(lb)
+        old = old[~old["model"].isin(df["model"] if len(df) else [])]
+        df = pd.concat([old, df], ignore_index=True)
+    if df.empty:
+        print("No model was scored.")
+        return 1
+    df = df.sort_values("overall_iou", ascending=False)
     df.to_csv(OUT / "leaderboard.csv", index=False)
     pct = lambda v: f"{v:.0%}" if v is not None and not pd.isna(v) else "-"  # noqa: E731
     cols = ["model", "overall_iou", "home_iou", "home_precision", "home_recall", "home_gravel_recall"] + \
@@ -160,15 +179,19 @@ def main() -> int:
             str(r[c2]) if c2 == "model" else (f"{r[c2]:.2f}" if c2 == "threshold" else
                                               (f"{r[c2]:.0f}" if c2 == "sec_per_km2" else pct(r[c2]))) for c2 in cols) + " |")
     (OUT / "leaderboard.md").write_text("\n".join(md) + "\n")
-    for ex in shown:  # one picture per square: a row per model (imagery | label | errors)
-        rows_img = [strips[m][ex["square"]] for m in df.model if ex["square"] in strips[m]]
+    for ex in shown:  # one picture per square: a row per model scored in this run (imagery | label | errors)
+        rows_img = [strips[m][ex["square"]] for m in df.model if m in strips and ex["square"] in strips[m]]
+        if not rows_img:
+            continue
         gap = np.full((8, rows_img[0].shape[1], 3), 255, np.float32)
         Image.fromarray(np.concatenate(sum([[x, gap] for x in rows_img], [])[:-1], axis=0)
                         .clip(0, 255).astype(np.uint8)).save(OUT / f"compare_{ex['square']}.png")
     print("\n" + "\n".join(md))
     print(f"\nRows in compare_*.png follow the leaderboard order: {', '.join(df.model)}")
     print(f"Written to {OUT.relative_to(ROOT)}/")
-    return 0
+    if failed:
+        print(f"Failed: {', '.join(failed)}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
