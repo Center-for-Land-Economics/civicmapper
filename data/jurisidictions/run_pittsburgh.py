@@ -707,7 +707,15 @@ def collapse_coincident_cards(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     card) on the same polygon. Values that differ are separate records and are
     summed. Values that are identical on every card are one assessment copied
     onto each card, so they are kept once.
+
+    Exempt parcels are removed before any stacking. A copied footprint often
+    pairs an exempt card with a taxable one, and summing the stack would pull
+    the exempt land value into the taxable parcel.
     """
+    exempt = gdf["exemption_flag"].eq(1)
+    if int(exempt.sum()):
+        log(f"Excluding {int(exempt.sum()):,} exempt parcels before coincident-card collapse")
+        gdf = gdf.loc[~exempt].copy()
     work = gdf.to_crs(UTM).copy()
     sqft = (work.geometry.area * 10.763910416709722).round(0)
     point = work.geometry.representative_point()
@@ -743,7 +751,7 @@ def collapse_coincident_cards(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             base["FINISHEDLIVINGAREA"] = float(pd.to_numeric(group["FINISHEDLIVINGAREA"], errors="coerce").fillna(0).sum())
         base["FAIRMARKETTOTAL"] = base["FAIRMARKETLAND"] + base["FAIRMARKETBUILDING"]
         base["assessor_records"] = int(pd.to_numeric(group.get("assessor_records", 1), errors="coerce").fillna(1).sum())
-        base["exemption_flag"] = 0 if (group["exemption_flag"] == 0).any() else 1
+        base["exemption_flag"] = 0
         base["geometry"] = unary_union([g for g in group.geometry if g is not None and not g.is_empty])
         kept_rows.append(base)
         drop_pins.update(group["PIN"])
