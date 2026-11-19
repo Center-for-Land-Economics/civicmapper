@@ -1668,6 +1668,25 @@ const PER_SQFT_SRC: Record<string, string> = {
 const TALL_HEX_RATE = 200;
 const loggedTallHexes = new Set<string>();
 
+function hexCenter(geom: GeoJSON.Geometry | null | undefined): { lng: number; lat: number } | null {
+  const ring = geom?.type === 'Polygon'
+    ? geom.coordinates[0]
+    : geom?.type === 'MultiPolygon'
+      ? geom.coordinates[0]?.[0]
+      : null;
+  if (!ring?.length) return null;
+  let lng = 0;
+  let lat = 0;
+  let n = 0;
+  for (const c of ring) {
+    if (c.length < 2) continue;
+    lng += c[0];
+    lat += c[1];
+    n++;
+  }
+  return n ? { lng: lng / n, lat: lat / n } : null;
+}
+
 function logTallAlleghenyHexes() {
   if (SELECTED_CITY !== 'allegheny') return;
   if (!map.getLayer(LAYER_ID_LOW)) return;
@@ -1687,10 +1706,15 @@ function logTallAlleghenyHexes() {
     if (!(sqft > 0) || !Number.isFinite(landValue)) continue;
     const rate = landValue / sqft;
     if (rate <= TALL_HEX_RATE) continue;
-    const key = `${rate.toFixed(2)}|${landValue.toFixed(0)}|${acres.toFixed(4)}`;
+    const center = hexCenter(f.geometry);
+    const key = center
+      ? `${center.lng.toFixed(5)},${center.lat.toFixed(5)}`
+      : `${rate.toFixed(2)}|${landValue.toFixed(0)}|${acres.toFixed(4)}`;
     if (loggedTallHexes.has(key)) continue;
     loggedTallHexes.add(key);
     console.log('[Allegheny hex > $200/sqft]', {
+      lng: center?.lng,
+      lat: center?.lat,
       rate,
       current_full_land_value: landValue,
       land_area_acres: acres,
