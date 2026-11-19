@@ -83,6 +83,12 @@ Two separate tippecanoe runs, joined:
 5. **Background runs lack `AZURE_STORAGE_CONNECTION_STRING`**, so `--upload` fails
    there. Bake without `--upload`, then upload via a `load_dotenv()` + azure-blob
    snippet.
+6. **tippecanoe before 2.55.0 swaps attribute values.** Ubuntu 24.04's apt package
+   is 2.49.0. Its string pool compares hashes as 32-bit ints, so two different land
+   values can be stored as one and a hex displays the other feature's dollars.
+   `parquet_to_pmtiles.py` refuses anything older than 2.55.0.
+   `python data/scripts/install_tippecanoe.py` builds 2.55.0 when apt is older.
+   Rebake after upgrading.
 
 ## Viz integration (`viz/src/main.ts`, `viz/src/dictionaries/<city>.json`)
 

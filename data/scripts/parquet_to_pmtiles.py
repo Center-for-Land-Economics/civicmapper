@@ -5,6 +5,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -368,17 +369,20 @@ def add_region_value_totals(gdf: gpd.GeoDataFrame, metadata: dict) -> None:
 # denominator; at 2 decimals (±218 sqft) it badly distorts small lots' $/sqft.
 FLOAT_DECIMALS = {"land_area_acres": 6}
 
+# tippecanoe 2.49 (Ubuntu 24.04's apt package) compares string-pool hashes in a 32-bit
+# int. Distinct values whose hashes differ by a multiple of 2^32 are stored as one
+# value, so a hex can display another feature's land value. Fixed in 2.55.0.
+MIN_TIPPECANOE = (2, 55, 0)
+
 
 def write_geojson(gdf: gpd.GeoDataFrame, output_path: Path) -> None:
     """Write GeoDataFrame to GeoJSON.
 
-    Round float attributes to 2 decimals first. Full-precision (17-significant-digit)
-    floats across ~100k+ features overflow tippecanoe's per-tile attribute value pool
-    and get mis-encoded — e.g. land_value_per_sqft picking up an unrelated parcel's
-    dollar value, producing false multi-thousand-$/sqft spikes on the map. Rounding
-    collapses the distinct-value explosion; display precision is unaffected. NaN is
-    preserved (written as null); only ±inf is normalized to null.
-    FLOAT_DECIMALS overrides the 2 decimals per column.
+    Round float attributes to 2 decimals first (FLOAT_DECIMALS overrides that per
+    column). NaN is preserved (written as null); only ±inf is normalized to null.
+    Rounding is display precision, not the fix for swapped dollar values: that swap
+    is tippecanoe before 2.55.0 aliasing distinct strings, and the bake refuses
+    those versions.
     """
     gdf = gdf.copy()
     geom_col = gdf.geometry.name
@@ -729,8 +733,8 @@ def check_binary(binary_name: str, binary_path: str, use_wsl: bool = False) -> N
             raise FileNotFoundError(
                 f"{binary_name} not found in WSL. Install it with:\n"
                 f"  python data/scripts/install_tippecanoe.py\n"
-                f"or manually:\n"
-                f"  wsl -- sudo apt-get install -y {binary_name}"
+                f"Ubuntu's apt tippecanoe is 2.49.0, which swaps attribute values. "
+                f"The installer builds 2.55.0 instead."
             )
         return
 
@@ -743,11 +747,44 @@ def check_binary(binary_name: str, binary_path: str, use_wsl: bool = False) -> N
         )
         if platform.system() == "Windows":
             msg += (
-                "\n\nOn Windows, install WSL2 and tippecanoe/pmtiles inside it:\n"
-                "  wsl -- sudo apt-get update && sudo apt-get install -y tippecanoe\n"
-                "Then re-run with --wsl flag (the notebook does this automatically)."
+                "\n\nOn Windows, install WSL2, then:\n"
+                "  python data/scripts/install_tippecanoe.py\n"
+                "That builds tippecanoe 2.55.0 inside WSL. apt's 2.49.0 swaps attribute values.\n"
+                "Then re-run with --wsl (the notebook does this automatically)."
             )
         raise FileNotFoundError(msg)
+
+
+def parse_tippecanoe_version(text: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def tippecanoe_version_text(binary_path: str, use_wsl: bool) -> str:
+    if use_wsl:
+        cmd = ["wsl", "--", "bash", "-lc", f"{binary_path} --version"]
+    else:
+        cmd = [binary_path, "--version"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return (result.stdout or "") + (result.stderr or "")
+
+
+def require_tippecanoe_version(binary_path: str, use_wsl: bool) -> None:
+    """Refuse tippecanoe builds that alias distinct attribute values."""
+    reported = tippecanoe_version_text(binary_path, use_wsl).strip()
+    version = parse_tippecanoe_version(reported)
+    if version is not None and version >= MIN_TIPPECANOE:
+        print(f"tippecanoe {'.'.join(str(p) for p in version)}")
+        return
+    found = ".".join(str(p) for p in version) if version else (reported.splitlines() or ["unknown"])[0]
+    raise SystemExit(
+        f"tippecanoe {found} swaps distinct attribute values "
+        f"(a string-pool bug fixed in 2.55.0). A hex can then show another "
+        f"feature's current_full_land_value. Upgrade, then rebake:\n"
+        f"  python data/scripts/install_tippecanoe.py"
+    )
 
 
 def create_mbtiles(
@@ -1373,6 +1410,7 @@ def main() -> None:
     try:
         check_binary("tippecanoe", args.tippecanoe, use_wsl)
         check_binary("pmtiles", args.pmtiles, use_wsl)
+        require_tippecanoe_version(args.tippecanoe, use_wsl)
         print("All dependencies found" + (" (via WSL)" if use_wsl else ""))
     except FileNotFoundError as e:
         print(f"[X] {e}")
@@ -1436,8 +1474,8 @@ def main() -> None:
                     continue
                 for _, row in hex_gdf.iterrows():
                     # Round floats as write_geojson does (2 dp unless FLOAT_DECIMALS says
-                    # otherwise); the hex layer is written by hand here so it needs the
-                    # same treatment or hexes show false mega-spikes.
+                    # otherwise). The hex layer is written by hand, so it needs the same
+                    # rounding as the parcel tiles.
                     props = {k: (None if (isinstance(v, float) and pd.isna(v))
                                  else round(v, FLOAT_DECIMALS.get(k, 2)) if isinstance(v, float)
                                  else v)
