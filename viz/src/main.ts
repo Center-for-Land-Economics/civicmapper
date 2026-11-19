@@ -1663,6 +1663,43 @@ const PER_SQFT_SRC: Record<string, string> = {
   improvement_value_per_sqft: 'improvement_value',
   full_market_value_per_sqft: 'full_market_value',
 };
+
+/** Allegheny County diagnostic: log zoomed-out hexes whose land $/sqft exceeds this. */
+const TALL_HEX_RATE = 200;
+const loggedTallHexes = new Set<string>();
+
+function logTallAlleghenyHexes() {
+  if (SELECTED_CITY !== 'allegheny') return;
+  if (!map.getLayer(LAYER_ID_LOW)) return;
+  const parcelMinZoom = Number(getCityConfig()?.parcelMinZoom);
+  if (Number.isFinite(parcelMinZoom) && map.getZoom() >= parcelMinZoom) return;
+  let feats: maplibregl.MapGeoJSONFeature[] = [];
+  try {
+    feats = map.queryRenderedFeatures({ layers: [LAYER_ID_LOW] });
+  } catch {
+    return;
+  }
+  for (const f of feats) {
+    const p = (f.properties || {}) as Record<string, unknown>;
+    const acres = Number(p.land_area_acres);
+    const landValue = Number(p.current_full_land_value);
+    const sqft = acres * 43560;
+    if (!(sqft > 0) || !Number.isFinite(landValue)) continue;
+    const rate = landValue / sqft;
+    if (rate <= TALL_HEX_RATE) continue;
+    const key = `${rate.toFixed(2)}|${landValue.toFixed(0)}|${acres.toFixed(4)}`;
+    if (loggedTallHexes.has(key)) continue;
+    loggedTallHexes.add(key);
+    console.log('[Allegheny hex > $200/sqft]', {
+      rate,
+      current_full_land_value: landValue,
+      land_area_acres: acres,
+      feature_count: p.feature_count,
+      municipality: p.municipality,
+    });
+  }
+}
+
 function perSqftExpr(field: string): Expression | null {
   const raw = PER_SQFT_SRC[field];
   if (!raw) return null;
@@ -4751,6 +4788,7 @@ async function init() {
     // Apply any saved settings before loading data.
     loadSettings('main');
     await loadDefaultDataset();
+    if (SELECTED_CITY === 'allegheny') map.on('idle', logTallAlleghenyHexes);
     // Rail transit overlay (e.g. WMATA Metro for the DMV) on top of the parcel layers.
     if (TRANSIT_OVERLAY) {
       void setupTransitOverlay(map, TRANSIT_OVERLAY, import.meta.env.BASE_URL);
