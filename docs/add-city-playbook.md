@@ -476,6 +476,8 @@ python -m pip install -r data/requirements.txt
 python data/scripts/install_tippecanoe.py
 ```
 
+The installer builds tippecanoe 2.55.0 when the apt package is older. Ubuntu 24.04's 2.49.0 writes another feature's land value onto some hexes. The bake refuses that version.
+
 `parquet_to_pmtiles.py` imports `azure.storage.blob` and `h3` even for a local bake with no upload. No Azure connection string is required for that.
 
 Produce the parcel file, then bake PMTiles when the city uses them (see section 10; on Windows pass `--wsl` so tippecanoe and pmtiles run there):

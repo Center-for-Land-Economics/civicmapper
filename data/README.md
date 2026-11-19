@@ -19,8 +19,8 @@ The script detects your OS and does the right thing:
 | Platform | What it does |
 |---|---|
 | **macOS** | `brew install tippecanoe pmtiles` (requires [Homebrew](https://brew.sh)) |
-| **Linux** | `apt-get install tippecanoe pmtiles`; falls back to building from source |
-| **Windows** | Installs inside WSL2 via `apt-get` — tippecanoe has no native Windows binary. Requires [WSL2](https://learn.microsoft.com/windows/wsl/install) with a Ubuntu/Debian distribution. |
+| **Linux** | Builds tippecanoe 2.55.0 from source when apt is older. apt's 2.49.0 swaps attribute values. |
+| **Windows** | Same build inside WSL2. tippecanoe has no native Windows binary. Requires [WSL2](https://learn.microsoft.com/windows/wsl/install) with a Ubuntu/Debian distribution. |
 
 If you're on Windows and WSL2 isn't set up yet, install it first:
 ```powershell
