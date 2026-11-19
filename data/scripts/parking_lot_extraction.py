@@ -367,6 +367,31 @@ def parse_args() -> argparse.Namespace:
 # Step 1: Resolve local parcel file path
 # ---------------------------------------------------------------------------
 
+PUBLIC_DEV_BLOB = "https://landeconomics.blob.core.windows.net/parquets-dev"
+
+
+def download_public_parcels(folder: Path, filename: str) -> Path | None:
+    """Download <filename> from the public parquets-dev container into <folder> (None if absent)."""
+    import requests
+    url = f"{PUBLIC_DEV_BLOB}/{filename}"
+    try:
+        with requests.get(url, stream=True, timeout=60) as r:
+            if r.status_code != 200:
+                return None
+            folder.mkdir(parents=True, exist_ok=True)
+            dest = folder / filename
+            tmp = dest.with_suffix(".part")
+            with open(tmp, "wb") as fh:
+                for chunk in r.iter_content(1 << 20):
+                    fh.write(chunk)
+            tmp.replace(dest)
+    except requests.RequestException as e:
+        print(f"  Could not download {url}: {e}")
+        return None
+    print(f"  Downloaded parcels from {url} ({dest.stat().st_size / 2**20:.1f} MB)")
+    return dest
+
+
 def resolve_parcel_path(city: str | None, override: str | None) -> Path:
     """Return path to the existing city parcel GeoParquet (read-only)."""
     if override:
@@ -389,6 +414,10 @@ def resolve_parcel_path(city: str | None, override: str | None) -> Path:
             )
             if legacy.exists():
                 return legacy
+            # Not built on this machine: fetch the published copy from the public dev container.
+            fetched = download_public_parcels(canonical.parent, city_meta.legacy_filename)
+            if fetched:
+                return fetched
         raise FileNotFoundError(
             f"Could not find parcel parquet for city '{city}'. "
             f"Pass --file to specify the path explicitly."
