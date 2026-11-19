@@ -359,7 +359,7 @@ Boston.
   to catch the outcome fast instead of waiting.
   If `overpass-api.de` is DOWN outright (curl to `/api/status` times out on both IPs — seen
   2026-09-28), point osmnx at a mirror: `OSMNX_OVERPASS_URL=https://maps.mail.ru/osm/tools/overpass/api`.
-- **PMTiles bake on Windows uses WSL**: `--wsl` (tippecanoe + pmtiles live in WSL). Verify a
+- **PMTiles bake on Windows uses WSL**: `--wsl` (tippecanoe + pmtiles live in WSL). tippecanoe must be **2.55.0 or newer**. Ubuntu apt's 2.49.0 aliases distinct attribute strings (32-bit string-pool hash compare), so a hex can display another feature's `current_full_land_value`. `parquet_to_pmtiles.py` refuses older versions; `python data/scripts/install_tippecanoe.py` builds 2.55.0. Rebake after upgrading. Verify a
   city's PMTiles contains all three expected layers with
   `wsl bash -c "pmtiles show --metadata <file>"` (expect `parcels` z13-14, `parcels_low` z0-12,
   and `parcels_under` z2-14). Note `wsl pmtiles show /mnt/c/...` from Git-bash mangles the path —

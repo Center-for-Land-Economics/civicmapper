@@ -19,12 +19,19 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.request
 from pathlib import Path
+
+# Ubuntu 24.04 apt ships tippecanoe 2.49.0, which aliases distinct attribute values
+# (string-pool hashes compared as 32-bit ints). 2.55.0 is the release that fixes it.
+# Keep this in sync with MIN_TIPPECANOE in parquet_to_pmtiles.py.
+MIN_TIPPECANOE = (2, 55, 0)
+TIPPECANOE_TAG = "2.55.0"
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +63,44 @@ def check_wsl(binary: str) -> bool:
         print(f"  {binary} already installed in WSL")
         return True
     return False
+
+
+def parse_tippecanoe_version(text: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _version_text_native() -> str:
+    if shutil.which("tippecanoe") is None:
+        return ""
+    result = subprocess.run(["tippecanoe", "--version"], capture_output=True, text=True)
+    return (result.stdout or "") + (result.stderr or "")
+
+
+def _version_text_wsl() -> str:
+    result = subprocess.run(
+        ["wsl", "--", "bash", "-lc", "tippecanoe --version"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "") + (result.stderr or "")
+
+
+def tippecanoe_is_current(text: str) -> bool:
+    version = parse_tippecanoe_version(text)
+    return version is not None and version >= MIN_TIPPECANOE
+
+
+def _print_old_tippecanoe(text: str) -> None:
+    version = parse_tippecanoe_version(text)
+    found = ".".join(str(p) for p in version) if version else "unknown"
+    print(
+        f"  tippecanoe {found} swaps distinct attribute values "
+        f"(fixed in {TIPPECANOE_TAG}). Building {TIPPECANOE_TAG}."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +207,12 @@ def install_macos() -> None:
         sys.exit(1)
 
     print("\n--- Installing tippecanoe ---")
-    if not check_native("tippecanoe"):
-        run(["brew", "install", "tippecanoe"])
+    if not tippecanoe_is_current(_version_text_native()):
+        if shutil.which("tippecanoe"):
+            _print_old_tippecanoe(_version_text_native())
+            run(["brew", "upgrade", "tippecanoe"])
+        else:
+            run(["brew", "install", "tippecanoe"])
 
     print("\n--- Installing pmtiles ---")
     if not check_native("pmtiles"):
@@ -172,15 +221,14 @@ def install_macos() -> None:
 
 def install_linux() -> None:
     print("\n--- Installing tippecanoe ---")
-    if not check_native("tippecanoe"):
-        if shutil.which("apt-get"):
+    if not tippecanoe_is_current(_version_text_native()):
+        if shutil.which("tippecanoe"):
+            _print_old_tippecanoe(_version_text_native())
+        elif shutil.which("apt-get"):
             run(["sudo", "apt-get", "update", "-qq"])
-            result = run(["sudo", "apt-get", "install", "-y", "tippecanoe"], check=False)
-            if result.returncode != 0:
-                print("  apt install failed; building tippecanoe from source...")
-                _build_tippecanoe_from_source()
-        else:
-            print("  apt-get not available; building tippecanoe from source...")
+            run(["sudo", "apt-get", "install", "-y", "tippecanoe"], check=False)
+        if not tippecanoe_is_current(_version_text_native()):
+            print(f"  Building tippecanoe {TIPPECANOE_TAG} from source...")
             _build_tippecanoe_from_source()
 
     print("\n--- Installing pmtiles ---")
@@ -196,11 +244,12 @@ def install_linux() -> None:
 
 
 def _build_tippecanoe_from_source() -> None:
-    """Clone and build tippecanoe from source (Linux fallback)."""
+    """Clone and build the tippecanoe release that keeps attribute values distinct."""
     print("  Installing build dependencies...")
     run(["sudo", "apt-get", "install", "-y", "build-essential", "libsqlite3-dev", "zlib1g-dev"])
     src = Path(tempfile.mkdtemp()) / "tippecanoe"
-    run(["git", "clone", "--depth=1", "https://github.com/felt/tippecanoe.git", str(src)])
+    run(["git", "clone", "--depth=1", "--branch", TIPPECANOE_TAG,
+         "https://github.com/felt/tippecanoe.git", str(src)])
     run(["make", "-j4"], cwd=str(src))
     run(["sudo", "make", "install"], cwd=str(src))
 
@@ -225,15 +274,20 @@ def install_windows() -> None:
         sys.exit(1)
 
     print("\n--- Installing tippecanoe (via WSL) ---")
-    if not check_wsl("tippecanoe"):
-        run(["wsl", "--", "sudo", "apt-get", "update", "-qq"])
-        result = run(["wsl", "--", "sudo", "apt-get", "install", "-y", "tippecanoe"], check=False)
-        if result.returncode != 0:
-            print("  apt install failed inside WSL; building from source...")
+    if not tippecanoe_is_current(_version_text_wsl()):
+        if check_wsl("tippecanoe"):
+            _print_old_tippecanoe(_version_text_wsl())
+        else:
+            run(["wsl", "--", "sudo", "apt-get", "update", "-qq"])
+            run(["wsl", "--", "sudo", "apt-get", "install", "-y", "tippecanoe"], check=False)
+        if not tippecanoe_is_current(_version_text_wsl()):
+            print(f"  Building tippecanoe {TIPPECANOE_TAG} inside WSL...")
             run(["wsl", "--", "sudo", "apt-get", "install", "-y",
                  "build-essential", "libsqlite3-dev", "zlib1g-dev"])
-            run(["wsl", "--", "bash", "-c",
-                 "git clone --depth=1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe"
+            run(["wsl", "--", "bash", "-lc",
+                 "rm -rf /tmp/tippecanoe"
+                 f" && git clone --depth=1 --branch {TIPPECANOE_TAG}"
+                 " https://github.com/felt/tippecanoe.git /tmp/tippecanoe"
                  " && cd /tmp/tippecanoe && make -j4 && sudo make install"])
 
     print("\n--- Installing pmtiles (via WSL) ---")
@@ -259,12 +313,18 @@ def verify(system: str) -> None:
             if not ok:
                 print(f"  {b}: NOT FOUND in WSL")
                 all_ok = False
+        if not tippecanoe_is_current(_version_text_wsl()):
+            print(f"  tippecanoe: need {TIPPECANOE_TAG} or newer (apt 2.49 swaps attribute values)")
+            all_ok = False
     else:
         for b in binaries:
             ok = check_native(b)
             if not ok:
                 print(f"  {b}: NOT FOUND")
                 all_ok = False
+        if not tippecanoe_is_current(_version_text_native()):
+            print(f"  tippecanoe: need {TIPPECANOE_TAG} or newer (apt 2.49 swaps attribute values)")
+            all_ok = False
 
     if all_ok:
         print("\nAll tools installed successfully.")
