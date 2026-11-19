@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import shutil
@@ -698,9 +699,10 @@ def build_h3_aggregate(gdf: gpd.GeoDataFrame, resolution: int) -> gpd.GeoDataFra
                .set_index("h3")[cf])
         out[cf] = out["h3"].map(dom)
 
-    # Emit full hexagons only for occupied cells.
+    # Emit full hexagons only for occupied cells. Keep `h3` so a bake can match each
+    # decoded tile feature back to this row (callers drop it when they don't need it).
     out["geometry"] = [_h3_cell_poly(c, h3) for c in out["h3"]]
-    return gpd.GeoDataFrame(out.drop(columns=["h3"]), geometry="geometry", crs=4326)
+    return gpd.GeoDataFrame(out, geometry="geometry", crs=4326)
 
 
 def check_binary(binary_name: str, binary_path: str, use_wsl: bool = False) -> None:
@@ -837,6 +839,7 @@ def build_pmtiles_h3_wsl_native(
     tippecanoe_bin: str = "tippecanoe",
     pmtiles_bin: str = "pmtiles",
     under_geojson: Path | None = None,
+    hex_mbtiles_out: Path | None = None,
 ) -> None:
     """H3 bake on WSL-native ext4, joined with tile-join. Up to three tippecanoe runs:
       - hexes:   z0..hex_maxzoom, the H3 summary (layer `parcels_low`). Carries an
@@ -857,6 +860,9 @@ def build_pmtiles_h3_wsl_native(
     p = windows_path_to_wsl(parcels_geojson)
     h = windows_path_to_wsl(hex_geojson)
     out = windows_path_to_wsl(pmtiles_path)
+    hex_copy = ""
+    if hex_mbtiles_out is not None:
+        hex_copy = f'cp "$T/hex.mbtiles" "{windows_path_to_wsl(hex_mbtiles_out)}"; '
     under_run = ""
     under_join = ""
     if under_geojson is not None:
@@ -877,7 +883,7 @@ def build_pmtiles_h3_wsl_native(
         f'{under_run}'
         f'tile-join -f -pk -o "$T/c.mbtiles" "$T/hex.mbtiles" "$T/parc.mbtiles" {under_join}; '
         f'pmtiles convert "$T/c.mbtiles" "$T/c.pmtiles"; '
-        f'cp "$T/c.pmtiles" "{out}"; rm -rf "$T"'
+        f'cp "$T/c.pmtiles" "{out}"; {hex_copy}rm -rf "$T"'
     )
     print(f"Creating PMTiles via WSL (hexes z0-{hex_maxzoom} + full parcels z{parcel_minzoom}-14"
           f"{' + parcels_under z0-14' if under_geojson is not None else ''}, tile-join)")
@@ -897,6 +903,7 @@ def build_pmtiles_h3_native(
     pmtiles_bin: str = "pmtiles",
     tile_join_bin: str = "tile-join",
     under_geojson: Path | None = None,
+    hex_mbtiles_out: Path | None = None,
 ) -> None:
     """macOS/Linux H3 bake — the SAME runs as build_pmtiles_h3_wsl_native but with
     binaries invoked directly (no /mnt/c bridge, so no ext4 staging/copy-back).
@@ -936,6 +943,8 @@ def build_pmtiles_h3_native(
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode != 0:
                 raise RuntimeError(f"{cmd[0]} failed: {r.stderr[-2000:]}")
+        if hex_mbtiles_out is not None:
+            shutil.copy(hexm, hex_mbtiles_out)
     print(f"PMTiles created: {pmtiles_path}")
 
 
@@ -1009,6 +1018,210 @@ def upload_file(
     with local_path.open("rb") as handle:
         blob_client.upload_blob(handle, overwrite=overwrite)
     print(f"✅ Uploaded {local_path.name} -> {container_client.container_name}/{blob_name}")
+
+
+def _geom_center(geom: dict | None) -> tuple[float | None, float | None]:
+    """Mean of a polygon's outer ring. Hexes are convex, so this is the cell center."""
+    if not geom:
+        return None, None
+    coords = geom.get("coordinates")
+    kind = geom.get("type")
+    ring = None
+    if kind == "Polygon" and coords:
+        ring = coords[0]
+    elif kind == "MultiPolygon" and coords and coords[0]:
+        ring = coords[0][0]
+    if not ring:
+        return None, None
+    lng = lat = 0.0
+    n = 0
+    for c in ring:
+        if len(c) < 2:
+            continue
+        lng += float(c[0])
+        lat += float(c[1])
+        n += 1
+    if not n:
+        return None, None
+    return lng / n, lat / n
+
+
+def _fmt_coord(v) -> str:
+    return f"{v:.5f}" if isinstance(v, float) else str(v)
+
+
+def _numbers_differ(a, b, tol: float) -> bool:
+    try:
+        fa, fb = float(a), float(b)
+    except (TypeError, ValueError):
+        return a != b
+    if math.isnan(fa) and math.isnan(fb):
+        return False
+    if not math.isfinite(fa) or not math.isfinite(fb):
+        return True
+    return abs(fa - fb) > tol
+
+
+def _iter_json_values(chunks):
+    """Yield JSON values from a stream of text chunks (NDJSON or concatenated objects)."""
+    decoder = json.JSONDecoder()
+    buf = ""
+    for chunk in chunks:
+        buf += chunk
+        while True:
+            buf = buf.lstrip()
+            if not buf:
+                break
+            try:
+                obj, idx = decoder.raw_decode(buf)
+            except json.JSONDecodeError:
+                break
+            buf = buf[idx:]
+            yield obj
+    buf = buf.lstrip()
+    if buf:
+        obj, idx = decoder.raw_decode(buf)
+        yield obj
+        if buf[idx:].strip():
+            raise ValueError("trailing data after decoded features")
+
+
+def _load_hex_source(hex_geojson: Path) -> dict[str, dict]:
+    with hex_geojson.open(encoding="utf-8") as handle:
+        fc = json.load(handle)
+    source: dict[str, dict] = {}
+    for feat in fc.get("features") or []:
+        props = feat.get("properties") or {}
+        h3id = props.get("h3")
+        if h3id is None:
+            continue
+        lng, lat = _geom_center(feat.get("geometry"))
+        source[str(h3id)] = {
+            "current_full_land_value": props.get("current_full_land_value"),
+            "land_area_acres": props.get("land_area_acres"),
+            "lng": lng,
+            "lat": lat,
+        }
+    return source
+
+
+def _decode_hex_zoom(hex_mbtiles: Path, zoom: int, use_wsl: bool):
+    """Stream parcels_low features at one zoom from tippecanoe-decode -c."""
+    if use_wsl:
+        inner = (
+            "tippecanoe-decode -c -f -l parcels_low "
+            f"-Z {zoom} -z {zoom} \"{windows_path_to_wsl(hex_mbtiles)}\""
+        )
+        cmd = ["wsl", "-e", "bash", "-lc", inner]
+    else:
+        cmd = [
+            "tippecanoe-decode", "-c", "-f", "-l", "parcels_low",
+            "-Z", str(zoom), "-z", str(zoom), str(hex_mbtiles),
+        ]
+    err_path = hex_mbtiles.with_suffix(f".z{zoom}.decode.err")
+    with err_path.open("w", encoding="utf-8") as err:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True)
+        assert proc.stdout is not None
+        try:
+            yield from _iter_json_values(iter(lambda: proc.stdout.read(1 << 20), ""))
+        finally:
+            proc.stdout.close()
+            rc = proc.wait()
+    if rc != 0:
+        detail = err_path.read_text(encoding="utf-8", errors="replace")[-2000:]
+        err_path.unlink(missing_ok=True)
+        raise RuntimeError(f"tippecanoe-decode zoom {zoom} failed: {detail}")
+    err_path.unlink(missing_ok=True)
+
+
+def audit_parcels_low_encoding(
+    hex_geojson: Path,
+    hex_mbtiles: Path,
+    use_wsl: bool,
+    hex_maxzoom: int,
+) -> None:
+    """Compare decoded parcels_low attributes to the hex GeoJSON tippecanoe just read.
+
+    Allegheny-only diagnostic. Each hex keeps its H3 index so a tile feature can be
+    matched after encoding. A mismatch means tippecanoe stored a different
+    current_full_land_value (or land_area_acres) than the GeoJSON for that hex.
+    """
+    print("[tippecanoe check] decoding parcels_low. The map log includes the same h3 id.")
+    source = _load_hex_source(hex_geojson)
+    if not source:
+        print("[tippecanoe check] hex GeoJSON has no h3 ids; cannot match tile features")
+        return
+    print(f"[tippecanoe check] {len(source):,} source hexes")
+    total_checked = total_mismatch = total_unknown = total_missing_h3 = 0
+    for zoom in range(0, hex_maxzoom + 1):
+        checked = mismatches = unknown = missing_h3 = 0
+        printed: list[tuple[float, str]] = []
+
+        def keep(delta: float, line: str) -> None:
+            printed.append((delta, line))
+            if len(printed) > 100:
+                printed.sort(key=lambda item: item[0], reverse=True)
+                del printed[25:]
+
+        for feat in _decode_hex_zoom(hex_mbtiles, zoom, use_wsl):
+            if not isinstance(feat, dict) or feat.get("type") != "Feature":
+                continue
+            props = feat.get("properties") or {}
+            h3id = props.get("h3")
+            if h3id is None:
+                missing_h3 += 1
+                continue
+            checked += 1
+            h3id = str(h3id)
+            tile_value = props.get("current_full_land_value")
+            tile_acres = props.get("land_area_acres")
+            dlng, dlat = _geom_center(feat.get("geometry"))
+            src = source.get(h3id)
+            if src is None:
+                unknown += 1
+                keep(float("inf"), (
+                    f"[tippecanoe mismatch] zoom={zoom} h3={h3id} not in the hex GeoJSON "
+                    f"lng={_fmt_coord(dlng)} lat={_fmt_coord(dlat)} tile_current_full_land_value={tile_value} "
+                    f"tile_land_area_acres={tile_acres}"
+                ))
+                continue
+            value_bad = _numbers_differ(tile_value, src["current_full_land_value"], 0.02)
+            acres_bad = _numbers_differ(tile_acres, src["land_area_acres"], 1e-5)
+            if not value_bad and not acres_bad:
+                continue
+            mismatches += 1
+            try:
+                delta = abs(float(tile_value) - float(src["current_full_land_value"]))
+            except (TypeError, ValueError):
+                delta = float("inf")
+            keep(delta, (
+                f"[tippecanoe mismatch] zoom={zoom} h3={h3id} "
+                f"lng={_fmt_coord(src['lng'])} lat={_fmt_coord(src['lat'])} "
+                f"source_current_full_land_value={src['current_full_land_value']} "
+                f"tile_current_full_land_value={tile_value} "
+                f"source_land_area_acres={src['land_area_acres']} "
+                f"tile_land_area_acres={tile_acres}"
+            ))
+        total_checked += checked
+        total_mismatch += mismatches
+        total_unknown += unknown
+        total_missing_h3 += missing_h3
+        print(
+            f"[tippecanoe check] zoom={zoom} checked={checked} "
+            f"mismatches={mismatches} unknown_h3={unknown} missing_h3={missing_h3}"
+        )
+        printed.sort(key=lambda item: item[0], reverse=True)
+        for _, line in printed[:25]:
+            print(line)
+        hidden = mismatches + unknown - min(25, mismatches + unknown)
+        if hidden:
+            print(f"[tippecanoe check] zoom={zoom} {hidden} more mismatches not printed")
+    print(
+        f"[tippecanoe check] parcels_low z0-{hex_maxzoom}: checked={total_checked} "
+        f"mismatches={total_mismatch} unknown_h3={total_unknown} missing_h3={total_missing_h3}"
+    )
+    if total_mismatch == 0 and total_unknown == 0 and total_missing_h3 == 0 and total_checked:
+        print("[tippecanoe check] current_full_land_value matched the hex GeoJSON at every zoom")
 
 
 def main() -> None:
@@ -1203,6 +1416,9 @@ def main() -> None:
             # low-zoom layer and hands off to real parcels at parcelMinZoom.
             from shapely.geometry import mapping
             hex_path = tmp / "parcels_low.geojson"
+            # Allegheny keeps the H3 index on each hex so the post-bake decode can
+            # prove whether tippecanoe rewrote current_full_land_value.
+            keep_h3 = args.city == "allegheny"
             feats: list[dict] = []
             # Ladder + handoff decided by plan_h3_ladder() (count caps for county-scale perf,
             # median-parcel prune for fidelity — see its docstring). The last surviving res
@@ -1226,6 +1442,10 @@ def main() -> None:
                                  else round(v, FLOAT_DECIMALS.get(k, 2)) if isinstance(v, float)
                                  else v)
                              for k, v in row.items() if k != "geometry"}
+                    if props.get("h3") is not None:
+                        props["h3"] = str(props["h3"])
+                    if not keep_h3:
+                        props.pop("h3", None)
                     feats.append({
                         "type": "Feature",
                         "tippecanoe": {"minzoom": mn, "maxzoom": mx},
@@ -1259,18 +1479,26 @@ def main() -> None:
             # slow /mnt/c bridge); macOS/Linux run the binaries directly.
             hex_maxzoom = h3_plan["hex_maxzoom"]
             parcel_minzoom = h3_plan["parcel_minzoom"]
+            hex_mbtiles = tmp / "hex-audit.mbtiles" if args.city == "allegheny" else None
             if use_wsl:
                 build_pmtiles_h3_wsl_native(
                     geojson_path, hex_path, pmtiles_path,
                     hex_maxzoom, parcel_minzoom, args.tippecanoe, args.pmtiles,
                     under_geojson=under_geojson_path,
+                    hex_mbtiles_out=hex_mbtiles,
                 )
             else:
                 build_pmtiles_h3_native(
                     geojson_path, hex_path, pmtiles_path,
                     hex_maxzoom, parcel_minzoom, args.tippecanoe, args.pmtiles,
                     under_geojson=under_geojson_path,
+                    hex_mbtiles_out=hex_mbtiles,
                 )
+            if hex_mbtiles is not None:
+                try:
+                    audit_parcels_low_encoding(hex_path, hex_mbtiles, use_wsl, hex_maxzoom)
+                except Exception as exc:
+                    print(f"[tippecanoe check] failed: {exc}")
         elif use_wsl:
             # Non-H3 (square-grid aggregate): single run, coalesce low zooms.
             build_pmtiles_via_wsl_native(
