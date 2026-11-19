@@ -149,7 +149,8 @@ def check_env(st: dict, dry: bool) -> bool:
         bad("transformers not installed", 'pip install "transformers==4.57.6"')
     for mod, pkg in [("azure.storage.blob", "azure-storage-blob"), ("rasterio", "rasterio"),
                      ("geopandas", "geopandas"), ("pyarrow", "pyarrow"), ("scipy", "scipy"),
-                     ("huggingface_hub", "huggingface_hub")]:
+                     ("huggingface_hub", "huggingface_hub"), ("planetary_computer", "planetary-computer"),
+                     ("pystac_client", "pystac-client"), ("osmnx", "osmnx")]:
         try:
             __import__(mod)
         except ImportError:

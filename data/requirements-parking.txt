@@ -37,6 +37,12 @@ huggingface_hub
 rasterio
 planetary_computer
 pystac_client
+osmnx
+geopandas
+pyarrow
+scipy
+requests
+azure-storage-blob
 pillow
 # torch + torchvision: install separately from the CUDA wheel index (see notes above)
 # gdal CLI: cgohlke osgeo wheel on Windows, or system/conda GDAL elsewhere (see notes)
