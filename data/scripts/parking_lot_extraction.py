@@ -499,6 +499,7 @@ def fetch_naip_imagery(
 
     Returns path to the merged+reprojected GeoTIFF (RGB+NIR) clipped to bbox.
     """
+    import shutil
     import subprocess
     try:
         import planetary_computer
@@ -779,9 +780,25 @@ def fetch_naip_imagery(
 
         local_filelist = output_dir / "naip_local_filelist.txt"
         local_filelist.write_text("".join(f"{path}\n" for path in local_paths), encoding="utf-8")
+        if not (shutil.which("gdalbuildvrt") and shutil.which("gdalwarp")):
+            # No GDAL command-line tools (e.g. a plain Windows venv): the caller mosaics the
+            # cached tiles with rasterio instead (python_mosaic).
+            return local_filelist
         local_vrt = output_dir / "naip_local_mosaic.vrt"
         build_vrt_from_filelist(local_filelist, local_vrt)
         return local_vrt
+
+    def python_mosaic(tile_paths: list[Path], naip_path: Path) -> None:
+        """rasterio-only stand-in for gdalbuildvrt + gdalwarp: the same target grid (bbox in UTM at
+        resolution_m), bilinear resampling, 0 as nodata, tiled LZW BigTIFF, written block by block."""
+        from rasterio.merge import merge
+        left, bottom, right, top = transform_bounds("EPSG:4326", f"EPSG:{epsg_utm}", *bbox, densify_pts=21)
+        print(f"  GDAL command-line tools not found; mosaicking {len(tile_paths)} cached tile(s) with rasterio",
+              flush=True)
+        merge([str(p) for p in tile_paths], bounds=(left, bottom, right, top), res=(resolution_m, resolution_m),
+              nodata=0, resampling=Resampling.bilinear, dst_path=str(naip_path),
+              dst_kwds={"driver": "GTiff", "compress": "lzw", "tiled": True, "blockxsize": 512,
+                        "blockysize": 512, "BIGTIFF": "IF_SAFER"})
 
     print(f"  Searching Planetary Computer STAC for NAIP ({date_range}) in bbox...", flush=True)
     # NOTE: no sign_inplace modifier — items keep their raw (unsigned) hrefs
@@ -850,10 +867,14 @@ def fetch_naip_imagery(
     naip_path = output_dir / "naip_imagery.tif"
     local_vrt = clip_tiles_locally(unique_items, output_dir)
     print(
-        "  Per-tile cache ready; warping local VRT to unified citywide mosaic...",
+        "  Per-tile cache ready; building the unified citywide mosaic...",
         flush=True,
     )
-    direct_warp(local_vrt, naip_path)
+    if local_vrt.suffix == ".vrt":
+        direct_warp(local_vrt, naip_path)
+    else:
+        python_mosaic([Path(x) for x in local_vrt.read_text(encoding="utf-8").splitlines() if x.strip()],
+                      naip_path)
 
     # Verify output
     with rasterio.open(naip_path) as src:

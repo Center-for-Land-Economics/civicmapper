@@ -12,6 +12,8 @@ Usage:
   python data/scripts/label_sync.py pilot-plano     # one campaign
   python data/scripts/label_sync.py --pull          # download only (never upload)
   python data/scripts/label_sync.py --dry-run
+  python data/scripts/label_sync.py --models          # also back up / fetch trained models (large)
+  python data/scripts/label_sync.py --citywide laredo # also share citywide model outputs
 
 Credentials: AZURE_PARKING_LABELS_CONNECTION_STRING (environment or data/.env), either a bare SAS token or
 a connection string, scoped to the parking-labels-dev container with read, add, create, write and list permissions. Falls back to
@@ -85,6 +87,11 @@ def main() -> int:
     ap.add_argument("campaigns", nargs="*")
     ap.add_argument("--pull", action="store_true", help="download only")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--models", action="store_true",
+                    help="also back up trained model runs (data/labels/<campaign>/finetune*/) and fetch missing ones")
+    ap.add_argument("--citywide", nargs="*", metavar="CITY",
+                    help="also sync citywide model outputs in data/parking-model/<city>/ (parquet/json only); "
+                         "no names = every city found locally or in Azure")
     a = ap.parse_args()
 
     load_env(ENV_FILE)
@@ -121,7 +128,7 @@ def main() -> int:
         sys.exit(f"No credential could list container {CONTAINER!r} (tried {', '.join(tried) or 'none'}). Set "
                  "AZURE_PARKING_LABELS_CONNECTION_STRING to a SAS token or connection string for that container "
                  "(permissions: read, add, create, write, list).")
-    remote_campaigns = {n.split("/", 1)[0] for n in remote_names if "/" in n}
+    remote_campaigns = {n.split("/", 1)[0] for n in remote_names if n.count("/") == 1 and n.endswith("/campaign.json")}
     local_campaigns = {p.name for p in LABELS.glob("*") if (p / "campaign.json").exists()} if LABELS.exists() else set()
     todo = a.campaigns or sorted(local_campaigns | remote_campaigns)
 
@@ -190,6 +197,77 @@ def main() -> int:
             tmp.replace(p)
         if new_remote:
             upload(name, body.encode("utf-8"), "application/x-ndjson")
+
+    # ---- large files: trained models and citywide outputs (streamed, newer side wins) ----------
+    def md5_file(path: Path) -> str:
+        h = hashlib.md5()  # noqa: S324 - change detection, not security
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 22), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def sync_file(local: Path, blob: str) -> None:
+        """Large file: identical (same md5 stored in blob metadata) -> nothing; otherwise the newer side
+        wins (upload unless --pull; download when Azure's copy is newer or the local file is missing)."""
+        exists = blob in remote_names
+        if local.exists():
+            digest = md5_file(local)
+            if exists:
+                props = cc.get_blob_client(blob).get_blob_properties()
+                if (props.metadata or {}).get("md5") == digest:
+                    return
+                if props.last_modified <= datetime.fromtimestamp(local.stat().st_mtime, tz=timezone.utc):
+                    action = "upload"
+                else:
+                    action = "download"
+            else:
+                action = "upload"
+        elif exists:
+            action = "download"
+        else:
+            return
+        if action == "upload":
+            if a.pull:
+                return
+            size = local.stat().st_size
+            if a.dry_run:
+                print(f"  would upload {blob} ({size / 2**20:,.1f} MB)")
+                return
+            with open(local, "rb") as fh:
+                cc.upload_blob(blob, fh, overwrite=True, max_concurrency=4, metadata={"md5": digest})
+            print(f"  uploaded {blob} ({size / 2**20:,.1f} MB)")
+            return
+        if a.dry_run:
+            print(f"  would download {blob}")
+            return
+        local.parent.mkdir(parents=True, exist_ok=True)
+        tmp = local.with_suffix(local.suffix + ".part")
+        with open(tmp, "wb") as fh:
+            cc.download_blob(blob, max_concurrency=4).readinto(fh)
+        tmp.replace(local)
+        stamp(local, remote_mtime[blob])
+        print(f"  downloaded {blob} ({local.stat().st_size / 2**20:,.1f} MB)")
+
+    if a.models:
+        print("== trained models")
+        files = {"model.pt", "config.json", "metrics.json", "log.txt"}
+        for c in todo:
+            local_runs = [d.name for d in (LABELS / c).glob("finetune*") if (d / "config.json").exists()]
+            remote_runs = {n.split("/")[2] for n in remote_names if n.startswith(f"{c}/models/") and n.count("/") == 3}
+            for run in sorted(set(local_runs) | remote_runs):
+                for f in sorted(files):
+                    sync_file(LABELS / c / run / f, f"{c}/models/{run}/{f}")
+    if a.citywide is not None:
+        print("== citywide model outputs")
+        base = ROOT / "data" / "parking-model"
+        local_cities = {d.name for d in base.glob("*") if d.is_dir()} if base.exists() else set()
+        remote_cities = {n.split("/")[1] for n in remote_names if n.startswith("citywide/") and n.count("/") >= 2}
+        for city in sorted(a.citywide or (local_cities | remote_cities)):
+            names = {p.relative_to(base / city).as_posix() for p in (base / city).rglob("*")
+                     if p.is_file() and p.suffix in (".parquet", ".json")} if (base / city).exists() else set()
+            names |= {n.split("/", 2)[2] for n in remote_names if n.startswith(f"citywide/{city}/")}
+            for rel in sorted(names):
+                sync_file(base / city / rel, f"citywide/{city}/{rel}")
     return 0
 
 

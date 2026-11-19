@@ -4,6 +4,19 @@ Everything here runs from the repository root on the `claude/amazing-archimedes-
 Campaign files and labels live in `data/labels/` (not in git) and sync with the Azure container
 `parking-labels-dev` through `data/scripts/label_sync.py`.
 
+## Guided runner (start here)
+
+Double-click `parking-next.bat` (or `python data/scripts/parking_next.py` in `.venv-gpu`). It walks
+through everything left, one step at a time: DINOv2 3-class model, bake-off, model choice, Laredo
+citywide run and backups, then the DINOv3 steps. Each step shows the command and a time estimate;
+Enter runs it, `s` skips, `d` marks it done, `q` quits. Progress lives in
+`data/labels/.parking_next.json`; `--list` shows it, `--from <id>` jumps to a step, `--dry-run`
+prints commands only. Put `HF_TOKEN=...` for DINOv3 in `data\.env` (never in chat or git).
+
+`label_sync.py --models` backs up trained runs (`finetune*/`) to Azure and fetches missing ones;
+`label_sync.py --citywide laredo` shares citywide outputs (`data/parking-model/laredo/`, parquet/json).
+The citywide pipeline no longer needs the GDAL command-line tools (it mosaics with rasterio).
+
 ## One-time setup
 
 1. `data\.env` with one line (the `parking-labels-sync` SAS token; never paste it anywhere else):
@@ -15,7 +28,7 @@ Campaign files and labels live in `data/labels/` (not in git) and sync with the 
 python -m venv .venv-gpu
 .venv-gpu\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cu124
-pip install "transformers==4.46.3" huggingface_hub rasterio geopandas pyarrow scipy pillow requests azure-storage-blob
+pip install "transformers==4.57.6" huggingface_hub rasterio geopandas pyarrow scipy pillow requests azure-storage-blob
 set HF_HUB_DISABLE_SYMLINKS_WARNING=1
 ```
 
