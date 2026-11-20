@@ -28,6 +28,7 @@ ALL_CITIES = [
     'lincoln',
     'providence',
     'pittsburgh',
+    'allegheny',
     'culvercity',
     'boston',
     'stlouis',

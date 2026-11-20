@@ -68,6 +68,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "lakewood": "Lakewood, Colorado, USA",
     "portland": "Portland, Oregon, USA",
     "pittsburgh": "Pittsburgh, Pennsylvania, USA",
+    "allegheny": "Allegheny County, Pennsylvania, USA",
     "houston": "Houston, Texas, USA",
     "austin": "Austin, Texas, USA",
     "dallas": "Dallas, Texas, USA",
