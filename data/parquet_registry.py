@@ -80,6 +80,16 @@ CITY_PARQUETS: dict[str, CityParquet] = {
         city="albuquerque", state="nm", legacy_filename="albuquerque-nm-parcels.parquet"
     ),
     "portland": CityParquet(city="portland", state="or", legacy_filename="portland-or-parcels.parquet"),
+    # City of Pittsburgh, PA (Allegheny County wards 101-132), clipped to the
+    # municipal boundary.
+    "pittsburgh": CityParquet(
+        city="pittsburgh", state="pa", legacy_filename="pittsburgh-pa-parcels.parquet"
+    ),
+    # All of Allegheny County, PA. Pittsburgh (wards 101-132) is one municipality
+    # inside this layer; the other boroughs and townships are included.
+    "allegheny": CityParquet(
+        city="allegheny", state="pa", legacy_filename="allegheny-pa-parcels.parquet"
+    ),
     "houston": CityParquet(city="houston", state="tx", legacy_filename="houston-tx-parcels.parquet"),
     "austin": CityParquet(city="austin", state="tx", legacy_filename="austin-tx-parcels.parquet"),
     "dallas": CityParquet(city="dallas", state="tx", legacy_filename="dallas-tx-parcels.parquet"),
