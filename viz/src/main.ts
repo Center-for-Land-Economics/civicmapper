@@ -1715,7 +1715,6 @@ function logTallAlleghenyHexes() {
     console.log('[Allegheny hex > $200/sqft]', {
       lng: center?.lng,
       lat: center?.lat,
-      h3: p.h3,
       rate,
       current_full_land_value: landValue,
       land_area_acres: acres,
