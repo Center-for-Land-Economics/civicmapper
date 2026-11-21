@@ -139,19 +139,32 @@ class SegFormerModel(ParkingModel):
 
 
 # ---------------------------------------------------------------------------------------------
+def _norm_stats(backbone: str) -> tuple[list[float], list[float]]:
+    """Pixel mean/std from the backbone's preprocessor_config.json. Read directly: the only thing we
+    use from the image processor, and DINOv3's processor class needs torchvision just to load."""
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.utils import EntryNotFoundError
+    try:
+        path = hf_hub_download(backbone, "preprocessor_config.json")
+    except EntryNotFoundError:  # no config at all: ImageNet statistics (DINOv2/v3 web models)
+        return [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    cfg = json.loads(Path(path).read_text(encoding="utf-8"))
+    return list(cfg["image_mean"]), list(cfg["image_std"])
+
+
 class ViTSegModel(ParkingModel):
     """Hugging Face ViT backbone (DINOv3 / DINOv2) + light multi-layer fusion head."""
 
     def __init__(self, backbone: str, cpu: bool = False, layers: int = 4, width: int = 256, n_classes: int = 2):
         import torch
         from torch import nn
-        from transformers import AutoImageProcessor, AutoModel
+        from transformers import AutoModel
         self.device = _device(cpu)
         self.backbone_id = backbone
         self.backbone = AutoModel.from_pretrained(backbone).to(self.device)
-        proc = AutoImageProcessor.from_pretrained(backbone)
-        self.mean = torch.tensor(proc.image_mean, device=self.device).view(1, 3, 1, 1)
-        self.std = torch.tensor(proc.image_std, device=self.device).view(1, 3, 1, 1)
+        mean, std = _norm_stats(backbone)
+        self.mean = torch.tensor(mean, device=self.device).view(1, 3, 1, 1)
+        self.std = torch.tensor(std, device=self.device).view(1, 3, 1, 1)
         cfg = self.backbone.config
         self.patch = int(getattr(cfg, "patch_size", 16))
         dim = int(cfg.hidden_size)
