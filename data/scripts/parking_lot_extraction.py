@@ -819,15 +819,46 @@ def fetch_naip_imagery(
 
     def python_mosaic(tile_paths: list[Path], naip_path: Path) -> None:
         """rasterio-only stand-in for gdalbuildvrt + gdalwarp: the same target grid (bbox in UTM at
-        resolution_m), bilinear resampling, 0 as nodata, tiled LZW BigTIFF, written block by block."""
-        from rasterio.merge import merge
+        resolution_m), bilinear resampling, 0 = no data. Tile by tile: each cached tile is warped onto
+        its window of the citywide grid and fills only pixels no earlier tile covered."""
+        from rasterio.windows import Window
+        from rasterio.windows import transform as win_transform
         left, bottom, right, top = transform_bounds("EPSG:4326", f"EPSG:{epsg_utm}", *bbox, densify_pts=21)
-        print(f"  GDAL command-line tools not found; mosaicking {len(tile_paths)} cached tile(s) with rasterio",
-              flush=True)
-        merge([str(p) for p in tile_paths], bounds=(left, bottom, right, top), res=(resolution_m, resolution_m),
-              nodata=0, resampling=Resampling.bilinear, dst_path=str(naip_path),
-              dst_kwds={"driver": "GTiff", "compress": "lzw", "tiled": True, "blockxsize": 512,
-                        "blockysize": 512, "BIGTIFF": "IF_SAFER"})
+        width = int(np.ceil((right - left) / resolution_m))
+        height = int(np.ceil((top - bottom) / resolution_m))
+        grid = from_origin(left, top, resolution_m, resolution_m)
+        print(f"  GDAL command-line tools not found; mosaicking {len(tile_paths)} cached tile(s) with rasterio "
+              f"({width:,}x{height:,} px)", flush=True)
+        profile = {"driver": "GTiff", "count": 4, "dtype": "uint8", "width": width, "height": height,
+                   "crs": f"EPSG:{epsg_utm}", "transform": grid, "nodata": 0, "compress": "lzw",
+                   "tiled": True, "blockxsize": 512, "blockysize": 512, "BIGTIFF": "YES"}
+        tmp = naip_path.with_suffix(".part.tif")
+        filled = 0
+        with rasterio.open(tmp, "w+", **profile) as dst:
+            for i, tile in enumerate(tile_paths, 1):
+                with rasterio.open(tile) as src:
+                    b = src.bounds  # tiles are already in the target UTM zone
+                    c0 = max(0, int(np.floor((b.left - left) / resolution_m)))
+                    r0 = max(0, int(np.floor((top - b.top) / resolution_m)))
+                    c1 = min(width, int(np.ceil((b.right - left) / resolution_m)))
+                    r1 = min(height, int(np.ceil((top - b.bottom) / resolution_m)))
+                    if c1 <= c0 or r1 <= r0:
+                        print(f"    mosaic {i}/{len(tile_paths)}: {tile.name} outside the city grid, skipped")
+                        continue
+                    win = Window(c0, r0, c1 - c0, r1 - r0)
+                    with WarpedVRT(src, crs=f"EPSG:{epsg_utm}", transform=win_transform(win, grid),
+                                   width=win.width, height=win.height, resampling=Resampling.bilinear,
+                                   nodata=0) as vrt:
+                        data = vrt.read(indexes=[1, 2, 3, 4])
+                existing = dst.read(window=win)
+                have = existing.any(axis=0)
+                if have.any():
+                    data = np.where(have[None], existing, data)
+                dst.write(data, window=win)
+                filled += int(data.any(axis=0).sum()) - int(have.sum())
+                print(f"    mosaic {i}/{len(tile_paths)}: {tile.name}", flush=True)
+        tmp.replace(naip_path)
+        print(f"  Mosaic covers {filled * resolution_m ** 2 / 1e6:,.0f} km2 of imagery", flush=True)
 
     print(f"  Searching Planetary Computer STAC for NAIP ({date_range}) in bbox...", flush=True)
     # NOTE: no sign_inplace modifier — items keep their raw (unsigned) hrefs
@@ -920,6 +951,15 @@ def fetch_naip_imagery(
 # ---------------------------------------------------------------------------
 # Step 4: Run SegFormer inference
 # ---------------------------------------------------------------------------
+
+def naip_empty_share(naip_path: Path) -> float:
+    """Share of zero (no-data) pixels in band 1, from a ~1000x1000 decimated read."""
+    import rasterio
+    with rasterio.open(naip_path) as src:
+        step = max(1, min(src.width, src.height) // 1024)
+        sample = src.read(1, out_shape=(max(1, src.height // step), max(1, src.width // step)))
+    return float((sample == 0).mean())
+
 
 def check_naip_coverage(naip_path: Path, output_dir: Path) -> None:
     """Fail early, with the reason, when the citywide NAIP mosaic is mostly empty (failed tile
@@ -2658,6 +2698,10 @@ def main() -> None:
             )
         elif not args.skip_inference:
             naip_path = output_dir / "naip_imagery.tif"
+            if naip_path.exists() and not args.overwrite and naip_empty_share(naip_path) > 0.8:
+                print(f"Step 3: existing {naip_path.name} is mostly empty (bad earlier mosaic); rebuilding it "
+                      f"from the cached tiles")
+                naip_path.unlink()
             if naip_path.exists() and not args.overwrite:
                 print(f"Step 3: NAIP imagery already exists, skipping fetch: {naip_path}")
             else:
