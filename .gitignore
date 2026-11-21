@@ -57,3 +57,4 @@ data/prn/
 .venv-gpu/*
 # Bake-off leaderboards and pictures (data/scripts/bakeoff.py)
 data/bakeoff/
+data/parking-model/
