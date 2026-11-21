@@ -921,6 +921,27 @@ def fetch_naip_imagery(
 # Step 4: Run SegFormer inference
 # ---------------------------------------------------------------------------
 
+def check_naip_coverage(naip_path: Path, output_dir: Path) -> None:
+    """Fail early, with the reason, when the citywide NAIP mosaic is mostly empty (failed tile
+    downloads leave zero-filled holes; inference skips those windows and finds nothing)."""
+    import rasterio
+    with rasterio.open(naip_path) as src:
+        step = max(1, min(src.width, src.height) // 1024)
+        sample = src.read(1, out_shape=(max(1, src.height // step), max(1, src.width // step)))
+        w, h, n = src.width, src.height, src.count
+    empty = float((sample == 0).mean())
+    tiles = list((output_dir / "naip_tiles").glob("*.tif"))
+    failed_file = output_dir / "naip_failed_tiles.txt"
+    failed = failed_file.read_text(encoding="utf-8").split() if failed_file.exists() else []
+    print(f"  Imagery check: {w:,}x{h:,} px, {n} bands, {empty:.0%} empty; "
+          f"{len(tiles)} tile(s) cached, {len(failed)} failed", flush=True)
+    if empty > 0.8:
+        raise RuntimeError(
+            f"NAIP mosaic {naip_path} is {empty:.0%} empty ({len(failed)} tile download(s) failed, "
+            f"see {failed_file}). Delete naip_imagery.tif and rerun to retry the downloads."
+        )
+
+
 def _disk_kernel(radius: int) -> np.ndarray:
     """Create a circular structuring element for morphological operations."""
     y, x = np.ogrid[-radius : radius + 1, -radius : radius + 1]
@@ -1194,6 +1215,9 @@ def run_segformer_inference(
         journal_path.write_text(journal_header + "\n", encoding="utf-8")
 
     kernel = _disk_kernel(MORPH_OPEN_RADIUS_PX)
+    win_run = 0
+    win_skipped = 0
+    prob_max = 0.0
     px_thresholded = 0
     px_after_strip = 0
     px_after_open = 0
@@ -1301,7 +1325,9 @@ def run_segformer_inference(
                     # gaps at bbox edges) — the model produces garbage on
                     # black imagery.
                     if (patch[0] == 0).mean() > 0.5:
+                        win_skipped += 1
                         continue
+                    win_run += 1
 
                     rgb = patch[:3].transpose(1, 2, 0).astype(np.uint8)
                     pending.append((y0, x0, y1, x1, rgb))
@@ -1310,6 +1336,7 @@ def run_segformer_inference(
             flush_batch()
 
             avg_probs = full_mask / np.where(weight_mask == 0, 1.0, weight_mask)
+            prob_max = max(prob_max, float(avg_probs.max()) if avg_probs.size else 0.0)
 
             # --------------------------------------------------------------
             # Threshold → NDVI strip → morphological opening (on the full
@@ -1360,6 +1387,11 @@ def run_segformer_inference(
             )
 
     print(f"  Probability map saved: {probs_path}")
+    print(f"  Windows: {win_run:,} run, {win_skipped:,} skipped as empty imagery; "
+          f"highest parking probability {prob_max:.2f}")
+    if win_run == 0 and chunks_done_run:
+        raise RuntimeError("Every inference window was empty imagery: check naip_imagery.tif "
+                           "(delete it and rerun to rebuild the mosaic).")
     print(f"  Threshold {threshold}: {px_thresholded:,} parking pixels")
     if do_nir:
         print(
@@ -2645,6 +2677,7 @@ def main() -> None:
                     output_dir=output_dir,
                 )
 
+            check_naip_coverage(naip_path, output_dir)
             print("=" * 60)
             parking_model = None
             if args.model:
@@ -2678,6 +2711,9 @@ def main() -> None:
 
             if len(parking_gdf) == 0:
                 print("Warning: No parking polygons detected. Check imagery quality and mask output.")
+                if not args.use_osm_supplement:
+                    raise SystemExit("Stopping: nothing to join to parcels. The Step 3-4 output above "
+                                     "(imagery check, windows run, highest probability) shows why.")
 
             if args.remove_roads and len(parking_gdf):
                 print("=" * 60)
