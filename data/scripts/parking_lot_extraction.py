@@ -1651,6 +1651,7 @@ def vectorize_mask(
     mask_path: Path,
     min_area_sqft: float = MIN_PARKING_AREA_SQFT,
     block_px: int = 8192,
+    max_area_acres: float | None = MAX_PARKING_AREA_ACRES,
 ) -> gpd.GeoDataFrame:
     """
     Convert binary parking mask GeoTIFF to GeoDataFrame of parking polygons.
@@ -1776,14 +1777,20 @@ def vectorize_mask(
 
     # Remove implausibly large features (airports, distribution centres)
     gdf_proj["parking_area_acres"] = gdf_proj["parking_area_sqft"] / 43560.0
-    max_area_sqft = MAX_PARKING_AREA_ACRES * 43560.0
-    n_before = len(gdf_proj)
-    gdf_proj = gdf_proj[gdf_proj["parking_area_sqft"] <= max_area_sqft].copy()
-    n_removed = n_before - len(gdf_proj)
-    if n_removed:
-        print(
-            f"  Removed {n_removed} feature(s) exceeding {MAX_PARKING_AREA_ACRES} ac max area"
-        )
+    if max_area_acres is not None:
+        max_area_sqft = max_area_acres * 43560.0
+        n_before = len(gdf_proj)
+        gdf_proj = gdf_proj[gdf_proj["parking_area_sqft"] <= max_area_sqft].copy()
+        n_removed = n_before - len(gdf_proj)
+        if n_removed:
+            print(
+                f"  Removed {n_removed} feature(s) exceeding {max_area_acres} ac max area"
+            )
+    else:
+        n_big = int((gdf_proj["parking_area_acres"] > MAX_PARKING_AREA_ACRES).sum())
+        if n_big:
+            print(f"  {n_big} connected area(s) over {MAX_PARKING_AREA_ACRES} ac kept for now: they are split "
+                  f"at roads, buildings and parcel lines first, then the size limit applies per piece")
 
     # Simplify edges (0.5m tolerance in projected CRS)
     gdf_proj["geometry"] = gdf_proj.geometry.simplify(0.5, preserve_topology=True)
@@ -2152,8 +2159,11 @@ def clip_parking_to_parcels(
     parcels_proj = parcels.to_crs(3857).reset_index(drop=True)
 
     # Overlay: intersection of parking with parcels → parcel-bounded pieces
+    keep = [c for c in parking_proj.columns
+            if c not in ("parking_area_sqft", "parking_area_acres", "area_m2", "source", "confidence")]
+    parking_proj = parking_proj[keep]
     clipped = gpd.overlay(
-        parking_proj[["geometry"]],
+        parking_proj,
         parcels_proj[["geometry"]],
         how="intersection",
         keep_geom_type=True,
@@ -2161,7 +2171,7 @@ def clip_parking_to_parcels(
 
     # Also keep parking fragments that don't overlap any parcel (exempt areas)
     diff = gpd.overlay(
-        parking_proj[["geometry"]],
+        parking_proj,
         parcels_proj[["geometry"]],
         how="difference",
         keep_geom_type=True,
@@ -2772,7 +2782,10 @@ def main() -> None:
             print("=" * 60)
             print("Step 5: Vectorizing mask to parking polygons")
             print("=" * 60)
-            parking_gdf = vectorize_mask(mask_path, min_area_sqft=MIN_PARKING_AREA_SQFT)
+            # A --model run splits big connected areas before the size limit (see Step 5a3); the
+            # original SegFormer path keeps its published behaviour.
+            parking_gdf = vectorize_mask(mask_path, min_area_sqft=MIN_PARKING_AREA_SQFT,
+                                         max_area_acres=None if args.model else MAX_PARKING_AREA_ACRES)
             parking_gdf = attach_surface_material(parking_gdf, mask_path.parent / "parking_unpaved.tif")
 
             if len(parking_gdf) == 0:
@@ -2804,6 +2817,13 @@ def main() -> None:
                     print(f"  {len(blds):,} buildings; parking polygons {before:,} -> {len(parking_gdf):,}")
                 except Exception as e:  # noqa: BLE001 - best effort, like road removal
                     print(f"  Building removal skipped ({e})")
+
+            if args.model and len(parking_gdf):
+                print("=" * 60)
+                print("Step 5a3: Splitting parking at parcel lines; dropping pieces over "
+                      f"{MAX_PARKING_AREA_ACRES} ac")
+                print("=" * 60)
+                parking_gdf = clip_parking_to_parcels(parking_gdf, parcels)
 
         # -----------------------------------------------------------------------
         if args.use_osm_supplement:
@@ -2876,6 +2896,7 @@ def main() -> None:
         state=state,
         resolution_m=args.resolution,
         naip_date_range=f"{args.naip_start}/{args.naip_end}",
+        **({"model_id": args.model} if args.model else {}),
     )
     if args.overture_only:
         # Same OSM data, different delivery: record which Overture release carried it.
