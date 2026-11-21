@@ -31,6 +31,7 @@ from urllib.parse import urlsplit
 
 import geopandas as gpd
 import numpy as np
+import time
 import pandas as pd
 import requests
 from shapely.ops import unary_union
@@ -2008,6 +2009,9 @@ def remove_road_overlap(
     lon_center = (bbox[0] + bbox[2]) / 2
     utm_epsg = 32600 + int((lon_center + 180) / 6) + 1
 
+    print("  Downloading OSM roads for the bounding box (one Overpass request; a few minutes "
+          "for a city)...", flush=True)
+    t0 = time.time()
     try:
         roads = ox.features_from_polygon(box(*bbox), tags={"highway": True})
     except Exception as e:  # noqa: BLE001 — OSM is best-effort here
@@ -2031,11 +2035,29 @@ def remove_road_overlap(
         except (TypeError, ValueError):
             return base
 
-    road_union = roads.geometry.buffer(roads.apply(_half_width, axis=1).values).union_all()
+    print(f"  {len(roads):,} road lines downloaded in {(time.time() - t0) / 60:.1f} min; cutting them out "
+          f"of {len(parking_gdf):,} parking polygons", flush=True)
+    import shapely
+    road_buf = roads.geometry.buffer(roads.apply(_half_width, axis=1).values).values
 
     proj = parking_gdf.to_crs(utm_epsg)
     before_ac = proj.geometry.area.sum() / 4046.8564224
-    proj["geometry"] = proj.geometry.difference(road_union)
+    # Cut each polygon with only the road buffers that touch it (same result as subtracting the
+    # citywide union, without testing every polygon against the whole network).
+    tree = shapely.STRtree(road_buf)
+    pi, ri = tree.query(proj.geometry.values, predicate="intersects")
+    order = np.argsort(pi, kind="stable")
+    pi, ri = pi[order], ri[order]
+    starts = np.flatnonzero(np.r_[True, pi[1:] != pi[:-1]]) if len(pi) else np.array([], int)
+    ends = np.r_[starts[1:], len(pi)] if len(pi) else np.array([], int)
+    geoms = proj.geometry.values.copy()
+    n_hit = len(starts)
+    for k, (a, b) in enumerate(zip(starts, ends), 1):
+        i = pi[a]
+        geoms[i] = geoms[i].difference(shapely.union_all(road_buf[ri[a:b]]))
+        if k % 5000 == 0:
+            print(f"    roads cut from {k:,}/{n_hit:,} touching polygons", flush=True)
+    proj["geometry"] = geoms
     proj = proj[~proj.geometry.is_empty & proj.geometry.notna()].copy()
     proj = proj.explode(index_parts=False)
     proj["parking_area_sqft"] = proj.geometry.area * 10.7639
@@ -2776,6 +2798,8 @@ def main() -> None:
                     blds = overture_source.buildings(tuple(parking_gdf.to_crs(4326).total_bounds),
                                                      overture_source.resolve_release(OVERTURE_RELEASE))
                     before = len(parking_gdf)
+                    print(f"  {len(blds):,} buildings downloaded; cutting them out of {before:,} polygons",
+                          flush=True)
                     parking_gdf = subtract_buildings(parking_gdf, blds)
                     print(f"  {len(blds):,} buildings; parking polygons {before:,} -> {len(parking_gdf):,}")
                 except Exception as e:  # noqa: BLE001 - best effort, like road removal

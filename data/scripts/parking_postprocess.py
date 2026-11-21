@@ -80,9 +80,12 @@ def subtract_buildings(parking: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame,
         return parking
     idx = b.sindex
     geoms = []
-    for g in p.geometry:
+    n = len(p)
+    for k, g in enumerate(p.geometry, 1):
         hit = b.iloc[idx.query(g, predicate="intersects")]
         geoms.append(g.difference(hit.union_all()) if len(hit) else g)
+        if n >= 20000 and k % 10000 == 0:
+            print(f"    buildings cut from {k:,}/{n:,} polygons", flush=True)
     p = p.set_geometry(geoms)
     p = p[~p.geometry.is_empty & (p.geometry.area >= min_area_m2)]
     return p.to_crs(parking.crs)
