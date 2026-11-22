@@ -1538,9 +1538,10 @@ def dissolve_parking_polygons(
     if parking_gdf.empty:
         return parking_gdf
 
-    parking_proj = parking_gdf.to_crs(3857)
+    area_crs = parking_gdf.estimate_utm_crs()  # not Web Mercator: it inflates areas by 1/cos²(lat)
+    parking_proj = parking_gdf.to_crs(area_crs)
     merged = unary_union(parking_proj.geometry.tolist())
-    merged_gdf = gpd.GeoDataFrame(geometry=[merged], crs=3857).explode(index_parts=False)
+    merged_gdf = gpd.GeoDataFrame(geometry=[merged], crs=area_crs).explode(index_parts=False)
     merged_gdf = merged_gdf[merged_gdf.geometry.notna() & ~merged_gdf.geometry.is_empty].copy()
     merged_gdf["parking_area_sqft"] = merged_gdf.geometry.area * 10.7639
     merged_gdf = merged_gdf[merged_gdf["parking_area_sqft"] >= min_area_sqft].copy()
@@ -2178,8 +2179,21 @@ def clip_parking_to_parcels(
         parking = parking.to_crs(4326)
 
     # Work in projected CRS for accurate area calculations
-    parking_proj = parking.to_crs(3857).reset_index(drop=True)
-    parcels_proj = parcels.to_crs(3857).reset_index(drop=True)
+    # Equal-area enough: local UTM. (Web Mercator inflated areas by 1/cos²(lat), +27% in Laredo,
+    # so the 40-acre cap dropped real ~32-acre lots and the 500 sq ft floor kept smaller specks.)
+    area_crs = parking.estimate_utm_crs()
+    parking_proj = parking.to_crs(area_crs).reset_index(drop=True)
+    parcels_proj = parcels.to_crs(area_crs).reset_index(drop=True)
+    # Overlay needs valid rings; earlier cuts (streets, buildings) and some parcel files have
+    # self-touching ones. make_valid keeps the area; keep only polygonal parts.
+    from data.scripts.parking_postprocess import _polygonal
+    import shapely
+    for _gdf in (parking_proj, parcels_proj):
+        _bad = ~_gdf.geometry.is_valid
+        if _bad.any():
+            _gdf.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(_gdf.geometry[_bad].values)]
+    parking_proj = parking_proj[parking_proj.geometry.notna() & ~parking_proj.geometry.is_empty]
+    parcels_proj = parcels_proj[parcels_proj.geometry.notna() & ~parcels_proj.geometry.is_empty]
 
     # Overlay: intersection of parking with parcels → parcel-bounded pieces
     keep = [c for c in parking_proj.columns
@@ -2221,7 +2235,7 @@ def clip_parking_to_parcels(
     result["confidence"] = 1.0
 
     # Recompute area after simplification
-    result_proj = result.to_crs(3857)
+    result_proj = result.to_crs(area_crs)
     result["parking_area_sqft"] = result_proj.geometry.area * 10.7639
     result["parking_area_acres"] = result["parking_area_sqft"] / 43560.0
 
@@ -2817,12 +2831,30 @@ def main() -> None:
                     raise SystemExit("Stopping: nothing to join to parcels. The Step 3-4 output above "
                                      "(imagery check, windows run, highest probability) shows why.")
 
-            if args.remove_roads and len(parking_gdf):
+            if args.remove_roads and len(parking_gdf) and args.model:
+                # Same street rule as the labels the model was trained and scored on: public roads
+                # (Overture) within their half-width AND outside parcels. The OSM cut below also
+                # removes parking aisles, driveways and footpaths (7-12 m strips through lots).
+                print("=" * 60)
+                print("Step 5a: Removing public streets (off-parcel road half-widths, as in the labels)")
+                print("=" * 60)
+                try:
+                    from data.scripts import overture_source
+                    from data.scripts.classify_parking_surface import OVERTURE_RELEASE
+                    from data.scripts.parking_postprocess import public_roads, subtract_public_streets
+                    print("  Downloading Overture road segments...", flush=True)
+                    roads_pub = public_roads(tuple(parking_gdf.to_crs(4326).total_bounds),
+                                             overture_source.resolve_release(OVERTURE_RELEASE))
+                    parking_gdf = subtract_public_streets(parking_gdf, roads_pub, parcels)
+                except Exception as e:  # noqa: BLE001 - best effort, like the OSM cut
+                    print(f"  Street removal skipped ({e})")
+            elif args.remove_roads and len(parking_gdf):
                 print("=" * 60)
                 print("Step 5a: Removing OSM road overlap from parking polygons")
                 print("=" * 60)
                 parking_gdf = remove_road_overlap(parking_gdf, bbox)
 
+            context_buildings = None
             if args.remove_buildings and len(parking_gdf):
                 print("=" * 60)
                 print("Step 5a2: Removing Overture building footprints from parking polygons")
@@ -2831,7 +2863,7 @@ def main() -> None:
                     from data.scripts import overture_source
                     from data.scripts.classify_parking_surface import OVERTURE_RELEASE
                     from data.scripts.parking_postprocess import subtract_buildings
-                    blds = overture_source.buildings(tuple(parking_gdf.to_crs(4326).total_bounds),
+                    blds = context_buildings = overture_source.buildings(tuple(parking_gdf.to_crs(4326).total_bounds),
                                                      overture_source.resolve_release(OVERTURE_RELEASE))
                     before = len(parking_gdf)
                     print(f"  {len(blds):,} buildings downloaded; cutting them out of {before:,} polygons",
@@ -2847,6 +2879,14 @@ def main() -> None:
                       f"{MAX_PARKING_AREA_ACRES} ac")
                 print("=" * 60)
                 parking_gdf = clip_parking_to_parcels(parking_gdf, parcels)
+                print("=" * 60)
+                print("Step 5a4: Context rules (far from any building; driveways on single-family lots)")
+                print("=" * 60)
+                from data.scripts.parking_postprocess import context_filter
+                before_ac = parking_gdf.to_crs(parking_gdf.estimate_utm_crs()).area.sum() / 4046.86
+                parking_gdf = context_filter(parking_gdf, context_buildings, parcels)
+                after_ac = parking_gdf.to_crs(parking_gdf.estimate_utm_crs()).area.sum() / 4046.86
+                print(f"  {before_ac:,.0f} -> {after_ac:,.0f} acres")
 
         # -----------------------------------------------------------------------
         if args.use_osm_supplement:
