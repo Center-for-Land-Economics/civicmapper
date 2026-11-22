@@ -13,6 +13,16 @@ from it may fall outside "research or evaluation"; get a legal read before relyi
 Unencumbered replacements to test in the bake-off: DINOv2 (Apache 2.0), Clay (Apache 2.0),
 DINOv3-sat (Meta DINOv3 License: commercial use allowed, attribution and pass-through terms).
 
+Bake-off result (2026-11-22, Laredo test squares + 8 PRN downtowns, threshold 0.5): DINOv2-large
+fine-tuned on the Laredo labels (`finetune-dinov2-large-targeted`, Apache 2.0) wins at 69% overall
+IoU (home 76%, PRN 63%). DINOv3-sat ties at home (75%) but drops to 57% on the unseen downtowns
+(precision 65% vs 75%); fine-tuned SegFormer 66%. Decision: DINOv2 replaces SegFormer as the model
+for citywide runs. Still to do: host the weights so the pipeline default can switch.
+
+Surface type (paved vs unpaved) is not learnable from 0.6 m NAIP: three-class models reach 21%
+(DINOv2) and 16% (DINOv3) IoU on unpaved, while still finding ~85% of gravel lots as parking.
+Dropped from the model; if needed, take it from OSM `surface=` tags or a manual pass on large lots.
+
 ## Houston: impossible parcel land areas (found 2026-11-15)
 
 The hosted `parquets-dev/houston-tx-parcels.parquet` sums to ~15,100 km² of parcel land, about
