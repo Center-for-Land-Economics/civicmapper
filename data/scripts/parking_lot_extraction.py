@@ -1243,6 +1243,24 @@ def run_segformer_inference(
                 cy_s, _, cx_s = line.partition(",")
                 done_chunks.add((int(cy_s), int(cx_s)))
             resume = True
+    if resume and done_chunks:
+        # A chunk can be logged while its pixels never reached the file (a run killed before the
+        # compressed GeoTIFF was closed). Re-run any logged chunk whose probabilities are all zero
+        # although it has imagery: a real model pass never gives exactly 0 over a whole chunk.
+        lost = set()
+        with rasterio.open(naip_path) as nsrc, rasterio.open(probs_path) as psrc:
+            for cy0, cx0 in sorted(done_chunks):
+                win = Window(cx0, cy0, min(chunk_size_px, width - cx0), min(chunk_size_px, height - cy0))
+                shp = (max(1, int(win.height) // 24), max(1, int(win.width) // 24))
+                img = nsrc.read(1, window=win, out_shape=shp)
+                if (img > 0).mean() < 0.05:
+                    continue
+                if psrc.read(1, window=win, out_shape=shp).max() == 0:
+                    lost.add((cy0, cx0))
+        if lost:
+            print(f"  {len(lost)} logged chunk(s) have imagery but no saved probabilities (an interrupted "
+                  f"run); running them again", flush=True)
+            done_chunks -= lost
     if resume:
         print(
             f"  Resuming: {len(done_chunks)}/{total_chunks} chunks already complete "
@@ -1263,20 +1281,21 @@ def run_segformer_inference(
     px_after_strip = 0
     px_after_open = 0
 
-    def _open_out(path: Path, profile: dict):
-        # Resume reopens the existing raster in update mode; a fresh run
-        # creates it from the profile.
-        if resume:
-            return rasterio.open(path, "r+")
-        return rasterio.open(path, "w", **profile)
+    if not resume:  # create the outputs; each chunk then reopens them in update mode
+        for path, profile in [(mask_path, mask_profile), (probs_path, probs_profile)] + \
+                ([(unpaved_path, probs_profile)] if three_class else []):
+            with rasterio.open(path, "w", **profile):
+                pass
+
+    def _write(path: Path, data: np.ndarray, window) -> None:
+        # Open-write-close per chunk: a compressed GeoTIFF only records where its blocks are when it
+        # is closed, so keeping it open for hours loses every chunk if the run is killed.
+        with rasterio.open(path, "r+") as dst:
+            dst.write(data, 1, window=window)
 
     run_t0 = time.perf_counter()
     chunks_done_run = 0
-    import contextlib
-    with rasterio.open(naip_path) as src, \
-         _open_out(mask_path, mask_profile) as mask_dst, \
-         _open_out(probs_path, probs_profile) as probs_dst, \
-         (_open_out(unpaved_path, probs_profile) if three_class else contextlib.nullcontext()) as unpaved_dst:
+    with rasterio.open(naip_path) as src:
         for chunk_idx, (cy, cx) in enumerate(
             [(y, x) for y in y_chunks for x in x_chunks], start=1
         ):
@@ -1387,12 +1406,10 @@ def run_segformer_inference(
             inner = (slice(cy - ry0, cy_end - ry0), slice(cx - rx0, cx_end - rx0))
             out_window = Window(cx, cy, cx_end - cx, cy_end - cy)
 
-            probs_dst.write(
-                np.rint(avg_probs[inner] * 255).astype(np.uint8), 1, window=out_window
-            )
+            _write(probs_path, np.rint(avg_probs[inner] * 255).astype(np.uint8), out_window)
             if three_class:
                 avg_unp = unpaved_acc / np.where(weight_mask == 0, 1.0, weight_mask)
-                unpaved_dst.write(np.rint(avg_unp[inner] * 255).astype(np.uint8), 1, window=out_window)
+                _write(unpaved_path, np.rint(avg_unp[inner] * 255).astype(np.uint8), out_window)
 
             binary_chunk = (avg_probs >= threshold).astype(np.uint8)
             px_thresholded += int(binary_chunk[inner].sum())
@@ -1411,7 +1428,7 @@ def run_segformer_inference(
             )
             px_after_open += int(binary_chunk[inner].sum())
 
-            mask_dst.write(binary_chunk[inner], 1, window=out_window)
+            _write(mask_path, binary_chunk[inner], out_window)
 
             with open(journal_path, "a", encoding="utf-8") as journal:
                 journal.write(f"{cy},{cx}\n")
