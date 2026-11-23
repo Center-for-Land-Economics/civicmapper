@@ -27,6 +27,8 @@ ALL_CITIES = [
     'provo',
     'lincoln',
     'providence',
+    'pittsburgh',
+    'allegheny',
     'culvercity',
     'boston',
     'stlouis',
