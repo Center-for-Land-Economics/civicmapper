@@ -103,9 +103,15 @@ def main() -> int:
     feats = list(keep)
     ctx = None if a.no_clean else load_context(d)
     t0 = time.time()
+    failed: list[str] = []
     for n, r in enumerate(todo.itertuples(), 1):
         items = json.loads(r.naip_items) if isinstance(r.naip_items, str) else list(r.naip_items)
-        mask, _p, tr = square_prediction(r.geometry, items, utm, bundle, a.threshold)
+        try:
+            mask, _p, tr = square_prediction(r.geometry, items, utm, bundle, a.threshold)
+        except Exception as e:  # noqa: BLE001 - one unreadable square must not lose the rest
+            print(f"  skipped {r.id}: {e}", flush=True)
+            failed.append(r.id)
+            continue
         if ctx is not None:
             mask = mask & keep_mask(ctx, r.id, utm, tr, mask.shape)
         polys = mask_polygons(mask, tr, utm, r.geometry, a.min_m2)
@@ -122,6 +128,8 @@ def main() -> int:
                              "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
     (d / "campaign.json").write_text(json.dumps(meta, indent=2, default=str))
     print(f"{a.campaign}: {len(feats):,} model polygons -> {path.relative_to(ROOT)}")
+    if failed:
+        print(f"  {len(failed)} square(s) skipped; rerun just those with:\n  --squares {' '.join(failed)}")
     return 0
 
 

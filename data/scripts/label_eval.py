@@ -69,8 +69,21 @@ def signed_href(item_id: str, force_new_token: bool = False) -> str:
             if r.get("msft:expiry") else time.time() + 10 * 60
         _token.update(tok=r["token"], exp=exp)
     if item_id not in _hrefs:
-        it = requests.get(f"{STAC}/collections/naip/items/{item_id}", timeout=60).json()
-        _hrefs[item_id] = it["assets"]["image"]["href"]
+        # The catalogue occasionally answers with an error body (rate limit, hiccup): back off, retry.
+        last = None
+        for attempt in range(6):
+            try:
+                resp = requests.get(f"{STAC}/collections/naip/items/{item_id}", timeout=60)
+                it = resp.json()
+                if resp.ok and "assets" in it:
+                    _hrefs[item_id] = it["assets"]["image"]["href"]
+                    break
+                last = f"HTTP {resp.status_code}: {str(it)[:200]}"
+            except (requests.RequestException, ValueError) as e:
+                last = f"{type(e).__name__}: {e}"
+            time.sleep(min(60, 5 * 2 ** attempt))
+        else:
+            raise RuntimeError(f"NAIP item {item_id} not available from Planetary Computer ({last})")
     return f"{_hrefs[item_id]}?{_token['tok']}"
 
 
