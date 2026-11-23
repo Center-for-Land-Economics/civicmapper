@@ -19,7 +19,7 @@ from pathlib import Path
 ALL_CITIES = [
     'southbend','syracuse','spokane','rochester','bellingham','morgantown',
     'denver','fortcollins','cincinnati','cleveland','columbus','charlottesville',
-    'ibx','stpaul','nyc','baltimore','albuquerque','pueblo','lakewood','portland','houston',
+    'ibx','stpaul','minneapolis','nyc','baltimore','albuquerque','pueblo','lakewood','portland','houston',
     'austin','dallas','sanantonio','bcs','detroit','chicago',
     'tulsa','newportnews','richmond','lynchburg','harrisonburg','olympia','seattle','tacoma','vancouver','dmv','washington',
     'hartfordmetro',

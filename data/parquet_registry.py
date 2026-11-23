@@ -75,6 +75,10 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "ibx": CityParquet(city="ibx", state="ny", legacy_filename="nyc-ibx-parcels.parquet"),
     "nyc": CityParquet(city="nyc", state="ny", legacy_filename="nyc-ny-parcels.parquet"),
     "stpaul": CityParquet(city="st-paul", state="mn", legacy_filename="st-paul-mn-parcels.parquet"),
+    # City of Minneapolis, MN (Hennepin County). City Assessor roll + city parcel fabric.
+    "minneapolis": CityParquet(
+        city="minneapolis", state="mn", legacy_filename="minneapolis-mn-parcels.parquet"
+    ),
     "baltimore": CityParquet(city="baltimore", state="md", legacy_filename="baltimore-md-parcels.parquet"),
     "albuquerque": CityParquet(
         city="albuquerque", state="nm", legacy_filename="albuquerque-nm-parcels.parquet"

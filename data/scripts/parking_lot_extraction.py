@@ -57,6 +57,7 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "cincinnati": "Cincinnati, Ohio, USA",
     "ibx": "New York City, New York, USA",
     "stpaul": "Saint Paul, Minnesota, USA",
+    "minneapolis": "Minneapolis, Minnesota, USA",
     "nyc": "New York City, New York, USA",
     "baltimore": "Baltimore, Maryland, USA",
     "albuquerque": "City of Albuquerque, New Mexico, USA",
