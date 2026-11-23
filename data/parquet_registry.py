@@ -86,6 +86,8 @@ CITY_PARQUETS: dict[str, CityParquet] = {
         city="rockville", state="md", legacy_filename="rockville-md-parcels.parquet"
     ),
     "detroit": CityParquet(city="detroit", state="mi", legacy_filename="detroit-mi-parcels.parquet"),
+    # City of Flint, MI (Genesee County) — the city is its own assessing unit; city-only layer.
+    "flint": CityParquet(city="flint", state="mi", legacy_filename="flint-mi-parcels.parquet"),
     "chicago": CityParquet(city="chicago", state="il", legacy_filename="chicago-il-parcels.parquet"),
     "tulsa": CityParquet(city="tulsa", state="ok", legacy_filename="tulsa-ok-parcels.parquet"),
     "newportnews": CityParquet(
