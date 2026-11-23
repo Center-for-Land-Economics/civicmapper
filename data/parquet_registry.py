@@ -138,6 +138,12 @@ CITY_PARQUETS: dict[str, CityParquet] = {
     "hartfordmetro": CityParquet(
         city="hartfordmetro", state="ct", legacy_filename="hartfordmetro-ct-parcels.parquet"
     ),
+    # Somerset County, NJ (21 municipalities) from the NJOGIS Parcels + MOD-IV composite
+    # (run_somerset.py; `jurisdiction` = municipality drives the region toggle).
+    "somerset": CityParquet(city="somerset", state="nj", legacy_filename="somerset-nj-parcels.parquet"),
+    # Princeton, NJ (Mercer County, muni 1114): built in the same run_somerset.py pass, exported
+    # as its own city (it is not in Somerset County).
+    "princeton": CityParquet(city="princeton", state="nj", legacy_filename="princeton-nj-parcels.parquet"),
     # First non-US city. New <city>-<province>-<country> convention:
     # province = Harju maakond, country = ee (Estonia).
     "tallinn": CityParquet(

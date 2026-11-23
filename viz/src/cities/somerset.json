@@ -1,0 +1,38 @@
+{
+  "notes": [
+    "Somerset County, NEW JERSEY (all 21 municipalities). Each parcel carries `jurisdiction` (the municipality), which drives the region toggle. Princeton (Mercer County) was briefly shown here as a 22nd town (dev only, 2026-11-19) and was split out into its own city, cities/princeton.json, on 2026-11-23; both come out of one run_somerset.py pass. Source: the NJ Office of GIS 'Parcels and MOD-IV Composite of NJ' layer (services2.arcgis.com/XVOqAjTOJ5P6ngMu/.../Parcels_Composite_NJ_WM/FeatureServer/0, COUNTY='SOMERSET' OR PCL_MUN='1114', 126,226 records, published 2026-01-05): geometry + MOD-IV tax-list land/improvement values + NJ property class in one layer. Owner fields are never requested. See run_somerset.py.",
+    "VALUE YEAR + EQUALIZATION: the layer's values are TAX YEAR 2025 assessments (per-town taxable totals match the 2025 County Equalization Tables, not 2026). NJ towns assess at different shares of market, so every value is divided by the town's 2025 average assessment ratio (Final Equalization Table col. 1(b), Somerset 2025). Most Somerset towns reassess annually and sit at 94-106%, but Montgomery (59.97%), North Plainfield (57.23%), Somerville (63.46%), South Bound Brook (66.23%) and Raritan (66.45%) do not; unadjusted they would show false cliffs at their borders. The assessor's own figures ship as assessed_land_value / assessed_improvement_value, and the ratio as assessment_ratio_pct. Exception: class 3B qualified farmland is assessed at its Farmland Assessment Act use value, so its land is NOT equalized and reads far below market.",
+    "EXEMPT (dropped): NJ class 15A-F (public school, other school, public property, church & charitable, cemetery, other exempt): 5,599 parcels, ~49,500 acres, $2.85B assessed land. Class 5A/5B railroad (49) dropped. 913 zero-value parcels (mostly class-1 HOA open space and detention basins, plus Princeton records with no class or values; ~3,500 acres) dropped after the condo merge.",
+    "ADDITIONAL LOTS: a MOD-IV record that covers several mapped lots sits on its primary lot only (84% of Manville records). The other lots' polygons are pulled from the state's full Cadastral layer (maps.nj.gov Framework/Cadastral/MapServer/0, where they carry no values) and unioned into their primary when they are listed in ADD_LOTS and touch it: 13,101 polygons onto 5,434 records. Without this Manville's median land read $88/sqft against ~$30 in its neighbours; with it, $30. 2,105 unjoined polygons stay unmatched (698 in Manville, 482 in Montgomery, 122 in Princeton) and are not drawn.",
+    "CONDOS + TOWNHOUSES (merged, skill §6b): condo units (qualifier C, 17,146 records) and fee-simple townhouse lots are mapped as unit-footprint stubs punched as holes out of a $0 'COMMON ELEMENTS' parcel. Units are merged down onto that parcel (holes containing units filled, values summed): 20,694 records onto 318 developments. A common parcel counts as a townhouse development when its class-2 lots under 3,000 sqft have a median footprint under 2,000 sqft (5,870 lots in 69 developments). 2,322 condo units with no common parcel are clustered (75 ft, same block) into 114 developments drawn as the convex hull of their units minus neighbouring parcels. Where that leaves land $/sqft > 5x the median of the 15 nearest ordinary parcels (the ground under them is simply not mapped), the development is flagged likely_remnant and hidden: 44 developments, 695 units, $166M land.",
+    "CLASSIFICATION: NJ property class. 1 Vacant Land (or Open Space / Common Area when described as open space, common, detention etc.), 2 Single Family / Multifamily (2-4 units) by dwelling count, 3A Farm (Homestead), 3B Farmland (Qualified), 4A Commercial, 4B Industrial, 4C Apartments (5+ units), merged units Condo / Townhouse Development. Farm and open-space categories are kept out of the Vacant / Underdeveloped layer. Farm qualifier (Q) and billboard (B) records are merged onto their base lot.",
+    "No stable public per-parcel deep link, so the popup has no parcel link. No parking layer yet. PMTiles + H3, baked with --drop-remnants to match hideRemnants.",
+    "COUNTS after the split: 89,827 parcels, 21 towns, $32.94B equalized land. (The figures in the notes above that describe the ETL pass, e.g. exempt / zero-value / condo counts, cover Somerset + Princeton together.)"
+  ],
+  "displayName": "Somerset County",
+  "state": "nj",
+  "filename": "somerset-nj-parcels.parquet",
+  "pmtilesFilename": "somerset-nj-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-23",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "jurisdictionGroups": [
+    {
+      "field": "jurisdiction",
+      "label": "Municipality",
+      "defaultMode": "all",
+      "overlayUrl": "somerset-jurisdiction-overlay.geojson"
+    }
+  ],
+  "aliases": [
+    "somerset-nj",
+    "somerset_nj",
+    "somersetcounty",
+    "somerset-county"
+  ],
+  "coords": [
+    -74.6,
+    40.565
+  ]
+}
