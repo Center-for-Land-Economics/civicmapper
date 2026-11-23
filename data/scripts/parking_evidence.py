@@ -188,6 +188,14 @@ def main() -> int:
     }
     (run / f"{stem}-satellite-metadata.json").write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
     print(f"Wrote {out} ({len(lots):,} lots) and its metadata JSON")
+    # Local preview: the dev server serves viz/public/ first (gitignored), so the parking page shows
+    # this layer right away, before it is uploaded anywhere.
+    import shutil
+    pub = ROOT / "viz" / "public" / "parking"
+    pub.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(out, pub / out.name)
+    shutil.copy2(run / f"{stem}-satellite-metadata.json", pub / f"{stem}-satellite-metadata.json")
+    print(f"  copied to {pub} for local preview (restart the dev server if it was running)")
     print(f"  confidence: {lots['confidence'].value_counts().to_dict()}; "
           f"median model confidence {np.nanmedian(conf):.2f}")
     return 0
