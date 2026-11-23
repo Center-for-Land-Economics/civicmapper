@@ -126,6 +126,18 @@ The runner's "Precision" steps score the chosen model at thresholds 0.6 and 0.7,
 and rebuild the citywide map from the saved probabilities (`--rethreshold --threshold T`, no model
 run, streamed so it fits in memory).
 
+## Training on several cities
+
+`label_finetune.py` takes several campaigns and trains one model on all of them (output under the
+first campaign, named e.g. `finetune-dinov2-large-laredo-plano`). `--blind-test CAMPAIGN` makes every
+Blind-labelled square of that campaign a test square, so a city's Blind set stays an honest test
+while its Model-fix squares train:
+
+```
+python data/scripts/label_finetune.py pilot-laredo pilot-plano --blind-test pilot-plano --arch vit --backbone facebook/dinov2-large --amp --batch 2 --epochs 8
+```
+It prints precision / recall / IoU per city at the end.
+
 ## Memory and speed notes
 
 - Fine-tuning at `--batch 4 --amp` peaks at ~9 GB; use `--batch 2` on 8 GB cards.

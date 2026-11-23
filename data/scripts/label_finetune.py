@@ -172,7 +172,11 @@ def pick_threshold(examples, model) -> tuple[float, float]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("campaign")
+    ap.add_argument("campaign", nargs="+", help="one or more campaigns; several = one model trained on all of "
+                                                 "them (the output goes under the first)")
+    ap.add_argument("--blind-test", nargs="*", default=[], metavar="CAMPAIGN",
+                    help="in these campaigns every Blind-labelled square is a test square (and no other is): "
+                         "keeps a city's Blind set as an honest test while its Model-fix squares train")
     ap.add_argument("--arch", choices=["segformer", "vit"], default="segformer",
                     help="segformer: the pipeline model (default); vit: a ViT backbone + head (see --backbone)")
     ap.add_argument("--classes", type=int, choices=[2, 3], default=2,
@@ -208,7 +212,9 @@ def main() -> int:
         ap.error("--classes 3 needs --arch vit")
     name = a.name or ("finetune" if a.arch == "segformer" else "finetune-" + a.backbone.split("/")[-1]
                       + ("-3class" if a.classes == 3 else ""))
-    out = LABELS / a.campaign / name
+    if len(a.campaign) > 1 and not a.name:
+        name += "-" + "-".join(c.removeprefix("pilot-") for c in a.campaign)
+    out = LABELS / a.campaign[0] / name
     out.mkdir(parents=True, exist_ok=True)
     log = open(out / "log.txt", "a")
 
@@ -217,14 +223,28 @@ def main() -> int:
         log.write(msg + "\n"); log.flush()
 
     t0 = time.time()
-    examples = load_examples(a.campaign)
-    # Targeted squares (label_targets.py: picked where the model looked wrong) are never test squares:
-    # they are not a random sample, so scoring on them would misstate accuracy.
-    test = [e for e in examples if is_test(e["square"], a.test_share) and not e["targeted"]]
+    examples = []
+    for c in a.campaign:
+        for e in load_examples(c):
+            e["campaign"] = c
+            examples.append(e)
+
+    def is_test_example(e) -> bool:
+        # Targeted squares (label_targets.py: picked where the model looked wrong) are never test squares:
+        # they are not a random sample, so scoring on them would misstate accuracy.
+        if e["targeted"]:
+            return False
+        if e["campaign"] in a.blind_test:
+            return e.get("mode", "blind") in ("", "blind")
+        return is_test(e["square"], a.test_share)
+    test = [e for e in examples if is_test_example(e)]
     rest = [e for e in examples if e not in test]
     val = [e for e in rest if is_test("val:" + e["square"], a.val_share) and not e["targeted"]] if a.val_share else []
     train = [e for e in rest if e not in val]
-    say(f"{a.campaign}: {len(examples)} squares -> train {len(train)}, validation {len(val)}, test {len(test)} "
+    for c in a.campaign if len(a.campaign) > 1 else []:
+        say(f"  {c}: train {sum(e['campaign'] == c for e in train)}, validation {sum(e['campaign'] == c for e in val)}, "
+            f"test {sum(e['campaign'] == c for e in test)}")
+    say(f"{'+'.join(a.campaign)}: {len(examples)} squares -> train {len(train)}, validation {len(val)}, test {len(test)} "
         f"(imagery ready in {time.time() - t0:.0f}s) | {a.arch} -> {out.relative_to(ROOT)}")
     torch.set_num_threads(max(1, torch.get_num_threads()))
 
@@ -332,6 +352,13 @@ def main() -> int:
         for k in ("paved", "unpaved"):
             say(f"  {k + ' (surface type)':<28} {sb[k]['precision'] or 0:8.0%} {sb[k]['recall'] or 0:6.0%} "
                 f"{sb[k]['iou'] or 0:5.0%}   (cleaned prediction, threshold {model.threshold:.2f})")
+    if len(a.campaign) > 1:
+        say(f"\nPer campaign, clean, threshold {model.threshold:.2f}: precision  recall  IoU")
+        for c in a.campaign:
+            sub = [e for e in test if e["campaign"] == c]
+            if sub:
+                b = score(sub, model, thresholds=[model.threshold])["clean_by_threshold"][str(model.threshold)]
+                say(f"  {c:<28} {b['precision']:8.0%} {b['recall']:6.0%} {b['iou']:5.0%}   ({len(sub)} test squares)")
     say(f"Saved {out.relative_to(ROOT)}/model.pt, config.json and metrics.json")
     return 0
 
