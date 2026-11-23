@@ -542,6 +542,10 @@ function setupSourceSwitch() {
   row.style.display = PARKING_MODEL_AVAILABLE ? '' : 'none';
   if (!PARKING_MODEL_AVAILABLE) return;
   sel.value = PARKING_DATA_SOURCE;
+  if (new URLSearchParams(window.location.search).get('psrc_missing')) {
+    const opt = sel.querySelector('option[value="satellite"]') as HTMLOptionElement | null;
+    if (opt) opt.textContent = 'Satellite-detected lots (not uploaded yet)';
+  }
   sel.onchange = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('psrc', sel.value);
@@ -993,6 +997,15 @@ async function runParkingWorkspace() {
       loadedCityKey = null;
       destroyParkingMap();
       console.error('[parking] Failed to load parking data:', err);
+      if (PARKING_DATA_SOURCE === 'satellite') {
+        // Satellite layer not uploaded (or unreadable): fall back to the OSM layer instead of
+        // showing "no parking data", and say why.
+        const url = new URL(window.location.href);
+        url.searchParams.set('psrc', 'osm');
+        url.searchParams.set('psrc_missing', '1');
+        window.location.replace(url.toString());
+        return;
+      }
       parkingContent!.style.display = 'none';
       noDataState!.style.display = '';
     }
