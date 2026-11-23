@@ -95,6 +95,10 @@ CITY_OSM_QUERIES: dict[str, str] = {
     "lynchburg": "Lynchburg, Virginia, USA",
     # The independent city (FIPS 51660), not the surrounding Rockingham County.
     "harrisonburg": "Harrisonburg, Virginia, USA",
+    # The whole county (21 municipalities), not the Borough of Somerville or Somerset MA.
+    "somerset": "Somerset County, New Jersey, USA",
+    # The consolidated municipality (former borough + township), in Mercer County.
+    "princeton": "Princeton, New Jersey, USA",
     "olympia": "Olympia, Washington, USA",
     "seattle": "Seattle, Washington, USA",
     "vancouver": "Vancouver, Washington, USA",

@@ -1,0 +1,23 @@
+{
+  "notes": [
+    "Princeton, NEW JERSEY (the consolidated municipality, PCL_MUN 1114, in MERCER County, not Somerset). Built in the same run_somerset.py pass as Somerset County (same NJOGIS 'Parcels and MOD-IV Composite of NJ' layer and the same condo / additional-lot / remnant logic) and exported as its own city on 2026-11-23. 6,794 taxable parcels, $5.27B equalized land.",
+    "VALUE YEAR + EQUALIZATION: TAX YEAR 2025 MOD-IV assessments divided by Princeton's 2025 average assessment ratio, 66.50% (Final Equalization Table col. 1(b), County of Mercer 2025: https://www.nj.gov/njbonds/treasury/taxation/pdf/lpt/county_equalized/2025/2025Mercer.pdf). The assessor's own figures ship as assessed_land_value / assessed_improvement_value. Class 3B qualified farmland is not equalized (use value).",
+    "EXEMPT (dropped): NJ class 15A-F, incl. Princeton University's class-15B land; railroad 5A/5B; zero-value records (incl. Princeton records with no class or values). 122 unjoined Cadastral polygons are not drawn. Palmer Square's 46 condo units ($15.8M land on 0.11 mapped acres) are flagged likely_remnant and hidden: the ground under them is not mapped.",
+    "Supersedes the July 2026 dev-only Princeton build (branch add-princeton-nj, run_princeton.py), which used unequalized assessed values.",
+    "Browser GeoParquet path (no PMTiles; under the ~100k-parcel threshold). No stable public per-parcel deep link. No parking layer yet."
+  ],
+  "displayName": "Princeton",
+  "state": "nj",
+  "filename": "princeton-nj-parcels.parquet",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "princeton-nj",
+    "princeton_nj"
+  ],
+  "coords": [
+    -74.6672,
+    40.3573
+  ]
+}

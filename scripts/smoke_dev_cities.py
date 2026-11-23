@@ -23,6 +23,8 @@ ALL_CITIES = [
     'austin','dallas','sanantonio','bcs','detroit','chicago',
     'tulsa','newportnews','lynchburg','harrisonburg','olympia','seattle','vancouver','dmv','washington',
     'hartfordmetro',
+    'somerset',
+    'princeton',
     'duluth',
     'provo',
     'lincoln',

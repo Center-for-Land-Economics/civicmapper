@@ -1,0 +1,24 @@
+{
+  "_config": {
+    "usePmtiles": false,
+    "hasParkingData": false
+  },
+  "address": "Address",
+  "parcel_number": "Parcel (Mun_Block_Lot)",
+  "jurisdiction": "Municipality",
+  "exemption_flag": "Exemption Flag",
+  "property_land_use_category": "Property Category (Original)",
+  "property_land_use_refined": "Property Category (Refined)",
+  "nj_property_class": "NJ Property Class",
+  "full_market_value": "Market Value (equalized)",
+  "full_market_value_per_sqft": "Market value/land ft²",
+  "current_full_land_value": "Land Value (equalized to market)",
+  "land_value_per_sqft": "Land value/land ft²",
+  "improvement_value": "Improvements Value (equalized)",
+  "improvement_value_per_sqft": "Improvements value/land ft²",
+  "assessed_land_value": "Land Assessed Value (2025)",
+  "assessed_improvement_value": "Improvements Assessed Value (2025)",
+  "assessment_ratio_pct": "Town Assessment Ratio, 2025 (%)",
+  "condo_units": "Condo / Townhouse Units Merged",
+  "land_area_acres": "Land Area (acres)"
+}
