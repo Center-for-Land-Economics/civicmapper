@@ -28,6 +28,12 @@ IoU (home 76%, PRN 63%). DINOv3-sat ties at home (75%) but drops to 57% on the u
 (precision 65% vs 75%); fine-tuned SegFormer 66%. Decision: DINOv2 replaces SegFormer as the model
 for citywide runs. Still to do: host the weights so the pipeline default can switch.
 
+Two-city model (2026-11-24): DINOv2-large trained on Laredo + 33 Plano Model-fix squares
+(`finetune-dinov2-large-laredo-plano`), scored at threshold 0.6 against the Laredo-only model on the
+same squares: Laredo 92/78/73 vs 93/78/73 (precision/recall/IoU), Plano (62 Blind squares) 91/79/74
+vs 87/82/73, PRN downtowns 73/80/62 vs 71/81/62. Plano precision +4 with Laredo level; downtowns flat,
+so the gain is mostly city-specific: each new city needs its own few dozen Model-fix labels.
+
 Surface type (paved vs unpaved) is not learnable from 0.6 m NAIP: three-class models reach 21%
 (DINOv2) and 16% (DINOv3) IoU on unpaved, while still finding ~85% of gravel lots as parking.
 Dropped from the model; if needed, take it from OSM `surface=` tags or a manual pass on large lots.
