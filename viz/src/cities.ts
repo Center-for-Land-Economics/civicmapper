@@ -56,6 +56,9 @@ export interface CityDef {
    *  cache-busting token. */
   parkingModelFilename?: string;
   parkingModelVersion?: string;
+  /** Aerial basemap option for the parking map: NAIP imagery of this year, tiled on demand by
+   *  Microsoft Planetary Computer (the same imagery the parking model reads). */
+  aerialImagery?: { collection: 'naip'; year: number; label?: string };
   /** Field holding the refined development category used for primary coloring/filtering. */
   devCategoryField: string;
   /** Field holding the original/raw land use category from the source data. */

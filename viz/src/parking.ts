@@ -534,6 +534,105 @@ function refreshCategoryUI() {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+// ── Aerial basemap (NAIP via Planetary Computer) ──────────────────────────
+const AERIAL_SRC = 'aerial-naip';
+const AERIAL_LAYER = 'aerial-naip-layer';
+const PC_DATA = 'https://planetarycomputer.microsoft.com/api/data/v1';
+
+/** Register (or reuse) a Planetary Computer mosaic of NAIP for `year` over `box` and return its
+ *  XYZ tile template. Registrations expire, so the template is cached for 12 h per session. */
+async function naipTileTemplate(year: number, box: [number, number, number, number]): Promise<string> {
+  const key = `pc-naip-${year}-${box.map(v => v.toFixed(2)).join(',')}`;
+  try {
+    const hit = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (hit && hit.t > Date.now() - 12 * 3600e3) return hit.url as string;
+  } catch { /* storage unavailable */ }
+  const [w, s, e, n] = box;
+  const body = {
+    collections: ['naip'],
+    'filter-lang': 'cql2-json',
+    filter: { op: 'and', args: [
+      { op: '=', args: [{ property: 'collection' }, 'naip'] },
+      { op: 'anyinteracts', args: [{ property: 'datetime' }, { interval: [`${year}-01-01T00:00:00Z`, `${year}-12-31T23:59:59Z`] }] },
+      { op: 's_intersects', args: [{ property: 'geometry' }, { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }] },
+    ] },
+    sortby: [{ field: 'datetime', direction: 'desc' }],
+  };
+  const r = await fetch(`${PC_DATA}/mosaic/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`NAIP mosaic registration failed (${r.status})`);
+  const id = (await r.json()).id as string;
+  const url = `${PC_DATA}/mosaic/${id}/tiles/WebMercatorQuad/{z}/{x}/{y}@2x?collection=naip&assets=image&asset_bidx=image%7C1%2C2%2C3&nodata=0&format=jpeg`;
+  try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), url })); } catch { /* ignore */ }
+  return url;
+}
+
+function setParkingStyleForBasemap(map: maplibregl.Map, aerial: boolean) {
+  if (!map.getLayer(FILL_LAYER)) return;
+  map.setPaintProperty(FILL_LAYER, 'fill-opacity',
+    ['case', ['boolean', ['feature-state', 'hover'], false], aerial ? 0.75 : 0.9, aerial ? 0.42 : 0.72]);
+  map.setPaintProperty(OUTLINE_LAYER, 'line-color', aerial ? '#ffffff' : '#1a1a2e');
+  map.setPaintProperty(OUTLINE_LAYER, 'line-opacity', aerial ? 0.9 : 0.55);
+}
+
+async function setBasemap(map: maplibregl.Map, mode: 'street' | 'aerial', box: [number, number, number, number]) {
+  const cfg = (CITIES[SELECTED_CITY] as any)?.aerialImagery as { year: number; label?: string } | undefined;
+  if (mode === 'aerial' && cfg) {
+    if (!map.getSource(AERIAL_SRC)) {
+      const tiles = await naipTileTemplate(cfg.year, box);
+      map.addSource(AERIAL_SRC, {
+        type: 'raster', tiles: [tiles], tileSize: 256, minzoom: 10, maxzoom: 20,
+        bounds: box,
+        attribution: `Imagery: USDA NAIP ${cfg.year} via Microsoft Planetary Computer`,
+      });
+    }
+    if (!map.getLayer(AERIAL_LAYER)) {
+      map.addLayer({ id: AERIAL_LAYER, type: 'raster', source: AERIAL_SRC, minzoom: 10 }, FILL_LAYER);
+    }
+    map.setLayoutProperty(AERIAL_LAYER, 'visibility', 'visible');
+  } else if (map.getLayer(AERIAL_LAYER)) {
+    map.setLayoutProperty(AERIAL_LAYER, 'visibility', 'none');
+  }
+  setParkingStyleForBasemap(map, mode === 'aerial' && !!cfg);
+  const url = new URL(window.location.href);
+  if (mode === 'aerial') url.searchParams.set('pbase', 'aerial'); else url.searchParams.delete('pbase');
+  window.history.replaceState(null, '', url.toString());
+}
+
+/** Small "Map | Aerial" toggle in the map's top-left corner (cities with aerialImagery only). */
+function addBasemapToggle(map: maplibregl.Map, box: [number, number, number, number]) {
+  const cfg = (CITIES[SELECTED_CITY] as any)?.aerialImagery as { year: number; label?: string } | undefined;
+  if (!cfg) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+  wrap.style.display = 'flex';
+  const mk = (label: string, mode: 'street' | 'aerial') => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.style.width = 'auto';
+    b.style.padding = '0 10px';
+    b.style.fontSize = '12px';
+    b.style.fontWeight = '600';
+    b.dataset.mode = mode;
+    b.onclick = async () => {
+      wrap.querySelectorAll('button').forEach(x => { (x as HTMLButtonElement).style.background = ''; (x as HTMLButtonElement).style.color = ''; });
+      b.style.background = '#1a1a2e'; b.style.color = '#fff';
+      try { await setBasemap(map, mode, box); } catch (err) {
+        console.warn('[parking] aerial imagery unavailable', err);
+        b.textContent = 'Aerial unavailable';
+      }
+    };
+    return b;
+  };
+  const street = mk('Map', 'street');
+  const aerial = mk(cfg.label || `Aerial (${cfg.year})`, 'aerial');
+  wrap.append(street, aerial);
+  map.addControl({ onAdd: () => wrap, onRemove: () => wrap.remove() } as any, 'top-left');
+  const start = new URLSearchParams(window.location.search).get('pbase') === 'aerial' ? aerial : street;
+  start.click();
+}
+
 // ── Source switch (OSM-mapped vs satellite-detected) ───────────────────────
 function setupSourceSwitch() {
   const row = document.getElementById('parking-source-row');
@@ -810,6 +909,7 @@ async function runParkingWorkspace() {
 
     // ── Fit map to data (unless a shared link already set the camera) ──
     const bounds = bbox(geojson);
+    addBasemapToggle(map, bounds as [number, number, number, number]);
     if (bounds && !restoredParkingCamera) {
       map.fitBounds(
         [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],

@@ -21,6 +21,11 @@
   "parkingVersion": "2026-11-15-overture",
   "parkingModelFilename": "laredo-tx-parking-lots-satellite.parquet",
   "parkingModelVersion": "2026-11-23-dinov2-t0.6",
+  "aerialImagery": {
+    "collection": "naip",
+    "year": 2022,
+    "label": "Aerial (NAIP 2022)"
+  },
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [
