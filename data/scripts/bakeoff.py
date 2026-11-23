@@ -181,7 +181,7 @@ def main() -> int:
     df.to_csv(OUT / "leaderboard.csv", index=False)
     pct = lambda v: f"{v:.0%}" if v is not None and not pd.isna(v) else "-"  # noqa: E731
     cols = ["model", "overall_iou", "home_iou", "home_precision", "home_recall", "home_gravel_recall"] + \
-        [f"{n}_iou" for n in transfer] + (["prn_median_iou", "prn_median_precision", "prn_median_recall"]
+        [f"{n}_{m}" for n in transfer for m in ("iou", "precision", "recall")] + (["prn_median_iou", "prn_median_precision", "prn_median_recall"]
                                           if prn_cities else []) + \
         (["home_surface_unpaved_iou"] if "home_surface_unpaved_iou" in df.columns else []) + ["threshold", "sec_per_km2"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
