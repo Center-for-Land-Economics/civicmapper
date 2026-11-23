@@ -257,6 +257,62 @@ def info(lines: list[str]) -> Callable[[dict, bool], bool]:
     return act
 
 
+# --- precision-first threshold (phase 3) ---------------------------------------------------------
+
+def chosen_spec(st: dict) -> str:
+    return st["choice"].get("v3") or st["choice"].get("v2") or f"vit:{RUN_V2_TARGETED}"
+
+
+def threshold_bakeoff_cmds(st: dict) -> list[list[str]]:
+    spec = chosen_spec(st)
+    return [[PY, S + "bakeoff.py", "--models", spec, "--threshold", t] for t in ("0.6", "0.7")]
+
+
+def choose_threshold(st: dict, dry: bool) -> bool:
+    spec = chosen_spec(st)
+    norm = lambda x: x.replace("\\", "/").rstrip("/")  # noqa: E731 - Windows runs write backslashes
+    rows = [r for r in leaderboard() if norm(r.get("spec", "")) == norm(spec) and r.get("threshold")]
+    by_t: dict[float, dict] = {}
+    for r in rows:
+        by_t[round(float(r["threshold"]), 2)] = r
+    if 0.6 not in by_t and 0.7 not in by_t:
+        print("  No 0.6 / 0.7 rows on the leaderboard for this model yet: run the previous step first.")
+        return False
+    print(f"  {spec}")
+    print(f"  {'thr':>5}  {'home prec':>9}  {'home rec':>8}  {'home IoU':>8}  {'PRN prec':>8}  {'PRN rec':>7}")
+    for t in sorted(by_t):
+        r = by_t[t]
+        print(f"  {t:>5.2f}  {pct(r.get('home_precision')):>9}  {pct(r.get('home_recall')):>8}  "
+              f"{pct(r.get('home_iou')):>8}  {pct(r.get('prn_median_precision')):>8}  {pct(r.get('prn_median_recall')):>7}")
+    base = float(by_t.get(0.5, by_t[min(by_t)]).get("home_recall") or 0)
+    ok = [t for t in sorted(by_t) if float(by_t[t].get("home_recall") or 0) >= base - 0.08]
+    best = max(ok, key=lambda t: (float(by_t[t].get("home_precision") or 0), -t)) if ok else 0.5
+    print(f"\n  Suggested: {best:.2f} (highest home precision while recall stays within 8 points of 0.5;"
+          f"\n  precision first, as you asked; the citywide total is calibrated either way).")
+    if dry:
+        return True
+    pick = input(f"  Threshold for the citywide map [Enter = {best:.2f}, or type one]: ").strip()
+    try:
+        t = float(pick) if pick else best
+    except ValueError:
+        print("  Not a number.")
+        return False
+    if not 0.05 <= t <= 0.95:
+        print("  Pick something between 0.05 and 0.95.")
+        return False
+    st["choice"]["threshold"] = t
+    print(f"  Threshold: {t:.2f}")
+    return True
+
+
+def rethreshold_cmds(st: dict) -> list[list[str]]:
+    spec = chosen_spec(st)
+    run = Path(spec.split(":", 1)[1]).name
+    t = st["choice"].get("threshold", 0.5)
+    return [[PY, S + "parking_lot_extraction.py", "--city", CITY, "--model", spec,
+             "--output-dir", f"data/parking-model/{CITY}/{run}", "--rethreshold", "--threshold", f"{t:.2f}"]]
+
+
 STEPS: list[Step] = [
     # ---------------------------------------------------------------- phase 1: DINOv2
     Step("check", "DINOv2", "Check the GPU environment",
@@ -337,6 +393,21 @@ STEPS: list[Step] = [
     Step("v3-citywide-up", "DINOv3", "Share the new citywide result", "", "1-2 min",
          cmds=lambda st: [[PY, S + "label_sync.py", "--citywide", CITY]], optional=True,
          after="Tell Claude 'DINOv3 citywide synced'."),
+    # ---------------------------------------------------------------- phase 3: precision first
+    Step("p-bakeoff", "Precision", "Score the chosen model at stricter thresholds (0.6 and 0.7)",
+         "A pixel counts as parking only when the model is more sure. Measures how much precision that "
+         "buys and how much recall it costs, on the same test squares and PRN downtowns.", "~25-40 min",
+         cmds=threshold_bakeoff_cmds, after="Paste data/bakeoff/leaderboard.md to Claude if you like."),
+    Step("p-threshold", "Precision", "Pick the threshold for the citywide map",
+         "Shows precision and recall at 0.5 / 0.6 / 0.7 and suggests one.", "seconds",
+         action=choose_threshold),
+    Step("p-citywide", "Precision", "Rebuild the Laredo map at that threshold, with the precision rules",
+         "No model run: re-reads the saved probability map, then the polygon steps, now with the "
+         "precision rules (rural parcels, bare soil, patches under 0.1 acre).", "~30-45 min",
+         cmds=rethreshold_cmds),
+    Step("p-citywide-up", "Precision", "Share the rebuilt map", "", "1-2 min",
+         cmds=lambda st: [[PY, S + "label_sync.py", "--citywide", CITY]],
+         after="Tell Claude 'citywide synced' for the new precision/recall."),
     # ---------------------------------------------------------------- whenever
     Step("plano", "Labelling (whenever)", "Label ~30 Plano squares in Blind mode",
          "The only real test of how a Laredo-trained model does in another Texas city. Bake-offs add "

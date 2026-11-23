@@ -115,6 +115,17 @@ With a three-class model the pipeline also writes `parking_unpaved.tif` and tags
 with `unpaved_share` and `surface_material` (paved / unpaved). Without `--model` it runs the original
 SegFormer (research/evaluation licence, see docs/TODO.md).
 
+## Precision first: stricter threshold and context rules
+
+Model runs (`--model`) drop, after the parcel split (Step 5a4, `parking_postprocess.context_filter`):
+lots with no building within 100 m, patches under 0.1 acre on single-family parcels, lots on
+agricultural / rural parcels, anything under 0.1 acre, and bare soil (mean NDVI above 0). On the
+Laredo random squares this took precision from 88% to about 92% for under 2 points of recall.
+
+The runner's "Precision" steps score the chosen model at thresholds 0.6 and 0.7, let you pick one,
+and rebuild the citywide map from the saved probabilities (`--rethreshold --threshold T`, no model
+run, streamed so it fits in memory).
+
 ## Memory and speed notes
 
 - Fine-tuning at `--batch 4 --amp` peaks at ~9 GB; use `--batch 2` on 8 GB cards.

@@ -1475,55 +1475,68 @@ def rethreshold_from_probs(
     output_dir: Path,
     threshold: float = 0.5,
     nir_strip: bool = True,
+    block_px: int = 8192,
 ) -> Path:
     """
-    Re-read a saved parking_probs.tif and produce a new parking_mask.tif at the
-    given threshold.  Runs in seconds — no model, no NAIP fetch needed.
-
-    Use this after a full inference run to rapidly iterate on the threshold
-    without re-running the expensive ML step.
+    Re-read a saved parking_probs.tif and produce a new parking_mask.tif at the given threshold,
+    with the same NDVI vegetation strip and morphological opening as inference. No model, no NAIP
+    fetch. Streams the raster in blocks (with a margin wider than the opening kernel), so a city-
+    sized map never has to fit in memory.
     """
     import rasterio
+    from rasterio.windows import Window
     from scipy.ndimage import binary_opening as _binary_opening
 
     probs_path = output_dir / "parking_probs.tif"
     mask_path = output_dir / "parking_mask.tif"
-
+    naip_path = output_dir / "naip_imagery.tif"
     if not probs_path.exists():
         raise FileNotFoundError(
             f"No probability map found at {probs_path}. "
             "Run a full inference first (without --rethreshold) to generate it."
         )
-
-    print(f"  Reading probability map: {probs_path}")
-    with rasterio.open(probs_path) as src:
-        avg_probs = src.read(1)
-        profile = src.profile.copy()
-    if avg_probs.dtype == np.uint8:
-        # Inference stores probabilities quantized to uint8 (0–255)
-        avg_probs = avg_probs.astype(np.float32) / 255.0
-
-    binary_mask = (avg_probs >= threshold).astype(np.uint8)
-    print(f"  Threshold {threshold}: {int(binary_mask.sum()):,} parking pixels")
-
-    if nir_strip:
-        binary_mask = strip_vegetation(binary_mask, output_dir)
-
+    print(f"  Re-thresholding {probs_path.name} at {threshold} (streamed in {block_px}px blocks)", flush=True)
     kernel = _disk_kernel(MORPH_OPEN_RADIUS_PX)
-    before_px = int(binary_mask.sum())
-    binary_mask = _binary_opening(binary_mask, structure=kernel).astype(np.uint8)
-    after_px = int(binary_mask.sum())
-    print(
-        f"  Morphological opening (r={MORPH_OPEN_RADIUS_PX}px): "
-        f"{before_px:,} → {after_px:,} parking pixels "
-        f"({100 * (before_px - after_px) / max(before_px, 1):.1f}% removed)"
-    )
-
-    profile.update(count=1, dtype=rasterio.uint8, nodata=None,
-                   compress="lzw", bigtiff="IF_SAFER")
-    with rasterio.open(mask_path, "w", **profile) as dst:
-        dst.write(binary_mask, 1)
-
+    margin = MORPH_OPEN_RADIUS_PX * 4
+    q = int(np.ceil(threshold * 255 - 1e-9))  # probabilities are stored as round(p * 255)
+    px_thr = px_veg = px_open = 0
+    with rasterio.open(probs_path) as src:
+        width, height = src.width, src.height
+        profile = {"driver": "GTiff", "count": 1, "width": width, "height": height, "crs": src.crs,
+                   "transform": src.transform, "dtype": "uint8", "nodata": None, "compress": "lzw",
+                   "tiled": True, "blockxsize": 512, "blockysize": 512, "bigtiff": "IF_SAFER"}
+        naip = rasterio.open(naip_path) if nir_strip and naip_path.exists() else None
+        if naip is not None and (naip.count < 4 or (naip.width, naip.height) != (width, height)):
+            print("  NDVI strip skipped: NAIP missing NIR or not on the probability grid")
+            naip.close()
+            naip = None
+        with rasterio.open(mask_path, "w", **profile) as dst:
+            for r0 in range(0, height, block_px):
+                for c0 in range(0, width, block_px):
+                    r1, c1 = min(r0 + block_px, height), min(c0 + block_px, width)
+                    rr0, rc0 = max(0, r0 - margin), max(0, c0 - margin)
+                    rr1, rc1 = min(height, r1 + margin), min(width, c1 + margin)
+                    win = Window(rc0, rr0, rc1 - rc0, rr1 - rr0)
+                    probs = src.read(1, window=win)
+                    m = (probs >= q).astype(np.uint8)
+                    inner = (slice(r0 - rr0, r1 - rr0), slice(c0 - rc0, c1 - rc0))
+                    px_thr += int(m[inner].sum())
+                    if naip is not None and m.any():
+                        red = naip.read(1, window=win).astype(np.float32)
+                        nir = naip.read(4, window=win).astype(np.float32)
+                        den = nir + red
+                        with np.errstate(invalid="ignore", divide="ignore"):
+                            ndvi = np.where(den > 0, (nir - red) / den, 0.0)
+                        m[ndvi > NDVI_VEG_THRESHOLD] = 0
+                    px_veg += int(m[inner].sum())
+                    if m.any():
+                        m = _binary_opening(m, structure=kernel).astype(np.uint8)
+                    px_open += int(m[inner].sum())
+                    dst.write(m[inner], 1, window=Window(c0, r0, c1 - c0, r1 - r0))
+        if naip is not None:
+            naip.close()
+    print(f"  Threshold {threshold}: {px_thr:,} parking pixels; after NDVI strip {px_veg:,}; "
+          f"after opening (r={MORPH_OPEN_RADIUS_PX}px) {px_open:,}")
     print(f"  Mask written: {mask_path}")
     return mask_path
 
@@ -2884,11 +2897,13 @@ def main() -> None:
                 print("=" * 60)
                 parking_gdf = clip_parking_to_parcels(parking_gdf, parcels)
                 print("=" * 60)
-                print("Step 5a4: Context rules (far from any building; driveways on single-family lots)")
+                print("Step 5a4: Context rules (precision-first: far from buildings, driveways, rural land, "
+                      "bare soil, small patches)")
                 print("=" * 60)
                 from data.scripts.parking_postprocess import context_filter
                 before_ac = parking_gdf.to_crs(parking_gdf.estimate_utm_crs()).area.sum() / 4046.86
-                parking_gdf = context_filter(parking_gdf, context_buildings, parcels)
+                parking_gdf = context_filter(parking_gdf, context_buildings, parcels,
+                                             naip_path=output_dir / "naip_imagery.tif")
                 after_ac = parking_gdf.to_crs(parking_gdf.estimate_utm_crs()).area.sum() / 4046.86
                 print(f"  {before_ac:,.0f} -> {after_ac:,.0f} acres")
 
