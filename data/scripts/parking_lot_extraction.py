@@ -463,7 +463,24 @@ def fetch_portland_boundary_geometry():
     return unary_union(boundary.geometry)
 
 
-def city_boundary_geometry(city_key: str, parcels: gpd.GeoDataFrame):
+def official_city_boundary(city_key: str):
+    """The city's legal boundary (Census TIGER place, <city>-<state>-boundary.parquet), from the local
+    jurisdiction folder or the public dev container; None if there is none."""
+    meta = CITY_PARQUETS.get(city_key)
+    if meta is None:
+        return None
+    name = f"{city_key}-{meta.state}-boundary.parquet"
+    folder = Path("data/jurisidictions/data") / city_key
+    path = folder / name
+    if not path.exists():
+        path = download_public_parcels(folder, name)
+    if path is None or not Path(path).exists():
+        return None
+    b = gpd.read_parquet(path).to_crs(4326)
+    return unary_union(b.geometry.buffer(0))
+
+
+def city_boundary_geometry(city_key: str, parcels: gpd.GeoDataFrame, prefer_official: bool = False):
     """
     Return a geometry that represents the city's valid parking extent.
 
@@ -473,6 +490,15 @@ def city_boundary_geometry(city_key: str, parcels: gpd.GeoDataFrame):
     """
     if city_key == "portland":
         return fetch_portland_boundary_geometry()
+    if prefer_official:
+        # The parcel footprint leaves out land with no parcel in our data (public and exempt land
+        # missing from many appraisal exports): transit park-and-rides, schools, churches. Model runs
+        # find parking there, so they clip to the legal boundary instead.
+        official = official_city_boundary(city_key)
+        if official is not None:
+            print("  City extent: official boundary (Census TIGER place)")
+            return official
+        print("  City extent: no official boundary file found; using the parcel footprint")
 
     if parcels.crs is None or parcels.crs.to_epsg() != 4326:
         parcels = parcels.to_crs(4326)
@@ -2740,7 +2766,7 @@ def main() -> None:
     print("Step 2: Deriving city bounding box from parcel footprint")
     print("=" * 60)
     bbox = bbox_from_parcels(parcels)
-    boundary_geometry = city_boundary_geometry(city_key, parcels)
+    boundary_geometry = city_boundary_geometry(city_key, parcels, prefer_official=bool(args.model))
 
     # -----------------------------------------------------------------------
     if args.overture_only:
