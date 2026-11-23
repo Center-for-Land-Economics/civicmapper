@@ -21,10 +21,10 @@ whole city; PRN traced from other imagery at other dates, so a little disagreeme
 misregistration, not model error.
 
 For each city the downtown is cut into 250 m tiles on a 0.6 m grid (NAIP's pixel), NAIP is read
-once per tile (latest year on Planetary Computer, cached under data/prn/<city>/naip/), every model
+once per tile (latest year on Planetary Computer, cached under data/prn-eval/<city>/naip/), every model
 runs on the same imagery with the pipeline's recipe (threshold, NDVI strip, opening), and pixels
-inside the boundary are scored. Writes data/prn/<city>/overview_<model>.png (imagery | PRN |
-model | errors: green hit, red false alarm, blue miss) and data/prn/results.csv.
+inside the boundary are scored. Writes data/prn-eval/<city>/overview_<model>.png (imagery | PRN |
+model | errors: green hit, red false alarm, blue miss) and data/prn-eval/results.csv.
 
 Usage:
   python data/scripts/prn_eval.py                                   # all 8 of our Texas cities, original model
@@ -58,7 +58,7 @@ from data.scripts.label_campaign import naip_items  # noqa: E402
 from data.scripts.label_eval import NDVI_VEG, OPEN_RADIUS, disk, read_naip  # noqa: E402
 
 PRN_RAW = "https://raw.githubusercontent.com/ParkingReformNetwork/parking-lot-map/main/packages/primary/data"
-OUT = ROOT / "data" / "prn"
+OUT = ROOT / "data" / "prn-eval"  # not "prn": a reserved device name on Windows
 TEXAS_OURS = ["arlington-tx", "austin-tx", "corpus-christi-tx", "dallas-tx", "el-paso-tx", "fort-worth-tx",
               "houston-tx", "san-antonio-tx"]
 CELL, TILE_M, MARGIN = 0.6, 250.0, 48
@@ -95,7 +95,7 @@ def prn_city(city: str):
 
 def prepare_city(city: str) -> dict:
     """Grids for one PRN downtown: boundary, PRN surface truth, ignored garages, buildings and streets
-    for the clean-up, the 250 m tiles with their NAIP (cached under data/prn/<city>/naip/)."""
+    for the clean-up, the 250 m tiles with their NAIP (cached under data/prn-eval/<city>/naip/)."""
     bnd, lots = prn_city(city)
     utm = gpd.GeoSeries([bnd], crs=4326).estimate_utm_crs()
     b_utm = gpd.GeoSeries([bnd], crs=4326).to_crs(utm).iloc[0]

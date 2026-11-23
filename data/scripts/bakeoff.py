@@ -145,7 +145,7 @@ def main() -> int:
             km2 += len(ctx["tiles"]) * SQUARE_KM2
             prn_rows += [x for x in prn_eval.score_variants(ctx, model.name, pred) if x["model"].endswith("-clean")]
             prn_eval.overview(ctx, rgb, pred & ~ctx["built"] & ~ctx["street"],
-                              OUT / "prn" / city / f"{prn_eval.safe(model.name)}.png")
+                              OUT / "prn-eval" / city / f"{prn_eval.safe(model.name)}.png")
         if prn_rows:
             pr = pd.DataFrame(prn_rows)
             row.update({"prn_median_iou": pr.iou.median(), "prn_median_precision": pr.precision.median(),

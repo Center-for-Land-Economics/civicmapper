@@ -73,7 +73,7 @@ All model output is cleaned the same way as the labels: Overture buildings and p
 report both the raw and the "clean" numbers; the label tool's guesses are cleaned by default.
 
 Outputs: masks and summary in `data/labels/<campaign>/export/`, scoring pictures in
-`data/labels/<campaign>/eval*/`, PRN pictures and `results.csv` in `data/prn/`.
+`data/labels/<campaign>/eval*/`, PRN pictures and `results.csv` in `data/prn-eval/`.
 
 ## Bake-off (compare model families)
 
