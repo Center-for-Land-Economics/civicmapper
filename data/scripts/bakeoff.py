@@ -100,7 +100,12 @@ def main() -> int:
     for c in a.campaigns:
         home += [e for e in load_examples(c) if is_test(e["square"], a.test_share) and not e["targeted"]]
     for c in a.transfer:
-        transfer[c] = [e for e in load_examples(c) if not e["targeted"]]
+        # Only Blind labels: squares labelled by correcting a model's guesses would flatter it.
+        exs = [e for e in load_examples(c) if not e["targeted"]]
+        blind = [e for e in exs if e.get("mode", "blind") in ("", "blind")]
+        if len(blind) < len(exs):
+            print(f"  {c}: {len(exs) - len(blind)} non-blind square(s) left out of the transfer test")
+        transfer[c] = blind
     shown = sorted(home, key=lambda e: -int(np.isin(e["label"], (1, 2)).sum()))[:a.examples]
     prn_ctx = {city: prn_eval.prepare_city(city) for city in prn_cities}
     print(f"Test sets: home {len(home)} squares ({', '.join(a.campaigns)}); "

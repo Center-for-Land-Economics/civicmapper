@@ -87,6 +87,7 @@ def load_examples(campaign: str) -> list[dict]:
             [label == 4, label == 1, label == 2], [IGNORE, 1, 2], 0).astype(np.uint8)
         out.append({"square": r.square_id, "stratum": squares[r.square_id]["stratum"], "img": img,
                     "targeted": bool(squares[r.square_id].get("targeted")),
+                    "mode": str(getattr(r, "mode", "") or ""),
                     "keep": keep_mask(ctx, r.square_id, crs, tr, (h, w)),
                     "target": tgt, "target3": tgt3, "label": label})
     return out

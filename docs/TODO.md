@@ -2,6 +2,15 @@
 
 Open items found along the way. Newest first; move items out when done.
 
+## Parking: classify lots by site role (pinned 2026-11-23)
+
+Laredo satellite map, by parcel building coverage (Overture): 17% of detected parking is on
+parcels with no building (standalone, 925 ac), 62% on parcels with a building where parking covers
+>= 50% (3,306 ac; median 19% building, 66% parking), 21% accessory (1,119 ac). Before publishing:
+group adjacent same-owner parcels into sites (big-box lots split across parcels read as
+"standalone"; owner names used internally only), check Overture building gaps, and decide between
+three classes and a continuous "parking share of site". Then add per-lot fields and a map filter.
+
 ## Parking model licence: NVIDIA non-commercial terms (found 2026-11-17)
 
 The pipeline's parking model, `UTEL-UIUC/SegFormer-large-parking`, is tagged Apache 2.0 on Hugging
