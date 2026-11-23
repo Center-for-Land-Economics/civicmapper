@@ -408,6 +408,16 @@ STEPS: list[Step] = [
     Step("p-citywide-up", "Precision", "Share the rebuilt map", "", "1-2 min",
          cmds=lambda st: [[PY, S + "label_sync.py", "--citywide", CITY]],
          after="Tell Claude 'citywide synced' for the new precision/recall."),
+    Step("p-evidence", "Publish", "Add per-lot evidence for the satellite layer",
+         "Model confidence from the probability map, imagery date, OpenStreetMap overlap, nearest "
+         "building and the measured accuracy for each lot's land use. Writes "
+         "laredo-tx-parking-lots-satellite.parquet next to the map.", "~5-10 min",
+         cmds=lambda st: [[PY, S + "parking_evidence.py",
+                           f"data/parking-model/{CITY}/{Path(chosen_spec(st).split(':', 1)[1]).name}",
+                           "--city", CITY]]),
+    Step("p-evidence-up", "Publish", "Share the satellite layer", "", "1 min",
+         cmds=lambda st: [[PY, S + "label_sync.py", "--citywide", CITY]],
+         after="Tell Claude 'satellite layer synced': Claude uploads it to CivicMapper dev."),
     # ---------------------------------------------------------------- whenever
     Step("plano", "Labelling (whenever)", "Label ~30 Plano squares in Blind mode",
          "The only real test of how a Laredo-trained model does in another Texas city. Bake-offs add "

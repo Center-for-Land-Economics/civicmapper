@@ -253,8 +253,27 @@ export const DEFAULT_DATASET_URL = DATASET_OVERRIDE_APPLIES
 // ---------------------------------------------------------------------------
 
 /** Raw parking filename for the current city, or null if not yet available. */
-export const PARKING_FILENAME: string | null = _city.parkingFilename ?? null;
-export const PARKING_VERSION: string | undefined = _city.parkingVersion;
+// Satellite layer is dev/local only until it is reviewed and promoted (prod data lives in
+// parquets-prod, which does not have it): hidden when the build's env label is "Prod".
+const _envLabel = String((import.meta as any).env?.VITE_ENV_LABEL ?? '').toLowerCase();
+export const PARKING_MODEL_AVAILABLE: boolean =
+  !!(_city as any).parkingModelFilename && _envLabel !== 'prod';
+/** Which parking layer the page shows: 'osm' (OpenStreetMap-derived, default) or 'satellite'
+ *  (model-detected), chosen with ?psrc=satellite. Only cities with parkingModelFilename offer it. */
+export const PARKING_SOURCE: 'osm' | 'satellite' = (() => {
+  try {
+    const v = new URLSearchParams(window.location.search).get('psrc');
+    if (v === 'satellite' && PARKING_MODEL_AVAILABLE) return 'satellite';
+    if (v !== 'osm' && PARKING_MODEL_AVAILABLE && !_city.parkingFilename) return 'satellite';
+  } catch { /* non-browser */ }
+  return 'osm';
+})();
+export const PARKING_FILENAME: string | null = PARKING_SOURCE === 'satellite'
+  ? ((_city as any).parkingModelFilename as string)
+  : (_city.parkingFilename ?? null);
+export const PARKING_VERSION: string | undefined = PARKING_SOURCE === 'satellite'
+  ? ((_city as any).parkingModelVersion as string | undefined)
+  : _city.parkingVersion;
 
 /** Full URL to the parking GeoParquet for the current city. */
 export const PARKING_DATASET_URL: string | null = PARKING_FILENAME

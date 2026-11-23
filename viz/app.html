@@ -1760,6 +1760,12 @@
           <div class="parking-top-grid">
             <aside class="parking-summary">
               <div class="headline-stat">
+                <div class="parking-source-row" id="parking-source-row" style="display:none;">
+                  <select id="parking-source-select" class="parking-control-select" aria-label="Parking data source">
+                    <option value="osm">Mapped lots (OpenStreetMap)</option>
+                    <option value="satellite">Satellite-detected lots (beta)</option>
+                  </select>
+                </div>
                 <div class="headline-stat-label">
                   <select id="parking-category-select" class="parking-category-select" aria-label="Parking category">
                     <option value="surface">Surface parking</option>
@@ -1816,7 +1822,7 @@
 
               <div class="parking-methodology-card">
                 <p class="control-group-title">Methodology</p>
-                <p class="sidebar-section-copy">Surface parking lots are sourced from OpenStreetMap and joined with local assessor records to estimate land values.</p>
+                <p class="sidebar-section-copy" id="parking-methodology-copy">Surface parking lots are sourced from OpenStreetMap and joined with local assessor records to estimate land values.</p>
               </div>
 
               <div class="cle-funnel-card">

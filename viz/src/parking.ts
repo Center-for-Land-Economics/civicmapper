@@ -29,6 +29,9 @@ import {
   SELECTED_CITY,
   LAND_TOTALS_URL,
   METRIC_UNITS,
+  PARKING_SOURCE as PARKING_DATA_SOURCE,
+  PARKING_MODEL_AVAILABLE,
+  PARKING_METADATA_URL,
 } from './config';
 import { formatCityLabel, CITIES } from './cities';
 import { createJurisdiction, OVERLAY_PALETTE } from './jurisdiction';
@@ -389,11 +392,24 @@ function regionScopeSuffix(): string {
 function updateHeadlineStat(s: CategoryStats, cat: ParkingCategory) {
   const el = document.getElementById('headline-stat-text');
   if (!el) return;
+  if (PARKING_DATA_SOURCE === 'satellite') {
+    // The satellite layer is a deliberate undercount (precision first): say "at least", and point
+    // to the corrected citywide estimate in the methodology card.
+    el.innerHTML =
+      `Satellite imagery shows <span class="highlight">at least ${fmtAcres(s.acres)} acres</span> of land ` +
+      `worth <span class="highlight">${fmtCurrency(s.value)}</span> ` +
+      `${CATEGORY_COPY[cat].phrase}${regionScopeSuffix()}.` +
+      (satelliteEstimateAcres && cat === 'surface' && !regionScopeSuffix()
+        ? `<div style="font-size:0.8em;font-weight:400;opacity:0.85;margin-top:6px;">Estimated total, including lots the model misses: about ${Math.round(satelliteEstimateAcres).toLocaleString()} acres.</div>`
+        : '');
+    return;
+  }
   el.innerHTML =
     `<span class="highlight">${fmtAcres(s.acres)} acres</span> of land ` +
     `worth <span class="highlight">${fmtCurrency(s.value)}</span> ` +
     `${CATEGORY_COPY[cat].phrase}${regionScopeSuffix()}.`;
 }
+let satelliteEstimateAcres: number | null = null;
 
 // ---------------------------------------------------------------------------
 // Filter the map layers to the selected category + visible regions
@@ -518,6 +534,60 @@ function refreshCategoryUI() {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+// ── Source switch (OSM-mapped vs satellite-detected) ───────────────────────
+function setupSourceSwitch() {
+  const row = document.getElementById('parking-source-row');
+  const sel = document.getElementById('parking-source-select') as HTMLSelectElement | null;
+  if (!row || !sel) return;
+  row.style.display = PARKING_MODEL_AVAILABLE ? '' : 'none';
+  if (!PARKING_MODEL_AVAILABLE) return;
+  sel.value = PARKING_DATA_SOURCE;
+  sel.onchange = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('psrc', sel.value);
+    window.location.href = url.toString();  // config reads ?psrc at load: reload keeps it simple
+  };
+}
+
+function escapeHtml(v: unknown): string {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+/** Methodology card for the satellite layer: method, validation and the calibrated total, from
+ *  the layer's metadata JSON (falls back to a generic description). */
+async function showSatelliteMethodology(signal: AbortSignal) {
+  const el = document.getElementById('parking-methodology-copy');
+  if (!el) return;
+  const pct = (v: number | null | undefined) => (v == null ? '–' : `${Math.round(v * 100)}%`);
+  let d: any = null;
+  try {
+    if (PARKING_METADATA_URL) {
+      const local = LOCAL_PARKING_DATASET_PATH ? LOCAL_PARKING_DATASET_PATH.replace('.parquet', '-metadata.json') : null;
+      const r = await fetch(await resolveLocalFirst(local, PARKING_METADATA_URL), { signal });
+      if (r.ok) d = (await r.json())?.detection ?? null;
+    }
+  } catch { /* fall back to the generic text */ }
+  const v = d?.validation?.overall;
+  const c = d?.calibration;
+  if (c?.calibrated_km2) {
+    satelliteEstimateAcres = c.calibrated_km2 * 247.105;
+    if (loadedFeatures.length) refreshCategoryUI();  // re-render the headline with the estimate line
+  }
+  const km2 = (x: number) => (METRIC_UNITS ? `${x.toFixed(1)} km²` : `${Math.round(x * 247.105).toLocaleString()} acres`);
+  const pm = (x: number) => (METRIC_UNITS ? `${x.toFixed(1)} km²` : `${Math.round(x * 247.105).toLocaleString()} acres`);
+  el.innerHTML = `
+    <span style="display:inline-block;background:#fde68a;color:#7c2d12;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:700;margin-bottom:6px;">SATELLITE-DETECTED · BETA</span><br>
+    Lots were detected by a machine-learning model in ${escapeHtml(d?.method ? 'aerial imagery' : 'NAIP aerial imagery')}
+    (USDA NAIP 2022, 0.6&nbsp;m), not mapped by hand, and joined with assessor records for land values.
+    ${v ? `Checked against ${escapeHtml(d?.validation?.validation_set ? '150 hand-labelled random squares' : 'hand-labelled squares')}:
+    <strong>${pct(v.precision)}</strong> of the mapped area is real surface parking; the map finds about
+    <strong>${pct(v.recall)}</strong> of all surface parking, so it is a deliberate undercount.` : ''}
+    ${c ? `<br><br>Estimated surface parking citywide (corrected for what the map misses):
+    <strong>${km2(c.calibrated_km2)} ± ${pm(c.calibrated_se_km2)}</strong>; the lots shown add up to ${km2(c.mapped_km2)}.` : ''}
+    <br><br>Click a lot for its evidence: model confidence, imagery date, whether OpenStreetMap also maps it,
+    and the measured accuracy for its land use. Gravel vs paved and tax-exempt status are not distinguished.`;
+}
+
 async function runParkingWorkspace() {
   bindControlsOnce();
 
@@ -572,6 +642,8 @@ async function runParkingWorkspace() {
     // ── Show content, start loading ────────────────────────────────────────
     parkingContent!.style.display = '';
     noDataState!.style.display = 'none';
+    setupSourceSwitch();
+    if (PARKING_DATA_SOURCE === 'satellite') void showSatelliteMethodology(controller.signal);
     showLoading('Fetching parking lot data…');
 
     try {
@@ -769,9 +841,10 @@ async function runParkingWorkspace() {
       // Popup area: acres (imperial) or hectares (metric); primary figure in sqft or m².
       const areaBig   = METRIC_UNITS ? (areaSqftRaw / 43560 * 0.404686).toFixed(2) : (areaSqftRaw / 43560).toFixed(2);
       const areaBigUnit = METRIC_UNITS ? 'ha' : 'ac';
-      const cat       = p.parcel_category ?? '–';
+      const rawCat    = p.parcel_category;
+      const cat       = (rawCat && rawCat !== 'nan' && rawCat !== 'null') ? rawCat : (p.land_use || '–');
       const ppsf      = Number(p.land_value_per_sqft ?? 0);
-      const sqft      = (METRIC_UNITS ? Math.round(areaSqftRaw / SQFT_PER_SQM) : areaSqftRaw).toLocaleString();
+      const sqft      = Math.round(METRIC_UNITS ? areaSqftRaw / SQFT_PER_SQM : areaSqftRaw).toLocaleString();
       const isExempt  = p.is_exempt === true || p.is_exempt === 'true';
 
       // Surface-vs-structure classification (present when the classifier has run).
@@ -798,10 +871,32 @@ async function runParkingWorkspace() {
         ? `<div style="display:inline-block; background:#eee; color:#555; border-radius:3px; padding:1px 6px; font-size:11px; font-weight:600; margin-bottom:6px;">EXEMPT LAND</div><br>`
         : '';
 
-      // Caption: "high confidence · OpenStreetMap tag"
-      const caption = ptype
+      const isSatellite = p.detection_source === 'satellite_model';
+      // Caption: "high confidence · OpenStreetMap tag" (mapped) or the satellite badge.
+      const caption = isSatellite
+        ? `<div style="margin-bottom:6px;"><span style="display:inline-block;background:#fde68a;color:#7c2d12;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:700;">SATELLITE-DETECTED</span>
+             <span style="color:#888; font-size:11px;"> ${escapeHtml(p.confidence)} confidence</span></div>`
+        : ptype
         ? `<div style="color:#888; font-size:11px; margin-bottom:6px;">${p.confidence ?? ''} confidence · ${SOURCE_LABEL[p.classification_source as string] ?? p.classification_source ?? ''}</div>`
         : '';
+      const yes = (b: unknown) => (b === true || b === 'true');
+      const num = (x: unknown) => (x === null || x === undefined || x === '' || Number.isNaN(Number(x)) ? null : Number(x));
+      const conf = num(p.model_confidence);
+      const vp = num(p.validated_precision);
+      const nb = num(p.nearest_building_m);
+      const osmShare = num(p.osm_overlap_share);
+      const evRow = (k: string, v: string) =>
+        `<tr><td style="color:#666; padding: 2px 8px 2px 0;">${k}</td><td style="text-align:right; font-weight:500;">${v}</td></tr>`;
+      const evidence = isSatellite ? `
+        <div style="margin-top:8px; padding-top:6px; border-top:1px solid #eee; font-weight:600; font-size:12px;">Evidence</div>
+        <table style="border-collapse: collapse; width: 100%; font-size:12px;">
+          ${evRow('Model confidence', conf == null ? '–' : `${Math.round(conf * 100)}% (${escapeHtml(p.confidence)})`)}
+          ${evRow('Imagery', `NAIP ${escapeHtml(p.imagery_date || '2022')}, 0.6 m`)}
+          ${evRow('Also in OpenStreetMap', yes(p.in_osm) ? `yes (${osmShare == null ? '' : Math.round(osmShare * 100) + '% overlap'})` : 'no')}
+          ${evRow(`Measured accuracy, ${escapeHtml(p.land_use || 'this land use')}`, vp == null ? 'too few checked' : `${Math.round(vp * 100)}% of area is parking`)}
+          ${evRow('Nearest building', nb == null ? '–' : (METRIC_UNITS ? `${Math.round(nb)} m` : `${Math.round(nb * 3.281)} ft`))}
+        </table>
+        <div style="color:#888; font-size:11px; margin-top:4px;">Model output, not a survey: outlines can be a few metres off, and some lots are missed.</div>` : '';
 
       // For structures/gas the surface land is developed — say so instead of "$0".
       const valueRow = (ptype === 'structure' || ptype === 'excluded')
@@ -834,6 +929,7 @@ async function runParkingWorkspace() {
               </tr>
               ${valueRow}
             </table>
+            ${evidence}
           </div>
         `)
         .addTo(map);

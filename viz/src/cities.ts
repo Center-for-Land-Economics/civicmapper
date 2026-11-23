@@ -51,6 +51,11 @@ export interface CityDef {
   parkingFilename?: string;
   /** Optional cache-busting token appended to parking dataset requests. */
   parkingVersion?: string;
+  /** Satellite-detected parking layer (model output with per-lot evidence), offered next to the
+   *  OSM layer by a source switch on the parking page. Filename inside parking/, plus its own
+   *  cache-busting token. */
+  parkingModelFilename?: string;
+  parkingModelVersion?: string;
   /** Field holding the refined development category used for primary coloring/filtering. */
   devCategoryField: string;
   /** Field holding the original/raw land use category from the source data. */
