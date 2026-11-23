@@ -193,6 +193,9 @@ def _fetch_osm_tiled(bbox: tuple, tags: dict, label: str,
                     cell_ok = True
                     break
                 except Exception as e:
+                    if "No matching features" in str(e):  # osmnx: the cell is simply empty
+                        cell_ok = True
+                        break
                     # Dump pooled connections on ANY failure (timeouts included) so
                     # the next attempt opens a fresh TCP socket and lets system DNS
                     # rotate to a healthy backend. A stale socket to a flapped

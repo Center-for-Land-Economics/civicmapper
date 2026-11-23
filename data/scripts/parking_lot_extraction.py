@@ -1445,8 +1445,11 @@ def run_segformer_inference(
             )
 
     print(f"  Probability map saved: {probs_path}")
-    print(f"  Windows: {win_run:,} run, {win_skipped:,} skipped as empty imagery; "
-          f"highest parking probability {prob_max:.2f}")
+    if chunks_done_run:
+        print(f"  Windows: {win_run:,} run, {win_skipped:,} skipped as empty imagery; "
+              f"highest parking probability {prob_max:.2f}")
+    else:
+        print("  All chunks were already done; reusing the saved probability map and mask")
     if win_run == 0 and chunks_done_run:
         raise RuntimeError("Every inference window was empty imagery: check naip_imagery.tif "
                            "(delete it and rerun to rebuild the mosaic).")
@@ -2313,7 +2316,8 @@ def deduplicate_overlapping_parking(
 
     g["geometry"] = new_geom
     # Drop now-empty geoms
-    g = g[~g.geometry.is_empty & g.geometry.notna()].copy()
+    g = g[g.geometry.notna()]
+    g = g[~g.geometry.is_empty].copy()
     # Recompute areas + scale ratio so derived dollar/surface columns shrink
     # proportionally (matters when the input already has classifier columns —
     # the inline ETL path runs dedup BEFORE the classifier so those columns
