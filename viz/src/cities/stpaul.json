@@ -1,9 +1,18 @@
 {
+  "notes": [
+    "Rebuilt 2026-11-23 by run_stpaul.py (replaces st_paul.ipynb). Source: the City of Saint Paul's city-only copy of Ramsey County's Attributed Tax Parcels (PAULIE/FeatureServer/1, edited 2026-11-19): 2026 assessment, taxes payable 2027, estimated market value. The previous build carried 2024 values and divided each condo unit's value by its own ParcelSquareFeet, which made the tall needles.",
+    "Condo, condo-garage, co-op and TICO-townhome units are each mapped as a copy of the lot polygon (453 stacks, up to 594 deep); every stack is collapsed to one parcel with values summed, and every per-sqft rate uses the polygon's geodesic area.",
+    "Ramsey County gives condo units nominal land (~$1,000 each). For 340 merged condo developments, land is ESTIMATED from the 15 nearest non-condo parcels (lot area x their median land $/sqft, capped at 70% of value; total value unchanged), flagged condo_land_imputed = 1 with the assessor figure in assessor_land_value (+$101.6M land). run_stpaul.py --no-condo-impute ships the assessor figure.",
+    "Five 'economic units' are merged: a built parcel carrying a whole development's land (> $50/sqft and > 5x its same-owner building-less neighbours) is unioned with those pieces, e.g. 1845 University Ave W ($736/sqft -> $39.73/sqft).",
+    "Exempt (TaxExemptYN = Y or 6xx code, 3,422 parcels, $2.32B land) and railroad/utility operating property (8xx/900) dropped. 72,429 parcels, land $7.11B, improvements $29.28B. PMTiles + H3, --drop-remnants.",
+    "Parking (2026-06-02) was built against the previous parcel file and has not been regenerated."
+  ],
   "displayName": "St. Paul",
   "state": "mn",
   "filename": "st-paul-mn-parcels.parquet",
   "pmtilesFilename": "st-paul-mn-parcels.pmtiles",
-  "pmtilesVersion": "2026-07-13-hexprune",
+  "pmtilesVersion": "2026-11-23-ramsey2026",
+  "hideRemnants": true,
   "parkingFilename": "stpaul-mn-parking-lots.parquet",
   "parkingVersion": "2026-06-02-dedup",
   "devCategoryField": "property_land_use_refined",
