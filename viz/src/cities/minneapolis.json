@@ -1,0 +1,27 @@
+{
+  "notes": [
+    "City of Minneapolis, MN (Hennepin County). The city runs its own Assessor's office, and both sources are city-only, so no county clip. See run_minneapolis.py.",
+    "Values: the City Assessor's 'Assessing Department Parcel Data 2026' table (2026 assessment, taxes payable 2027) — estimated market land / building / total value, PROPERTYTYPE, ISEXEMPT. Minnesota assesses at 100% of market. Geometry: the city parcel fabric published as TylerParkingProd/FeatureServer/8 'PARCELS' (130,985 polygons, edited 2026-05-13), joined 1:1 on the 13-digit Hennepin PID. Hennepin County's and the Met Council's own parcel hosts were unreachable from the build environment, which is why the city copy is used.",
+    "The roll repeats a PID once per BUILDING (625 PIDs) with identical values; the ETL asserts the broadcast and takes first. 634 taxable roll PIDs (land $183M, mostly new condo plats) have no polygon in the fabric snapshot and are left off.",
+    "EXEMPT dropped on the assessor's own ISEXEMPT='Y' flag: 6,605 parcels, $6.78B land (the assessor appraises exempt property too — UMN, parks, public land, churches). UTILITY and COMMERCIAL RAILROAD are dropped as state-assessed operating property: railroad 'land' values are apportioned onto placeholder records ($0 on 120, $223M on one 0.7-acre stack at 1-55 Hennepin Ave).",
+    "CONDOS / CO-OPS: every unit (and condo garage/storage unit) is mapped as an identical copy of the development's lot polygon, each with its own land and building value. The 873 stacks (27,040 records, up to 1,059 per stack) are collapsed to one parcel each with values SUMMED; n_condo_units holds the count. Merged condo land is $27.82/sqft median vs $25.24 for single-family. 90 free-standing $0 common-area / co-op-master parcels are dropped.",
+    "97,218 parcels, land $18.94B, improvements $44.47B. PMTiles + H3 (r7/r8/r10/r11, parcels from z12), baked with --drop-remnants to match hideRemnants. No parking dataset yet."
+  ],
+  "displayName": "Minneapolis",
+  "state": "mn",
+  "filename": "minneapolis-mn-parcels.parquet",
+  "pmtilesFilename": "minneapolis-mn-parcels.pmtiles",
+  "pmtilesVersion": "2026-11-23",
+  "hideRemnants": true,
+  "devCategoryField": "property_land_use_refined",
+  "origCategoryField": "property_land_use_category",
+  "aliases": [
+    "minneapolis-mn",
+    "minneapolis_mn",
+    "mpls"
+  ],
+  "coords": [
+    -93.2650,
+    44.9778
+  ]
+}
