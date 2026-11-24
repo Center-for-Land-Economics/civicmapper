@@ -1,0 +1,56 @@
+{
+  "city": "plano",
+  "model": "vit:data/labels/pilot-laredo/finetune-dinov2-large-laredo-plano",
+  "model_description": "DINOv2-large backbone (Apache 2.0) with a segmentation head, fine-tuned on hand-labelled 250 m squares in Laredo (130) and Plano (33)",
+  "threshold": 0.6,
+  "imagery": "USDA NAIP 2022, 0.6 m, 4-band (via Microsoft Planetary Computer)",
+  "validated": "2026-11-24",
+  "validation_set": "78 random 250 m squares in Plano, hand-labelled blind and never used in training",
+  "overall": {
+    "precision": 0.911,
+    "recall": 0.667,
+    "iou": 0.626
+  },
+  "by_land_use": {
+    "(no parcel)": {
+      "precision": 0.808,
+      "sample_ha": 8.2
+    },
+    "Commercial": {
+      "precision": 0.946,
+      "sample_ha": 48.4
+    },
+    "Industrial": {
+      "precision": 0.888,
+      "sample_ha": 7.5
+    },
+    "Multifamily": {
+      "precision": 0.845,
+      "sample_ha": 5.9
+    },
+    "Single Family": {
+      "precision": null,
+      "sample_ha": 0.3
+    },
+    "Vacant Commercial": {
+      "precision": null,
+      "sample_ha": 0.8
+    }
+  },
+  "calibration": {
+    "mapped_km2": 18.07,
+    "calibrated_km2": 25.5,
+    "calibrated_se_km2": 1.5,
+    "ratio": 1.409,
+    "ratio_se": 0.083,
+    "survey_only_km2": 21.1,
+    "survey_only_se_km2": 2.4,
+    "method": "Combined ratio estimator over 6 land-use strata (label area / mapped area on Blind random squares) times the mapped citywide total",
+    "caution": "The survey-only and map-calibrated totals differ by more than their errors; open and park land is thinly sampled. Quote a range."
+  },
+  "notes": [
+    "Precision first: about 9 of 10 mapped square metres are surface parking; the map misses about a third of parking (small lots, apartment parking, lots under trees).",
+    "Lots on land with no parcel in the appraisal data (public and exempt land: transit, schools, churches) are kept and flagged exempt; they are less certain (81% precision).",
+    "Surface type (paved vs gravel) is not distinguished."
+  ]
+}

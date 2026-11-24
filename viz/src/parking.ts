@@ -997,7 +997,7 @@ async function runParkingWorkspace() {
           ${evRow('Model confidence', conf == null ? '–' : `${Math.round(conf * 100)}% (${escapeHtml(p.confidence)})`)}
           ${evRow('Imagery', `NAIP ${escapeHtml(p.imagery_date || '2022')}, 0.6 m`)}
           ${evRow('Also in OpenStreetMap', yes(p.in_osm) ? `yes (${osmShare == null ? '' : Math.round(osmShare * 100) + '% overlap'})` : 'no')}
-          ${evRow(`Measured accuracy, ${escapeHtml(p.land_use || 'this land use')}`, vp == null ? 'too few checked' : `${Math.round(vp * 100)}% of area is parking`)}
+          ${evRow(`Measured accuracy, ${escapeHtml(p.land_use === '(no parcel)' ? 'public / exempt land' : (p.land_use || 'this land use'))}`, vp == null ? 'too few checked' : `${Math.round(vp * 100)}% of area is parking`)}
           ${evRow('Nearest building', nb == null ? '–' : (METRIC_UNITS ? `${Math.round(nb)} m` : `${Math.round(nb * 3.281)} ft`))}
         </table>
         <div style="color:#888; font-size:11px; margin-top:4px;">Model output, not a survey: outlines can be a few metres off, and some lots are missed.</div>` : '';

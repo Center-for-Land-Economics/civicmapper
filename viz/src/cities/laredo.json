@@ -10,7 +10,7 @@
     "Under 100k parcels: browser GeoParquet path, no PMTiles bake.",
     "Parking is OSM delivered through Overture Maps (release 2026-10-21.0, --overture-only), classified surface vs structure: 169 lots, 82.7 acres, $35.3M est. land value. OSM parking coverage in Laredo is thin, so this undercounts. apply_parking_category.py tagged 24 parcels 'Parking Lot'.",
     "Links: Webb CAD's property page pinned to 2026 (webbcad.org/property-detail/<prop_id>/2026; confirmed by the user).",
-    "Satellite-detected parking (beta, dev): DINOv2 model fine-tuned on 175 hand-labelled Laredo squares, NAIP 2022 0.6 m, threshold 0.6 plus precision rules. On 150 blind random squares: 95% precision, 70% recall (deliberate undercount); calibrated citywide surface parking 30.8 +/- 2.0 km2 vs 21.7 km2 mapped. Shown via the parking page's source switch; per-lot evidence in data/scripts/parking_evidence.py, validation in data/scripts/parking_validation/laredo.json."
+    "Satellite-detected parking (beta, dev): DINOv2 model fine-tuned on hand-labelled Laredo and Plano squares, NAIP 2022 0.6 m, threshold 0.6 plus precision rules, clipped to the Census city limits. On 31 held-out random squares: 91% precision, 75% recall. Calibrated citywide surface parking 31.8 +/- 1.7 km2 (survey alone 30.3 +/- 2.7) vs 27.6 km2 mapped, incl. 1,380 acres on land with no parcel (public/exempt). Validation: data/scripts/parking_validation/laredo.json."
   ],
   "displayName": "Laredo",
   "state": "tx",
@@ -20,7 +20,7 @@
   "parkingFilename": "laredo-tx-parking-lots.parquet",
   "parkingVersion": "2026-11-15-overture",
   "parkingModelFilename": "laredo-tx-parking-lots-satellite.parquet",
-  "parkingModelVersion": "2026-11-23-dinov2-t0.6",
+  "parkingModelVersion": "2026-11-24-two-city-t0.6",
   "aerialImagery": {
     "collection": "naip",
     "year": 2022,

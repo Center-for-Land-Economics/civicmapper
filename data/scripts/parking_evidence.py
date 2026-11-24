@@ -160,7 +160,8 @@ def main() -> int:
         par = gpd.read_parquet(ppath, columns=["property_land_use_category", "geometry"]).to_crs(utm)
         pts = gpd.GeoDataFrame(geometry=lots.to_crs(utm).geometry.representative_point(), crs=utm)
         j = gpd.sjoin(pts, par, predicate="within", how="left")
-        lots["land_use"] = j[~j.index.duplicated()]["property_land_use_category"].reindex(lots.index).values
+        lots["land_use"] = j[~j.index.duplicated()]["property_land_use_category"].reindex(lots.index) \
+            .fillna("(no parcel)").values  # no parcel in the appraisal data: public / exempt land
     else:
         lots["land_use"] = lots.get("context_category")
     bylu = (val or {}).get("by_land_use", {})

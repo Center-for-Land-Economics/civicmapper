@@ -1,32 +1,56 @@
 {
   "city": "laredo",
-  "model": "vit:data/labels/pilot-laredo/finetune-dinov2-large-targeted",
-  "model_description": "DINOv2-large backbone (Apache 2.0) with a segmentation head, fine-tuned on 175 hand-labelled 250 m squares in Laredo",
+  "model": "vit:data/labels/pilot-laredo/finetune-dinov2-large-laredo-plano",
+  "model_description": "DINOv2-large backbone (Apache 2.0) with a segmentation head, fine-tuned on hand-labelled 250 m squares in Laredo (130) and Plano (33)",
   "threshold": 0.6,
   "imagery": "USDA NAIP 2022, 0.6 m, 4-band (via Microsoft Planetary Computer)",
-  "validated": "2026-11-23",
-  "validation_set": "150 stratified random 250 m squares in Laredo, hand-labelled blind (225 ha of surface parking); not used to choose the rules' thresholds beyond the precision-first package",
-  "overall": {"precision": 0.950, "recall": 0.699, "iou": 0.674},
-  "by_land_use": {
-    "Commercial": {"precision": 0.963, "sample_ha": 133.2},
-    "Industrial": {"precision": 0.974, "sample_ha": 8.7},
-    "Multifamily": {"precision": 0.893, "sample_ha": 15.4},
-    "Vacant Residential": {"precision": 0.829, "sample_ha": 7.9},
-    "Single Family": {"precision": null, "sample_ha": 0.2}
+  "validated": "2026-11-24",
+  "validation_set": "31 held-out random 250 m squares in Laredo, hand-labelled and never used in training",
+  "overall": {
+    "precision": 0.906,
+    "recall": 0.749,
+    "iou": 0.695
   },
+  "by_land_use": {
+    "(no parcel)": {
+      "precision": 0.794,
+      "sample_ha": 17.9
+    },
+    "Commercial": {
+      "precision": 0.961,
+      "sample_ha": 133.9
+    },
+    "Industrial": {
+      "precision": 0.966,
+      "sample_ha": 8.9
+    },
+    "Multifamily": {
+      "precision": 0.878,
+      "sample_ha": 16.1
+    },
+    "Single Family": {
+      "precision": null,
+      "sample_ha": 0.2
+    },
+    "Vacant Residential": {
+      "precision": 0.836,
+      "sample_ha": 7.5
+    }
+  },
+  "by_land_use_note": "By land use: all 148 labelled random squares (most also used in training, so about 2-3 points optimistic)",
   "calibration": {
-    "mapped_km2": 21.7,
-    "calibrated_km2": 30.8,
-    "calibrated_se_km2": 2.0,
-    "ratio": 1.42,
-    "ratio_se": 0.09,
+    "mapped_km2": 27.59,
+    "calibrated_km2": 31.8,
+    "calibrated_se_km2": 1.7,
+    "ratio": 1.151,
+    "ratio_se": 0.062,
     "survey_only_km2": 30.3,
-    "survey_only_se_km2": 5.3,
-    "method": "Combined ratio estimator over 6 land-use strata (label area / mapped area on the random squares) times the mapped citywide total"
+    "survey_only_se_km2": 2.7,
+    "method": "Combined ratio estimator over 6 land-use strata (label area / mapped area on held-out random squares) times the mapped citywide total; survey-only figure uses all 148 random squares"
   },
   "notes": [
-    "Precision first: 19 of 20 mapped square metres are surface parking; the map deliberately misses about 30% of parking (small lots, apartment parking, lots under trees).",
-    "Surface type (paved vs gravel) is not distinguished: models could not learn it from 0.6 m imagery.",
-    "Exempt status is not available for Laredo (the parcel file omits exempt parcels), so lots on school, church and government land show as taxable or unmatched."
+    "Precision first: about 9 of 10 mapped square metres are surface parking; the map misses about a quarter of parking (small lots, apartment parking, lots under trees).",
+    "Lots on land with no parcel in the appraisal data (public and exempt land: schools, churches, government) are kept and flagged exempt; they are less certain (79% precision).",
+    "Surface type (paved vs gravel) is not distinguished: models could not learn it from 0.6 m imagery."
   ]
 }
