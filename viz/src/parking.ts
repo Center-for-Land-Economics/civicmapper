@@ -688,17 +688,25 @@ async function showSatelliteMethodology(signal: AbortSignal) {
   }
   const km2 = (x: number) => (METRIC_UNITS ? `${x.toFixed(1)} km²` : `${Math.round(x * 247.105).toLocaleString()} acres`);
   const pm = (x: number) => (METRIC_UNITS ? `${x.toFixed(1)} km²` : `${Math.round(x * 247.105).toLocaleString()} acres`);
+  const nSq = String(d?.validation?.validation_set ?? '').match(/^\d+/)?.[0];
+  const estimate = c
+    ? (satelliteEstimateRange
+      ? `${km2(Math.min(c.survey_only_km2, c.calibrated_km2))}–${km2(Math.max(c.survey_only_km2, c.calibrated_km2))}`
+      : `${km2(c.calibrated_km2)} ± ${pm(c.calibrated_se_km2)}`)
+    : null;
+  // Short by default (one sentence + the key numbers); the rest behind "How we know".
   el.innerHTML = `
     <span style="display:inline-block;background:#fde68a;color:#7c2d12;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:700;margin-bottom:6px;">SATELLITE-DETECTED · BETA</span><br>
-    Lots were detected by a machine-learning model in ${escapeHtml(d?.method ? 'aerial imagery' : 'NAIP aerial imagery')}
-    (USDA NAIP 2022, 0.6&nbsp;m), not mapped by hand, and joined with assessor records for land values.
-    ${v ? `Checked against ${escapeHtml(d?.validation?.validation_set ? '150 hand-labelled random squares' : 'hand-labelled squares')}:
-    <strong>${pct(v.precision)}</strong> of the mapped area is real surface parking; the map finds about
-    <strong>${pct(v.recall)}</strong> of all surface parking, so it is a deliberate undercount.` : ''}
-    ${c ? `<br><br>Estimated surface parking citywide (corrected for what the map misses):
-    <strong>${satelliteEstimateRange ? `${km2(Math.min(c.survey_only_km2, c.calibrated_km2))}–${km2(Math.max(c.survey_only_km2, c.calibrated_km2))}` : `${km2(c.calibrated_km2)} ± ${pm(c.calibrated_se_km2)}`}</strong>${satelliteEstimateRange ? ' (the hand-labelled sample and the map-based estimate disagree, so both ends are shown)' : ''}; the lots shown add up to ${km2(c.mapped_km2)}.` : ''}
-    <br><br>Click a lot for its evidence: model confidence, imagery date, whether OpenStreetMap also maps it,
-    and the measured accuracy for its land use. Gravel vs paved and tax-exempt status are not distinguished.`;
+    Found by a machine-learning model in 2022 aerial imagery${v ? `: <strong>${pct(v.precision)}</strong> of the mapped area is parking, and it finds about <strong>${pct(v.recall)}</strong> of all parking` : ''}.
+    <details style="margin-top:6px;">
+      <summary style="cursor:pointer;font-weight:600;">How we know</summary>
+      <ul style="margin:6px 0 0 16px;padding:0;">
+        <li>Imagery: USDA NAIP 2022, 0.6&nbsp;m. Lots are model output, not mapped by hand.</li>
+        ${v ? `<li>Checked against ${nSq ? `${nSq} ` : ''}hand-labelled random squares the model never trained on.</li>` : ''}
+        ${estimate ? `<li>Citywide estimate, including missed lots: <strong>${estimate}</strong>${satelliteEstimateRange ? ' (two methods disagree; both shown)' : ''}. Lots shown: ${km2(c.mapped_km2)}.</li>` : ''}
+        <li>Click a lot for its evidence. Gravel vs paved is not distinguished; lots with no parcel are flagged exempt.</li>
+      </ul>
+    </details>`;
 }
 
 async function runParkingWorkspace() {
