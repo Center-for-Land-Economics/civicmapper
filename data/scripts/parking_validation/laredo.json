@@ -52,5 +52,11 @@
     "Precision first: about 9 of 10 mapped square metres are surface parking; the map misses about a quarter of parking (small lots, apartment parking, lots under trees).",
     "Lots on land with no parcel in the appraisal data (public and exempt land: schools, churches, government) are kept and flagged exempt; they are less certain (79% precision).",
     "Surface type (paved vs gravel) is not distinguished: models could not learn it from 0.6 m imagery."
-  ]
+  ],
+  "by_confidence": {
+    "high": 0.972,
+    "medium": 0.781,
+    "low": 0.545
+  },
+  "by_confidence_note": "Share of mapped area that is parking, by the lot's mean model probability (high >= 0.9, medium >= 0.8, low below), on the same squares as overall"
 }

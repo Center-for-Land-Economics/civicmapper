@@ -400,7 +400,9 @@ function updateHeadlineStat(s: CategoryStats, cat: ParkingCategory) {
       `worth <span class="highlight">${fmtCurrency(s.value)}</span> ` +
       `${CATEGORY_COPY[cat].phrase}${regionScopeSuffix()}.` +
       (satelliteEstimateAcres && cat === 'surface' && !regionScopeSuffix()
-        ? `<div style="font-size:0.8em;font-weight:400;opacity:0.85;margin-top:6px;">Estimated total, including lots the model misses: about ${Math.round(satelliteEstimateAcres).toLocaleString()} acres.</div>`
+        ? `<div style="font-size:0.8em;font-weight:400;opacity:0.85;margin-top:6px;">Estimated total, including lots the model misses: ${satelliteEstimateRange
+            ? `about ${(Math.round(satelliteEstimateRange[0] / 100) * 100).toLocaleString()}–${(Math.round(satelliteEstimateRange[1] / 100) * 100).toLocaleString()} acres`
+            : `about ${Math.round(satelliteEstimateAcres).toLocaleString()} acres`}.</div>`
         : '');
     return;
   }
@@ -410,6 +412,8 @@ function updateHeadlineStat(s: CategoryStats, cat: ParkingCategory) {
     `${CATEGORY_COPY[cat].phrase}${regionScopeSuffix()}.`;
 }
 let satelliteEstimateAcres: number | null = null;
+let satelliteEstimateRange: [number, number] | null = null;
+let satelliteConfidencePrecision: Record<string, number> | null = null;
 
 // ---------------------------------------------------------------------------
 // Filter the map layers to the selected category + visible regions
@@ -670,10 +674,16 @@ async function showSatelliteMethodology(signal: AbortSignal) {
       if (r.ok) d = (await r.json())?.detection ?? null;
     }
   } catch { /* fall back to the generic text */ }
+  satelliteConfidencePrecision = d?.validation?.by_confidence ?? null;
   const v = d?.validation?.overall;
   const c = d?.calibration;
   if (c?.calibrated_km2) {
     satelliteEstimateAcres = c.calibrated_km2 * 247.105;
+    // When the survey-only and map-calibrated totals disagree by more than their combined errors,
+    // say so with a range instead of one number.
+    const so = c.survey_only_km2, sse = c.survey_only_se_km2 ?? 0, cse = c.calibrated_se_km2 ?? 0;
+    satelliteEstimateRange = (so && Math.abs(so - c.calibrated_km2) > sse + cse)
+      ? [Math.min(so, c.calibrated_km2) * 247.105, Math.max(so, c.calibrated_km2) * 247.105] : null;
     if (loadedFeatures.length) refreshCategoryUI();  // re-render the headline with the estimate line
   }
   const km2 = (x: number) => (METRIC_UNITS ? `${x.toFixed(1)} km²` : `${Math.round(x * 247.105).toLocaleString()} acres`);
@@ -686,7 +696,7 @@ async function showSatelliteMethodology(signal: AbortSignal) {
     <strong>${pct(v.precision)}</strong> of the mapped area is real surface parking; the map finds about
     <strong>${pct(v.recall)}</strong> of all surface parking, so it is a deliberate undercount.` : ''}
     ${c ? `<br><br>Estimated surface parking citywide (corrected for what the map misses):
-    <strong>${km2(c.calibrated_km2)} ± ${pm(c.calibrated_se_km2)}</strong>; the lots shown add up to ${km2(c.mapped_km2)}.` : ''}
+    <strong>${satelliteEstimateRange ? `${km2(Math.min(c.survey_only_km2, c.calibrated_km2))}–${km2(Math.max(c.survey_only_km2, c.calibrated_km2))}` : `${km2(c.calibrated_km2)} ± ${pm(c.calibrated_se_km2)}`}</strong>${satelliteEstimateRange ? ' (the hand-labelled sample and the map-based estimate disagree, so both ends are shown)' : ''}; the lots shown add up to ${km2(c.mapped_km2)}.` : ''}
     <br><br>Click a lot for its evidence: model confidence, imagery date, whether OpenStreetMap also maps it,
     and the measured accuracy for its land use. Gravel vs paved and tax-exempt status are not distinguished.`;
 }
@@ -995,6 +1005,9 @@ async function runParkingWorkspace() {
         <div style="margin-top:8px; padding-top:6px; border-top:1px solid #eee; font-weight:600; font-size:12px;">Evidence</div>
         <table style="border-collapse: collapse; width: 100%; font-size:12px;">
           ${evRow('Model confidence', conf == null ? '–' : `${Math.round(conf * 100)}% (${escapeHtml(p.confidence)})`)}
+          ${satelliteConfidencePrecision?.[p.confidence as string] != null
+            ? evRow(`Checked accuracy, ${escapeHtml(p.confidence)}-confidence lots`, `${Math.round(satelliteConfidencePrecision[p.confidence as string] * 100)}% of area is parking`)
+            : ''}
           ${evRow('Imagery', `NAIP ${escapeHtml(p.imagery_date || '2022')}, 0.6 m`)}
           ${evRow('Also in OpenStreetMap', yes(p.in_osm) ? `yes (${osmShare == null ? '' : Math.round(osmShare * 100) + '% overlap'})` : 'no')}
           ${evRow(`Measured accuracy, ${escapeHtml(p.land_use === '(no parcel)' ? 'public / exempt land' : (p.land_use || 'this land use'))}`, vp == null ? 'too few checked' : `${Math.round(vp * 100)}% of area is parking`)}

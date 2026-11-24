@@ -181,7 +181,8 @@ def main() -> int:
         "method": method,
         "model": (val or {}).get("model_description") or meta["parkingTotals"].get("model"),
         "threshold": (val or {}).get("threshold"),
-        "validation": {k: val[k] for k in ("validated", "validation_set", "overall", "by_land_use", "notes")} if val else None,
+        "validation": {k: val[k] for k in ("validated", "validation_set", "overall", "by_land_use", "by_confidence", "notes")
+                       if k in val} if val else None,
         "calibration": (val or {}).get("calibration"),
         "lots": int(len(lots)),
         "lots_in_osm": int(lots["in_osm"].fillna(False).sum()) if "in_osm" in lots else None,
