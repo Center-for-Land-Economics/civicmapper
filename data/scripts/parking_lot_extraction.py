@@ -520,6 +520,13 @@ def clip_parking_to_city_boundary(
     if parking.crs is None or parking.crs.to_epsg() != 4326:
         parking = parking.to_crs(4326)
 
+    import shapely
+    from data.scripts.parking_postprocess import _polygonal
+    _bad = ~parking.geometry.is_valid
+    if _bad.any():
+        parking = parking.copy()
+        parking.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(parking.geometry[_bad].values)]
+        parking = parking[parking.geometry.notna() & ~parking.geometry.is_empty]
     representative_points = parking.representative_point()
     inside_mask = representative_points.within(boundary_geometry)
     dropped = int((~inside_mask).sum())
@@ -2315,6 +2322,15 @@ def deduplicate_overlapping_parking(
     if len(parking) < 2:
         return parking
     g = _project_for_area(parking).reset_index(drop=True)
+    # Earlier cuts and reprojection can leave self-touching rings that make union fail
+    # ("side location conflict"): repair first, keep the polygonal part.
+    import shapely
+    from data.scripts.parking_postprocess import _polygonal
+    _bad = ~g.geometry.is_valid
+    if _bad.any():
+        g.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(g.geometry[_bad].values)]
+        g = g[g.geometry.notna() & ~g.geometry.is_empty].reset_index(drop=True)
+        print(f"  Repaired {int(_bad.sum()):,} invalid polygon(s) before de-duplication")
     # Sort largest first so we keep the most-coverage polygons intact
     g["_area_m2"] = g.geometry.area
     order = g["_area_m2"].sort_values(ascending=False).index.tolist()
@@ -2336,13 +2352,23 @@ def deduplicate_overlapping_parking(
             continue
         # Subtract the union of all earlier polygons from this one
         from shapely.ops import unary_union
-        prior_union = unary_union([new_geom[j] for j in earlier])
-        if not gi.intersects(prior_union):
-            continue
-        inter_area = gi.intersection(prior_union).area
-        if inter_area < min_overlap_sqft / 10.7639:
-            continue
-        carved = gi.difference(prior_union)
+        try:
+            prior_union = unary_union([new_geom[j] for j in earlier])
+            if not gi.intersects(prior_union):
+                continue
+            inter_area = gi.intersection(prior_union).area
+            if inter_area < min_overlap_sqft / 10.7639:
+                continue
+            carved = gi.difference(prior_union)
+        except Exception:  # GEOS topology error on a degenerate ring: repair both sides and retry
+            prior_union = shapely.make_valid(unary_union([shapely.make_valid(new_geom[j]) for j in earlier]))
+            gi = _polygonal(shapely.make_valid(gi))
+            if gi is None or not gi.intersects(prior_union):
+                continue
+            inter_area = gi.intersection(prior_union).area
+            if inter_area < min_overlap_sqft / 10.7639:
+                continue
+            carved = gi.difference(prior_union)
         # difference() can return GeometryCollections with non-polygonal bits;
         # keep only the polygonal pieces.
         if carved.geom_type == "GeometryCollection":
@@ -2353,7 +2379,8 @@ def deduplicate_overlapping_parking(
         overlaps_carved += 1
         overlap_area_m2 += inter_area
 
-    g["geometry"] = new_geom
+    # Differences can leave self-touching rings again: the written layer is always valid.
+    g["geometry"] = [None if x is None else _polygonal(shapely.make_valid(x)) for x in new_geom]
     # Drop now-empty geoms
     g = g[g.geometry.notna()]
     g = g[~g.geometry.is_empty].copy()
