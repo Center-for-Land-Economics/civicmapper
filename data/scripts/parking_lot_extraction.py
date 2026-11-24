@@ -2409,6 +2409,10 @@ def deduplicate_overlapping_parking(
           f"removed {overlap_sqft/43560.0:.2f} acres of duplicate land")
 
     g = g.drop(columns=["_area_m2", "_area_m2_new"]).to_crs(4326)
+    _bad = ~g.geometry.is_valid  # reprojection can bend a valid ring into a self-touching one
+    if _bad.any():
+        g.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(g.geometry[_bad].values)]
+        g = g[g.geometry.notna() & ~g.geometry.is_empty]
     return g
 
 
