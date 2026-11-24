@@ -54,12 +54,28 @@ only when its own land rate is > $50/sqft AND > 5x theirs; values summed (distin
 Narrow on purpose (a looser rule merged ~100 ordinary houses with their side-yard lots); logged
 parcel by parcel.
 
+RECORDED AREA: ~20 single-record parcels have an assessor area (ParcelSquareFeet) > 3x their
+polygon (310 Smith Ave N parking ramp: 188,615 sqft recorded, 13,625 drawn). Their rates use the
+recorded area (area_source = 'assessor'), so the value is not piled onto a sliver.
+
+KNOWN, KEPT: Ramsey values apartment land at a flat $20,000 per unit and townhome land at flat
+per-unit amounts ($30k/$50k/$100k), regardless of lot size. Old walk-ups and townhome rows on small
+lots therefore show 5-15x the land $/sqft of the houses beside them (535 Asbury St: 18 units on
+3,578 sqft = $100/sqft). That is the assessor's method, published as assessed.
+
 Owner / taxpayer / homestead names are read (for the economic-unit match only) but never exported.
 
 Outputs:
 - data/jurisidictions/data/stpaul/st-paul-mn-parcels.parquet  (registry: stpaul -> st-paul-mn)
 - data/jurisidictions/data/stpaul/st-paul-mn-parcels_YYYY_MM_DD.parquet
-PMTiles + H3 (~78k parcels), baked with --drop-remnants.
+PMTiles + H3 (~72k parcels), baked with --drop-remnants.
+
+AFTER THIS SCRIPT (it resets property_land_use_refined, which has no parking code):
+    python data/scripts/parking_rejoin.py --city stpaul --keep-columns
+    python data/scripts/apply_parking_category.py --city stpaul \
+        --parcels data/jurisidictions/data/stpaul/st-paul-mn-parcels.parquet \
+        --parking data/parking/stpaul/stpaul-mn-parking-lots.parquet
+then bake PMTiles and upload (parcels + parking).
 """
 from __future__ import annotations
 
@@ -272,8 +288,16 @@ _r = (p["land_area_sqft"] / pd.to_numeric(p["ParcelAcresPolygon"], errors="coerc
       .where(p["n_units"].eq(1)).replace(0, np.nan))
 log(f"Area cross-check vs ParcelAcresPolygon: median {_r.median():.4f}, >5% off {int((_r.sub(1).abs() > .05).sum())}")
 p["area_source"] = "gis"
-p["land_area_acres"] = p["land_area_sqft"] / SQFT_PER_ACRE
 p["likely_remnant"] = (p["land_area_sqft"] < 500).astype(int)
+# A single record whose ASSESSOR area is > 3x its polygon is valued for land the polygon does not
+# show (310 Smith Ave N parking ramp: 188,615 sqft recorded, 13,625 sqft drawn -> $374/sqft).
+# Divide by the recorded area for those (~20 parcels) so the rate is the assessor's own.
+_rec = pd.to_numeric(p["ParcelSquareFeet"], errors="coerce")
+_use_rec = p["n_units"].eq(1) & (_rec > 3 * p["land_area_sqft"]) & (_rec > 5000)
+p.loc[_use_rec, "land_area_sqft"] = _rec[_use_rec]
+p.loc[_use_rec, "area_source"] = "assessor"
+log(f"Recorded area > 3x polygon (rate uses recorded area): {int(_use_rec.sum())} parcels")
+p["land_area_acres"] = p["land_area_sqft"] / SQFT_PER_ACRE
 p["land_value"] = p["EMVLand"].astype(float)
 p["improvement_value"] = p["EMVBuilding"].astype(float)
 p["full_market_value"] = p["land_value"] + p["improvement_value"]

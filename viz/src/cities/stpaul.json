@@ -5,16 +5,16 @@
     "Ramsey County gives condo units nominal land (~$1,000 each). For 340 merged condo developments, land is ESTIMATED from the 15 nearest non-condo parcels (lot area x their median land $/sqft, capped at 70% of value; total value unchanged), flagged condo_land_imputed = 1 with the assessor figure in assessor_land_value (+$101.6M land). run_stpaul.py --no-condo-impute ships the assessor figure.",
     "Five 'economic units' are merged: a built parcel carrying a whole development's land (> $50/sqft and > 5x its same-owner building-less neighbours) is unioned with those pieces, e.g. 1845 University Ave W ($736/sqft -> $39.73/sqft).",
     "Exempt (TaxExemptYN = Y or 6xx code, 3,422 parcels, $2.32B land) and railroad/utility operating property (8xx/900) dropped. 72,429 parcels, land $7.11B, improvements $29.28B. PMTiles + H3, --drop-remnants.",
-    "Parking (2026-06-02) was built against the previous parcel file and has not been regenerated."
+    "Parking (2026-11-24): the June OSM lots (1,731) re-joined to the rebuilt parcels with parking_rejoin.py --keep-columns. Lot areas re-measured in UTM: the June file measured them in Web Mercator, 2.0x too large at 45N (1,574 -> 788 acres), which had cancelled against a halved land rate. Estimated parking land $462.0M (June: $453.2M). apply_parking_category.py then tagged 391 parking-dominant parcels 'Parking Lot'; re-run it after run_stpaul.py. OSM lots were not re-fetched (Overpass unreachable from the build environment)."
   ],
   "displayName": "St. Paul",
   "state": "mn",
   "filename": "st-paul-mn-parcels.parquet",
   "pmtilesFilename": "st-paul-mn-parcels.pmtiles",
-  "pmtilesVersion": "2026-11-23-ramsey2026",
+  "pmtilesVersion": "2026-11-24-parkingcat",
   "hideRemnants": true,
   "parkingFilename": "stpaul-mn-parking-lots.parquet",
-  "parkingVersion": "2026-06-02-dedup",
+  "parkingVersion": "2026-11-24-rejoin",
   "devCategoryField": "property_land_use_refined",
   "origCategoryField": "property_land_use_category",
   "aliases": [
