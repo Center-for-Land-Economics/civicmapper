@@ -521,11 +521,11 @@ def clip_parking_to_city_boundary(
         parking = parking.to_crs(4326)
 
     import shapely
-    from data.scripts.parking_postprocess import _polygonal
+    from data.scripts.parking_postprocess import _polygonal, repair, repair_all
     _bad = ~parking.geometry.is_valid
     if _bad.any():
         parking = parking.copy()
-        parking.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(parking.geometry[_bad].values)]
+        parking.loc[_bad, "geometry"] = repair_all(parking.geometry[_bad].values)
         parking = parking[parking.geometry.notna() & ~parking.geometry.is_empty]
     representative_points = parking.representative_point()
     inside_mask = representative_points.within(boundary_geometry)
@@ -2235,12 +2235,12 @@ def clip_parking_to_parcels(
     parcels_proj = parcels.to_crs(area_crs).reset_index(drop=True)
     # Overlay needs valid rings; earlier cuts (streets, buildings) and some parcel files have
     # self-touching ones. make_valid keeps the area; keep only polygonal parts.
-    from data.scripts.parking_postprocess import _polygonal
+    from data.scripts.parking_postprocess import _polygonal, repair, repair_all
     import shapely
     for _gdf in (parking_proj, parcels_proj):
         _bad = ~_gdf.geometry.is_valid
         if _bad.any():
-            _gdf.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(_gdf.geometry[_bad].values)]
+            _gdf.loc[_bad, "geometry"] = repair_all(_gdf.geometry[_bad].values)
     parking_proj = parking_proj[parking_proj.geometry.notna() & ~parking_proj.geometry.is_empty]
     parcels_proj = parcels_proj[parcels_proj.geometry.notna() & ~parcels_proj.geometry.is_empty]
 
@@ -2325,10 +2325,10 @@ def deduplicate_overlapping_parking(
     # Earlier cuts and reprojection can leave self-touching rings that make union fail
     # ("side location conflict"): repair first, keep the polygonal part.
     import shapely
-    from data.scripts.parking_postprocess import _polygonal
+    from data.scripts.parking_postprocess import _polygonal, repair, repair_all
     _bad = ~g.geometry.is_valid
     if _bad.any():
-        g.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(g.geometry[_bad].values)]
+        g.loc[_bad, "geometry"] = repair_all(g.geometry[_bad].values)
         g = g[g.geometry.notna() & ~g.geometry.is_empty].reset_index(drop=True)
         print(f"  Repaired {int(_bad.sum()):,} invalid polygon(s) before de-duplication")
     # Sort largest first so we keep the most-coverage polygons intact
@@ -2361,8 +2361,8 @@ def deduplicate_overlapping_parking(
                 continue
             carved = gi.difference(prior_union)
         except Exception:  # GEOS topology error on a degenerate ring: repair both sides and retry
-            prior_union = shapely.make_valid(unary_union([shapely.make_valid(new_geom[j]) for j in earlier]))
-            gi = _polygonal(shapely.make_valid(gi))
+            prior_union = repair(unary_union([g2 for g2 in repair_all([new_geom[j] for j in earlier]) if g2 is not None]))
+            gi = repair(gi)
             if gi is None or not gi.intersects(prior_union):
                 continue
             inter_area = gi.intersection(prior_union).area
@@ -2380,7 +2380,7 @@ def deduplicate_overlapping_parking(
         overlap_area_m2 += inter_area
 
     # Differences can leave self-touching rings again: the written layer is always valid.
-    g["geometry"] = [None if x is None else _polygonal(shapely.make_valid(x)) for x in new_geom]
+    g["geometry"] = repair_all(new_geom)
     # Drop now-empty geoms
     g = g[g.geometry.notna()]
     g = g[~g.geometry.is_empty].copy()
@@ -2411,7 +2411,7 @@ def deduplicate_overlapping_parking(
     g = g.drop(columns=["_area_m2", "_area_m2_new"]).to_crs(4326)
     _bad = ~g.geometry.is_valid  # reprojection can bend a valid ring into a self-touching one
     if _bad.any():
-        g.loc[_bad, "geometry"] = [_polygonal(x) for x in shapely.make_valid(g.geometry[_bad].values)]
+        g.loc[_bad, "geometry"] = repair_all(g.geometry[_bad].values)
         g = g[g.geometry.notna() & ~g.geometry.is_empty]
     return g
 

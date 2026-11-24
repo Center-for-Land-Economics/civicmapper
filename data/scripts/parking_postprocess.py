@@ -88,12 +88,13 @@ def subtract_buildings(parking: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame,
                 g = g.difference(hit.union_all())
             except Exception:  # invalid ring from an earlier cut: repair and retry
                 import shapely
-                g = _polygonal(shapely.make_valid(g)).difference(shapely.make_valid(hit.union_all()))
+                rg, rh = repair(g), repair(hit.union_all())
+                g = rg.difference(rh) if rg is not None and rh is not None else (rg or g)
         geoms.append(g)
         if n >= 20000 and k % 10000 == 0:
             print(f"    buildings cut from {k:,}/{n:,} polygons", flush=True)
     import shapely
-    p = p.set_geometry([_polygonal(x) for x in shapely.make_valid(np.array(geoms, dtype=object))])
+    p = p.set_geometry(repair_all(geoms))
     p = p[p.geometry.notna() & ~p.geometry.is_empty]
     p = p[p.geometry.area >= min_area_m2]
     return p.to_crs(parking.crs)
@@ -210,6 +211,30 @@ def _polygonal(g):
     return None
 
 
+def repair(g):
+    """Valid polygonal geometry from anything a cut can produce (self-touching rings, collections
+    mixing polygons with lines or points), or None. make_valid alone fails on mixed collections
+    ("Overlay input is mixed-dimension"), so the polygonal part is taken first; buffer(0) is the
+    last resort."""
+    import shapely
+    g = _polygonal(g)
+    if g is None or g.is_empty:
+        return None
+    if g.is_valid:
+        return g
+    try:
+        return _polygonal(shapely.make_valid(g))
+    except Exception:  # noqa: BLE001
+        try:
+            return _polygonal(g.buffer(0))
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def repair_all(geoms) -> list:
+    return [repair(x) for x in geoms]
+
+
 def subtract_public_streets(parking: gpd.GeoDataFrame, roads: gpd.GeoDataFrame | None,
                             parcels: gpd.GeoDataFrame | None) -> gpd.GeoDataFrame:
     """Vector form of the label rule (street_mask): remove parking that is within a public road's
@@ -246,7 +271,7 @@ def subtract_public_streets(parking: gpd.GeoDataFrame, roads: gpd.GeoDataFrame |
     before = p.geometry.area.sum()
     p = p.set_geometry(geoms)
     # differences can leave self-touching rings; repair, keep the polygonal part
-    p["geometry"] = [_polygonal(x) for x in shapely.make_valid(p.geometry.values)]
+    p["geometry"] = repair_all(p.geometry.values)
     p = p[p.geometry.notna() & ~p.geometry.is_empty]
     p = p[p.geometry.area >= 46.5]  # 500 sq ft, as the pipeline's min area
     print(f"  Public streets off-parcel: {(before - p.geometry.area.sum()) / 4046.86:,.0f} ac removed "
