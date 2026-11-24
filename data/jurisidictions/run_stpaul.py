@@ -68,7 +68,14 @@ Owner / taxpayer / homestead names are read (for the economic-unit match only) b
 Outputs:
 - data/jurisidictions/data/stpaul/st-paul-mn-parcels.parquet  (registry: stpaul -> st-paul-mn)
 - data/jurisidictions/data/stpaul/st-paul-mn-parcels_YYYY_MM_DD.parquet
-PMTiles + H3 (~78k parcels), baked with --drop-remnants.
+PMTiles + H3 (~72k parcels), baked with --drop-remnants.
+
+AFTER THIS SCRIPT (it resets property_land_use_refined, which has no parking code):
+    python data/scripts/parking_rejoin.py --city stpaul --keep-columns
+    python data/scripts/apply_parking_category.py --city stpaul \
+        --parcels data/jurisidictions/data/stpaul/st-paul-mn-parcels.parquet \
+        --parking data/parking/stpaul/stpaul-mn-parking-lots.parquet
+then bake PMTiles and upload (parcels + parking).
 """
 from __future__ import annotations
 

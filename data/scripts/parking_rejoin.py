@@ -42,7 +42,7 @@ PARCEL_PATHS: dict[str, Path] = {
     "morgantown": JURIS / "morgantown" / "morgantown-wv-parcels.parquet",
     "nyc":        JURIS / "nyc"        / "nyc-ny-parcels.parquet",
     "spokane":    JURIS / "spokane"    / "spokane-wa-parcels.parquet",
-    "stpaul":     JURIS / "st_paul"    / "st-paul-mn-parcels.parquet",
+    "stpaul":     JURIS / "stpaul"     / "st-paul-mn-parcels.parquet",
     "syracuse":   JURIS / "syracuse"   / "syracuse-ny-parcels.parquet",
 }
 
@@ -126,6 +126,23 @@ def rejoin_city(city_key: str, upload: bool = False, container: str = "parquets-
         present_base = [c for c in BASE_COLS if c in parking.columns]
         parking = parking[present_base].copy()
     print(f"  Loaded {len(parking):,} parking polygons.")
+
+    # ── Re-measure lot areas on an equal-area projection ──────────────────
+    # Older runs (and parts of parking_lot_extraction.py / classify_parking_surface.py) measure
+    # parking_area_sqft in EPSG:3857, which overstates area by 1/cos^2(lat): ~2.0x at St. Paul's
+    # 45N. spatial_join_to_parcels() prices land per sqft on UTM parcel area, so a 3857 lot area
+    # times a UTM rate double-counts. Recompute from geometry in UTM; scale surface_area_sqft
+    # (the classified surface share of the lot) by the same per-lot factor.
+    true_sqft = parking.to_crs(parking.estimate_utm_crs()).geometry.area * 10.7639
+    if "parking_area_sqft" in parking.columns:
+        old = parking["parking_area_sqft"].replace(0, float("nan"))
+        factor = (true_sqft / old).fillna(1.0)
+        print(f"  Lot area re-measured in UTM: median stored/true ratio "
+              f"{(old / true_sqft).median():.3f}")
+        if "surface_area_sqft" in parking.columns:
+            parking["surface_area_sqft"] = parking["surface_area_sqft"] * factor
+    parking["parking_area_sqft"] = true_sqft
+    parking["parking_area_acres"] = true_sqft / 43560.0
 
     # ── Load city parcels ─────────────────────────────────────────────────
     parcel_path = PARCEL_PATHS.get(city_key)
